@@ -180,13 +180,29 @@ func runServer() {
 	}
 
 	st := store.New(pool)
+	if err := apihttp.ApplyAuthRuntime(ctx, st, &cfg); err != nil {
+		slog.Error("auth runtime", "err", err)
+		os.Exit(1)
+	}
+	// Runtime may switch to bootstrap after env was oidc — ensure password exists.
+	if cfg.AuthMode == "bootstrap" {
+		if cfg.BootstrapPasswordFile != "" {
+			_ = os.Setenv("KC_BOOTSTRAP_PASSWORD_FILE", cfg.BootstrapPasswordFile)
+		}
+		if _, _, err := bootstrap.EnsurePassword(); err != nil {
+			slog.Error("bootstrap password", "err", err)
+			os.Exit(1)
+		}
+	}
+
 	authEng := auth.NewEngine(st, cfg.BootstrapAdminSubject)
 	if err := authEng.Reload(ctx); err != nil {
 		slog.Error("auth policies", "err", err)
 		os.Exit(1)
 	}
 	eng := engine.New(st, authEng)
-	handler := apihttp.New(eng, st, apihttp.NewAuthenticator(cfg), cfg)
+	authn := apihttp.NewSwitchableAuthenticator(apihttp.NewAuthenticator(cfg))
+	handler := apihttp.New(eng, st, authn, cfg)
 
 	srv := &http.Server{
 		Addr:              cfg.HTTPAddr,

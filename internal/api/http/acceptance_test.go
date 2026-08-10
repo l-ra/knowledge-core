@@ -54,7 +54,7 @@ func setupTestHandler(t *testing.T) http.Handler {
 			statement_revision, property_revision, entity_revision,
 			statement_current, statement,
 			entity_label, entity_description, property_label, property_description,
-			property_definition, entity RESTART IDENTITY CASCADE;
+			property_definition, entity, auth_runtime RESTART IDENTITY CASCADE;
 		UPDATE id_counter SET last_value = 0;
 	`)
 	_, _ = pool.Exec(ctx, `DELETE FROM auth_policy WHERE name <> 'bootstrap-admin'`)
@@ -126,6 +126,65 @@ func TestAcceptanceListAndUIConfig(t *testing.T) {
 	me := doJSON(t, h, http.MethodGet, "/v1/me", nil, nil)
 	if me.StatusCode != http.StatusOK {
 		t.Fatalf("me: %d %s", me.StatusCode, me.Body)
+	}
+}
+
+func TestAcceptanceAdminAuthRuntime(t *testing.T) {
+	h := setupTestHandler(t)
+
+	got := doJSON(t, h, http.MethodGet, "/v1/admin/auth", nil, nil)
+	if got.StatusCode != http.StatusOK {
+		t.Fatalf("get admin auth: %d %s", got.StatusCode, got.Body)
+	}
+	var wrap struct {
+		Instructions struct {
+			IdP []string `json:"idp"`
+			KC  []string `json:"knowledgeCore"`
+		} `json:"instructions"`
+		AuthMode string `json:"authMode"`
+	}
+	if err := json.Unmarshal([]byte(got.Body), &wrap); err != nil {
+		t.Fatal(err)
+	}
+	if len(wrap.Instructions.IdP) == 0 || len(wrap.Instructions.KC) == 0 {
+		t.Fatalf("expected setup instructions, got %+v", wrap.Instructions)
+	}
+
+	forbidden := doJSON(t, h, http.MethodGet, "/v1/admin/auth", nil, userHeaders("viewer", "reader"))
+	if forbidden.StatusCode != http.StatusForbidden {
+		t.Fatalf("expected 403 for non-admin, got %d %s", forbidden.StatusCode, forbidden.Body)
+	}
+
+	// Invalid issuer must fail before persisting.
+	bad := doJSON(t, h, http.MethodPut, "/v1/admin/auth", map[string]any{
+		"authMode":     "oidc",
+		"oidcIssuer":   "http://127.0.0.1:9",
+		"oidcClientId": "test-client",
+	}, nil)
+	if bad.StatusCode != http.StatusBadRequest {
+		t.Fatalf("expected bad issuer 400, got %d %s", bad.StatusCode, bad.Body)
+	}
+
+	// Switch back to bootstrap without discovery (no issuer required).
+	ok := doJSON(t, h, http.MethodPut, "/v1/admin/auth", map[string]any{
+		"authMode": "bootstrap",
+	}, nil)
+	if ok.StatusCode != http.StatusOK {
+		t.Fatalf("put bootstrap: %d %s", ok.StatusCode, ok.Body)
+	}
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/v1/ui/config", nil)
+	h.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("ui config: %d %s", rec.Code, rec.Body.String())
+	}
+	var cfg map[string]any
+	if err := json.Unmarshal(rec.Body.Bytes(), &cfg); err != nil {
+		t.Fatal(err)
+	}
+	if cfg["authMode"] != "bootstrap" {
+		t.Fatalf("ui config authMode=%v want bootstrap", cfg["authMode"])
 	}
 }
 

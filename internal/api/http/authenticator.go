@@ -24,7 +24,7 @@ func NewAuthenticator(cfg config.Config) Authenticator {
 	case "oidc":
 		return &OIDCAuthenticator{
 			Issuer:         cfg.OIDCIssuer,
-			Audience:       cfg.OIDCAudience,
+			Audience:       cfg.EffectiveAudience(),
 			BootstrapAdmin: cfg.BootstrapAdminSubject,
 		}
 	case "bootstrap":

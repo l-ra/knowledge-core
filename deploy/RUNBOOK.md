@@ -39,13 +39,14 @@ Default auth mode v Helm je `bootstrap`.
 ### Lokální compose
 
 ```bash
-podman-compose -f deploy/docker-compose.yml up -d postgres pocket-id
-# UI: http://pocket-id.localhost:1411/setup
-# Client: public PKCE, id=knowledge-core, redirect=http://localhost:8080/ui/callback
+podman-compose -f deploy/docker-compose.yml up -d
+# App startuje v bootstrap režimu. Pocket ID: http://pocket-id.localhost:1411/setup
 ```
 
-App v compose běží s `KC_AUTH_MODE=oidc` a issuer `http://pocket-id.localhost:1411`
-(hostname je alias kontejneru + v prohlížeči míří na 127.0.0.1).
+1. V Pocket ID vytvoř public PKCE klienta (client_id z IdP — po create immutable).
+2. Redirect: `http://localhost:8080/ui/callback`
+3. V KC UI: **Admin → OIDC / IdP** — vlož issuer + client_id (`PUT /v1/admin/auth`).
+4. Runtime nastavení je v tabulce `auth_runtime` (přepíše env při startu).
 
 ### Helm
 

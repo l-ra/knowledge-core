@@ -11,25 +11,27 @@ Viz [docs/README.md](docs/README.md): koncepty, ADR, zadání fází. **Aktuáln
 ## Rychlý start
 
 ```bash
-# PostgreSQL + Pocket ID (OIDC)
+# PostgreSQL + Pocket ID (OIDC IdP)
 docker compose -f deploy/docker-compose.yml up -d postgres pocket-id
 # or: podman-compose -f deploy/docker-compose.yml up -d postgres pocket-id
 # Compose uses subnet 172.25.90.0/24 so Podman works on hosts with a 10.0.0.0/8 route.
 
-# Pocket ID setup (jednou): otevři http://pocket-id.localhost:1411/setup
-# Vytvoř public PKCE klienta id=knowledge-core, redirect=http://localhost:8080/ui/callback
-
-# App (lokálně proti compose DB + IdP)
+# App (lokálně) — začni bootstrapem, OIDC napoj v Admin UI
 export KC_DATABASE_URL='postgres://kc:kc@localhost:5433/knowledge_core?sslmode=disable'
-export KC_AUTH_MODE=oidc
-export KC_OIDC_ISSUER='http://pocket-id.localhost:1411'
-export KC_OIDC_AUDIENCE=knowledge-core
+export KC_AUTH_MODE=bootstrap
 go run ./cmd/knowledge-core
-# (nebo bez OIDC: KC_AUTH_MODE=bootstrap / dev)
+# heslo: log / KC_BOOTSTRAP_PASSWORD_FILE
 
-# nebo celý stack (app v kontejneru, OIDC)
+# nebo celý stack
 docker compose -f deploy/docker-compose.yml up --build
 ```
+
+### OIDC (Pocket ID first)
+
+1. Pocket ID: http://pocket-id.localhost:1411/setup → vytvoř **public PKCE** klienta (client_id nech auto-generovat; po vytvoření ho nelze změnit).
+2. Redirect URI: `http://localhost:8080/ui/callback`
+3. Knowledge Core UI → **Admin → OIDC / IdP** → vlož issuer + client_id z Pocket ID → Save.
+4. Odhlásí tě a přihlášení probíhá přes OIDC.
 
 | Služba | URL |
 |--------|-----|

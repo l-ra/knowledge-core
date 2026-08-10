@@ -23,8 +23,8 @@ services:
       - kc
 
   # Local OIDC IdP (passkeys). First visit: http://pocket-id.localhost:1411/setup
-  # Create a public PKCE client id "knowledge-core" with redirect:
-  #   http://localhost:8080/ui/callback
+  # Create a public PKCE client, then paste issuer + client_id in KC Admin → OIDC / IdP.
+  # Redirect URI: http://localhost:8080/ui/callback (client_id is immutable after create).
   pocket-id:
     image: ghcr.io/pocket-id/pocket-id:v2.13.0
     environment:
@@ -58,10 +58,8 @@ services:
       KC_HTTP_ADDR: ":8080"
       KC_DATABASE_URL: postgres://kc:kc@postgres:5432/knowledge_core?sslmode=disable
       KC_LOG_LEVEL: info
-      KC_AUTH_MODE: oidc
-      KC_OIDC_ISSUER: http://pocket-id.localhost:1411
-      KC_OIDC_AUDIENCE: knowledge-core
-      # Bootstrap fallback (set KC_AUTH_MODE=bootstrap). Image ships writable /data for nonroot.
+      # Start with bootstrap; link OIDC via Admin → OIDC / IdP after creating the client in Pocket ID.
+      KC_AUTH_MODE: bootstrap
       KC_BOOTSTRAP_PASSWORD_FILE: /data/admin.password
     ports:
       - "8080:8080"

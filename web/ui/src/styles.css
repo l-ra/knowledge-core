@@ -280,3 +280,25 @@ details.advanced summary {
   font-size: 0.85rem;
   color: var(--muted);
 }
+
+.steps {
+  margin: 0;
+  padding-left: 1.25rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  color: var(--text);
+  line-height: 1.45;
+}
+
+.steps li::marker {
+  color: var(--accent);
+}
+
+code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.9em;
+  background: color-mix(in srgb, var(--border) 55%, transparent);
+  padding: 0.1rem 0.35rem;
+  border-radius: 4px;
+}

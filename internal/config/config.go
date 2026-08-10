@@ -15,6 +15,7 @@ type Config struct {
 	BootstrapPasswordFile  string
 	BootstrapAdminPassword string
 	OIDCIssuer             string
+	OIDCClientID           string
 	OIDCAudience           string
 }
 
@@ -28,6 +29,7 @@ func Load() (Config, error) {
 		BootstrapPasswordFile:  getenv("KC_BOOTSTRAP_PASSWORD_FILE", ""),
 		BootstrapAdminPassword: os.Getenv("KC_BOOTSTRAP_ADMIN_PASSWORD"),
 		OIDCIssuer:             os.Getenv("KC_OIDC_ISSUER"),
+		OIDCClientID:           firstNonEmpty(os.Getenv("KC_OIDC_CLIENT_ID"), os.Getenv("KC_OIDC_AUDIENCE")),
 		OIDCAudience:           os.Getenv("KC_OIDC_AUDIENCE"),
 	}
 	if cfg.DatabaseURL == "" {
@@ -42,6 +44,31 @@ func Load() (Config, error) {
 		return Config{}, fmt.Errorf("KC_OIDC_ISSUER is required when KC_AUTH_MODE=oidc")
 	}
 	return cfg, nil
+}
+
+// EffectiveClientID is the public OIDC client_id used by the SPA (PKCE).
+func (c Config) EffectiveClientID() string {
+	if c.OIDCClientID != "" {
+		return c.OIDCClientID
+	}
+	return c.OIDCAudience
+}
+
+// EffectiveAudience is the JWT aud to verify; empty skips audience check.
+func (c Config) EffectiveAudience() string {
+	if c.OIDCAudience != "" {
+		return c.OIDCAudience
+	}
+	return c.OIDCClientID
+}
+
+func firstNonEmpty(vals ...string) string {
+	for _, v := range vals {
+		if strings.TrimSpace(v) != "" {
+			return v
+		}
+	}
+	return ""
 }
 
 func getenv(key, def string) string {

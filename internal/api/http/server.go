@@ -6,6 +6,7 @@ import (
 	"io/fs"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -23,11 +24,17 @@ import (
 type Server struct {
 	engine *engine.Engine
 	store  *store.Store
+	authn  *SwitchableAuthenticator
+	cfgMu  sync.RWMutex
 	cfg    config.Config
 }
 
 func New(eng *engine.Engine, st *store.Store, authn Authenticator, cfg config.Config) http.Handler {
-	s := &Server{engine: eng, store: st, cfg: cfg}
+	sw, ok := authn.(*SwitchableAuthenticator)
+	if !ok {
+		sw = NewSwitchableAuthenticator(authn)
+	}
+	s := &Server{engine: eng, store: st, authn: sw, cfg: cfg}
 	r := chi.NewRouter()
 	r.Use(middleware.RequestID)
 	r.Use(middleware.RealIP)
@@ -42,8 +49,11 @@ func New(eng *engine.Engine, st *store.Store, authn Authenticator, cfg config.Co
 	r.Get("/v1/ui/config", s.uiConfig)
 
 	r.Route("/v1", func(r chi.Router) {
-		r.Use(authMiddleware(authn))
+		r.Use(authMiddleware(sw))
 		r.Get("/me", s.me)
+
+		r.Get("/admin/auth", s.getAdminAuth)
+		r.Put("/admin/auth", s.putAdminAuth)
 
 		r.Get("/entities", s.listEntities)
 		r.Post("/entities", s.createEntity)
@@ -99,6 +109,18 @@ func New(eng *engine.Engine, st *store.Store, authn Authenticator, cfg config.Co
 	mountUI(r)
 
 	return r
+}
+
+func (s *Server) liveConfig() config.Config {
+	s.cfgMu.RLock()
+	defer s.cfgMu.RUnlock()
+	return s.cfg
+}
+
+func (s *Server) setLiveConfig(cfg config.Config) {
+	s.cfgMu.Lock()
+	s.cfg = cfg
+	s.cfgMu.Unlock()
 }
 
 func mountUI(r chi.Router) {

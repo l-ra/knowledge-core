@@ -11,7 +11,7 @@ Vestavěné SPA na `/ui` — administrace, editace modelu, Wikibase-like editor 
 **In:**
 
 - React + Vite SPA, `go:embed`, cesta `/ui`
-- Auth: OIDC PKCE + bootstrap + dev
+- Auth: OIDC PKCE + bootstrap + dev; Admin UI napojení IdP (`/v1/admin/auth`, Pocket ID first)
 - i18n: čeština / angličtina
 - Data: search, entities list/create/edit statements (+ advanced qualifiers/refs/valid time)
 - Model: properties, packages, lenses, policies (oddělená navigace)

@@ -1,6 +1,7 @@
 export type UiConfig = {
   authMode: "dev" | "oidc" | "bootstrap";
   oidcIssuer: string;
+  oidcClientId: string;
   oidcAudience: string;
   bootstrapAdminSubject: string;
   uiBasePath: string;
@@ -107,7 +108,7 @@ export async function startOidcLogin(cfg: UiConfig) {
   );
   const redirectUri = `${window.location.origin}${cfg.oidcRedirectPath}`;
   const params = new URLSearchParams({
-    client_id: cfg.oidcAudience || "knowledge-core",
+    client_id: cfg.oidcClientId || cfg.oidcAudience || "knowledge-core",
     response_type: "code",
     scope: "openid profile email",
     redirect_uri: redirectUri,
@@ -129,7 +130,7 @@ export async function finishOidcLogin(cfg: UiConfig, code: string, state: string
   const redirectUri = `${window.location.origin}${cfg.oidcRedirectPath}`;
   const body = new URLSearchParams({
     grant_type: "authorization_code",
-    client_id: cfg.oidcAudience || "knowledge-core",
+    client_id: cfg.oidcClientId || cfg.oidcAudience || "knowledge-core",
     code,
     redirect_uri: redirectUri,
     code_verifier: verifier,

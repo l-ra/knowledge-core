@@ -30,6 +30,7 @@ export function Layout() {
 
         <div className="nav-section">
           <h2>{t("nav.admin")}</h2>
+          <NavLink to="/admin/auth">{t("nav.auth")}</NavLink>
           <NavLink to="/admin/ops">{t("nav.ops")}</NavLink>
         </div>
 

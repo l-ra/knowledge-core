@@ -12,6 +12,7 @@ import { PackagesPage } from "./pages/PackagesPage";
 import { LensesPage } from "./pages/LensesPage";
 import { PoliciesPage } from "./pages/PoliciesPage";
 import { OpsPage } from "./pages/OpsPage";
+import { AuthPage } from "./pages/AuthPage";
 
 function RequireAuth({ children }: { children: React.ReactNode }) {
   const { session, ready } = useAuth();
@@ -42,6 +43,7 @@ export function App() {
         <Route path="model/packages" element={<PackagesPage />} />
         <Route path="model/lenses" element={<LensesPage />} />
         <Route path="model/policies" element={<PoliciesPage />} />
+        <Route path="admin/auth" element={<AuthPage />} />
         <Route path="admin/ops" element={<OpsPage />} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />

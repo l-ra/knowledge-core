@@ -5,11 +5,12 @@ import (
 )
 
 func (s *Server) uiConfig(w http.ResponseWriter, r *http.Request) {
-	cfg := s.cfg
+	cfg := s.liveConfig()
 	writeJSON(w, http.StatusOK, map[string]any{
 		"authMode":              cfg.AuthMode,
 		"oidcIssuer":            cfg.OIDCIssuer,
-		"oidcAudience":          cfg.OIDCAudience,
+		"oidcClientId":          cfg.EffectiveClientID(),
+		"oidcAudience":          cfg.EffectiveAudience(),
 		"bootstrapAdminSubject": cfg.BootstrapAdminSubject,
 		"uiBasePath":            "/ui",
 		"oidcRedirectPath":      "/ui/callback",

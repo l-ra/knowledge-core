@@ -29,6 +29,23 @@ paths:
       responses:
         "200":
           description: OK
+  /v1/admin/auth:
+    get:
+      summary: OIDC/IdP link status and setup instructions (admin)
+      tags: [auth]
+      responses:
+        "200":
+          description: OK
+        "403":
+          description: Forbidden
+    put:
+      summary: Persist OIDC settings from IdP (admin); hot-swaps authenticator
+      tags: [auth]
+      responses:
+        "200":
+          description: OK
+        "400":
+          description: Invalid issuer or payload
   /v1/entities:
     get:
       summary: List entities (cursor pagination, ACL discover)
