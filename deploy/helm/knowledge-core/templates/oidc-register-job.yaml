@@ -1,0 +1,86 @@
+{{- if and .Values.pocketId.enabled .Values.pocketId.adminApiKey }}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "knowledge-core.fullname" . }}-oidc-register
+  labels:
+    {{- include "knowledge-core.labels" . | nindent 4 }}
+  annotations:
+    "helm.sh/hook": post-install,post-upgrade
+    "helm.sh/hook-weight": "5"
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+spec:
+  ttlSecondsAfterFinished: 600
+  backoffLimit: 6
+  template:
+    metadata:
+      labels:
+        {{- include "knowledge-core.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: oidc-register
+    spec:
+      restartPolicy: OnFailure
+      containers:
+        - name: register
+          image: docker.io/curlimages/curl:8.12.1
+          env:
+            - name: POCKET_ID_URL
+              value: {{ include "knowledge-core.oidcIssuer" . | quote }}
+            - name: API_KEY
+              value: {{ .Values.pocketId.adminApiKey | quote }}
+            - name: CLIENT_ID
+              value: {{ .Values.auth.oidcAudience | quote }}
+            - name: CLIENT_NAME
+              value: {{ .Values.pocketId.oidcClient.name | quote }}
+            - name: CALLBACK_URLS
+              value: {{ join "," .Values.pocketId.oidcClient.callbackURLs | quote }}
+          command:
+            - /bin/sh
+            - -ec
+            - |
+              echo "waiting for Pocket ID at $POCKET_ID_URL"
+              i=0
+              until curl -fsS "$POCKET_ID_URL/health" >/dev/null 2>&1; do
+                i=$((i+1))
+                if [ "$i" -gt 60 ]; then
+                  echo "Pocket ID not ready"
+                  exit 1
+                fi
+                sleep 2
+              done
+
+              # Build JSON callback array
+              urls=""
+              IFS=','
+              for u in $CALLBACK_URLS; do
+                [ -z "$u" ] && continue
+                if [ -n "$urls" ]; then urls="$urls,"; fi
+                urls="$urls\"$u\""
+              done
+              if [ -z "$urls" ]; then
+                urls="\"http://localhost:8080/callback\""
+              fi
+
+              body=$(printf '{"id":"%s","name":"%s","callbackURLs":[%s],"isPublic":true,"pkceEnabled":true}' \
+                "$CLIENT_ID" "$CLIENT_NAME" "$urls")
+
+              code=$(curl -sS -o /tmp/out -w "%{http_code}" \
+                -X POST "$POCKET_ID_URL/api/oidc/clients" \
+                -H "Content-Type: application/json" \
+                -H "X-API-KEY: $API_KEY" \
+                -d "$body" || true)
+
+              echo "register response HTTP $code"
+              cat /tmp/out || true
+              # 201 created, 409 already exists (or similar) — treat 2xx/409 as success
+              case "$code" in
+                200|201|204) exit 0 ;;
+                409) echo "client already exists"; exit 0 ;;
+                *)
+                  # Some versions return 400 if id exists — check message
+                  if grep -qi 'already\|exist' /tmp/out 2>/dev/null; then
+                    exit 0
+                  fi
+                  exit 1
+                  ;;
+              esac
+{{- end }}

@@ -39,12 +39,21 @@ kubectl exec -it deploy/kc-knowledge-core -- /knowledge-core admin reset-passwor
 ```bash
 helm upgrade --install kc deploy/helm/knowledge-core \
   --set pocketId.enabled=true \
-  --set pocketId.appUrl=https://id.example.com
+  --set pocketId.appUrl=https://id.example.com \
+  --set pocketId.adminApiKey=<api-key> \
+  --set pocketId.oidcClient.callbackURLs[0]=https://app.example.com/callback
 ```
 
 When `pocketId.enabled=true`, Knowledge Core switches to `KC_AUTH_MODE=oidc` and uses Pocket ID as issuer.
 
-Configure an OIDC client in Pocket ID with client id `knowledge-core` (`auth.oidcAudience`).
+If `pocketId.adminApiKey` is set, a Helm hook Job registers OIDC client id `auth.oidcAudience` via Pocket ID API.
+Otherwise configure the client manually in Pocket ID UI.
+
+## Hardening
+
+- PDB enabled by default (`podDisruptionBudget.enabled`)
+- Resource requests/limits set in `values.yaml`
+- Optional NetworkPolicy: `--set networkPolicy.enabled=true`
 
 ## CI
 
@@ -55,10 +64,11 @@ GitHub Actions workflow `.github/workflows/ci.yml`:
 - `helm lint` + template smoke test
 - On push to `main`: publish image to `ghcr.io/l-ra/knowledge-core` and Helm chart to `oci://ghcr.io/l-ra`
 
-Install published chart:
+Tag release (`.github/workflows/release.yml`):
 
 ```bash
-helm install kc oci://ghcr.io/l-ra/knowledge-core --version 0.1.0
+git tag v0.2.0 && git push origin v0.2.0
+helm install kc oci://ghcr.io/l-ra/knowledge-core --version 0.2.0
 ```
 
 ## Values reference
@@ -69,9 +79,12 @@ helm install kc oci://ghcr.io/l-ra/knowledge-core --version 0.1.0
 | `auth.bootstrapAdminSubject` | `admin` | Subject id with admin role |
 | `postgresql.enabled` | `true` | Deploy bundled PostgreSQL |
 | `pocketId.enabled` | `false` | Deploy Pocket ID subchart |
+| `pocketId.adminApiKey` | `""` | Enables OIDC client registration Job |
 | `persistence.enabled` | `true` | PVC for bootstrap password file (`/data`) |
 | `outboxWorker.enabled` | `true` | CronJob running `knowledge-core outbox process` |
 | `outboxWorker.schedule` | `*/1 * * * *` | Cron schedule |
+| `podDisruptionBudget.enabled` | `true` | PDB |
+| `networkPolicy.enabled` | `false` | Restrict pod network |
 
 ## Outbox worker
 
@@ -82,4 +95,6 @@ kubectl exec -it deploy/kc-knowledge-core -- /knowledge-core outbox process --li
 # Or rely on CronJob (enabled by default)
 kubectl get cronjob
 ```
+
+See also [RUNBOOK.md](../RUNBOOK.md).
 

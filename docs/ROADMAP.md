@@ -12,7 +12,7 @@ Tento dokument nahrazuje „aktuální vývojové zadání“ v [docs/README.md]
 | Oblast | Stav |
 |--------|------|
 | **v1 jádro** (fáze 0–7) | **Hotovo** — všechny plánované acceptance testy procházejí |
-| **Provoz / distribuce** (fáze 8) | **Částečně hotovo** — Helm, CI, bootstrap admin |
+| **Provoz / distribuce** (fáze 8) | **Hotovo** — Helm, CI, release, runbook, OIDC Job |
 | **Dokončení mezer v1** | Plánováno (fáze 9–11) |
 | **Refaktoring / kvalita** | Průběžně (fáze 12+) |
 
@@ -46,7 +46,7 @@ Tento dokument nahrazuje „aktuální vývojové zadání“ v [docs/README.md]
 
 ---
 
-## Fáze 8 — Provoz a distribuce (částečně hotovo)
+## Fáze 8 — Provoz a distribuce (hotovo)
 
 | Položka | Stav | Poznámka |
 |---------|------|----------|
@@ -56,12 +56,12 @@ Tento dokument nahrazuje „aktuální vývojové zadání“ v [docs/README.md]
 | GitHub Actions CI | done | test, build, `helm lint`, publish image + chart |
 | Bootstrap admin heslo (`KC_AUTH_MODE=bootstrap`) | done | log + reset v kontejneru |
 | Modul `github.com/l-ra/knowledge-core` | done | |
-| Auto-registrace OIDC klienta (KC ↔ Pocket ID) | **planned** | Dnes ruční konfigurace v Pocket ID UI |
-| Production hardening (PDB, resources, network policies) | **planned** | |
-| Verzované release (git tag → image + chart semver) | **planned** | CI publikuje `latest` + SHA z `main` |
-| Dokumentace provozu (runbook, backup PG) | **planned** | |
+| Auto-registrace OIDC klienta (KC ↔ Pocket ID) | done | post-install Job + `pocketId.adminApiKey` |
+| Production hardening (PDB, resources, network policies) | done | PDB default on; NetworkPolicy opt-in |
+| Verzované release (git tag → image + chart semver) | done | `.github/workflows/release.yml` |
+| Dokumentace provozu (runbook, backup PG) | done | `deploy/RUNBOOK.md` |
 
-Detail instalace: [deploy/helm/README.md](../deploy/helm/README.md)
+Detail instalace: [deploy/helm/README.md](../deploy/helm/README.md) · Runbook: [deploy/RUNBOOK.md](../deploy/RUNBOOK.md)
 
 ---
 
@@ -79,7 +79,7 @@ Tyto body jsou **úmyslně odložené** nebo **zjednodušené** oproti [technick
 | Lens patch | `add` / `remove` (concepts) | Jen `set` / `clear`; `many` cardinality read-only write | 10 |
 | Policy API | deklarativní správa | Tabulka + seed; **bez REST CRUD** | 9 |
 | Outbox worker | integrace | **done** — CLI + Helm CronJob | 11 |
-| Deploy (ADR 0001) | Docker Compose | Compose + **Helm** (nad rámec původního ADR) | 8 (dokončit) |
+| Deploy (ADR 0001) | Docker Compose | Compose + **Helm** | 8 |
 
 ---
 

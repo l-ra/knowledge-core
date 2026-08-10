@@ -19,7 +19,7 @@
 
 | Fáze | Scope | Stav |
 |------|-------|------|
-| 8 | Helm, CI, PostgreSQL + Pocket ID subcharts, bootstrap admin | **partial** — viz [ROADMAP](../ROADMAP.md) |
+| 8 | Helm, CI, PostgreSQL + Pocket ID subcharts, bootstrap admin | **done** |
 | 9 | Policy REST API, OpenAPI | planned |
 | 10 | Nested lens, gqlgen, patch add/remove | planned |
 | 11 | RDF projection, ACL-aware search, outbox worker | **done** |

@@ -33,10 +33,10 @@ Tato složka je zdroj pravdy pro vývoj: koncepty, uzavřená implementační ro
 | 6 | Lenses / GraphQL | done (A3) |
 | 7 | Outbox / projections | done (A15) |
 
-### Provoz — částečně hotovo
+### Provoz — hotovo
 
 | Fáze | Obsah | Status |
 |------|-------|--------|
-| 8 | Helm, CI, bootstrap admin, Pocket ID subchart | partial |
+| 8 | Helm, CI, release, Pocket ID OIDC Job, runbook | done |
 
 Detailní plán dalších fází (9–12): [ROADMAP.md](ROADMAP.md).

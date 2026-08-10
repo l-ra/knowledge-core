@@ -114,9 +114,10 @@ helm upgrade --install kc deploy/helm/knowledge-core \
   --set image.tag=latest
 ```
 
-Detail: [deploy/helm/README.md](deploy/helm/README.md)
+Detail: [deploy/helm/README.md](deploy/helm/README.md) · Runbook: [deploy/RUNBOOK.md](deploy/RUNBOOK.md)
 
 CI (`.github/workflows/ci.yml`) buildí image `ghcr.io/l-ra/knowledge-core` a publikuje chart do `oci://ghcr.io/l-ra`.
+Tag `v*` spustí [release workflow](.github/workflows/release.yml) (semver image + chart).
 
 ## Testy
 

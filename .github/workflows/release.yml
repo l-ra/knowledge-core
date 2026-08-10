@@ -1,0 +1,78 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: read
+  packages: write
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: l-ra/knowledge-core
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Extract version
+        id: ver
+        run: |
+          TAG="${GITHUB_REF_NAME}"
+          VERSION="${TAG#v}"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Test
+        env:
+          KC_DATABASE_URL: postgres://kc:kc@localhost:5433/knowledge_core?sslmode=disable
+        run: |
+          docker run -d --name pg -e POSTGRES_USER=kc -e POSTGRES_PASSWORD=kc -e POSTGRES_DB=knowledge_core -p 5433:5432 postgres:16-alpine
+          for i in $(seq 1 30); do
+            docker exec pg pg_isready -U kc -d knowledge_core && break
+            sleep 1
+          done
+          go test ./... -count=1
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: docker/metadata-action@v5
+        id: meta
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=raw,value=latest
+
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: deploy/Dockerfile
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+
+      - uses: azure/setup-helm@v4
+        with:
+          version: v3.16.4
+
+      - name: Package and push Helm chart
+        run: |
+          VERSION="${{ steps.ver.outputs.version }}"
+          sed -i "s/^version: .*/version: ${VERSION}/" deploy/helm/knowledge-core/Chart.yaml
+          sed -i "s/^appVersion: .*/appVersion: \"${VERSION}\"/" deploy/helm/knowledge-core/Chart.yaml
+          helm package deploy/helm/knowledge-core --destination /tmp/chart --version "$VERSION" --app-version "$VERSION"
+          helm push /tmp/chart/knowledge-core-*.tgz oci://${{ env.REGISTRY }}/l-ra

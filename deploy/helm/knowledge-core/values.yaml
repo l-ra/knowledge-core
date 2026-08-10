@@ -44,7 +44,21 @@ ingress:
           pathType: Prefix
   tls: []
 
-resources: {}
+resources:
+  requests:
+    cpu: 50m
+    memory: 64Mi
+  limits:
+    cpu: 500m
+    memory: 256Mi
+
+podDisruptionBudget:
+  enabled: true
+  minAvailable: 1
+  maxUnavailable: null
+
+networkPolicy:
+  enabled: false
 
 nodeSelector: {}
 tolerations: []
@@ -95,6 +109,12 @@ pocketId:
   # empty = chart generates random encryption key
   encryptionKey: ""
   trustProxy: "true"
+  # Optional admin API key — when set, Helm post-install Job registers OIDC client
+  adminApiKey: ""
+  oidcClient:
+    name: Knowledge Core
+    callbackURLs:
+      - http://localhost:8080/callback
 
 outboxWorker:
   enabled: true
