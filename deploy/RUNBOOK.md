@@ -36,6 +36,19 @@ Default auth mode v Helm je `bootstrap`.
 
 ## Pocket ID (OIDC)
 
+### Lokální compose
+
+```bash
+podman-compose -f deploy/docker-compose.yml up -d postgres pocket-id
+# UI: http://pocket-id.localhost:1411/setup
+# Client: public PKCE, id=knowledge-core, redirect=http://localhost:8080/ui/callback
+```
+
+App v compose běží s `KC_AUTH_MODE=oidc` a issuer `http://pocket-id.localhost:1411`
+(hostname je alias kontejneru + v prohlížeči míří na 127.0.0.1).
+
+### Helm
+
 ```bash
 helm upgrade --install kc deploy/helm/knowledge-core \
   --set pocketId.enabled=true \

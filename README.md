@@ -11,18 +11,31 @@ Viz [docs/README.md](docs/README.md): koncepty, ADR, zadání fází. **Aktuáln
 ## Rychlý start
 
 ```bash
-# PostgreSQL
-docker compose -f deploy/docker-compose.yml up -d postgres
-# or: podman-compose -f deploy/docker-compose.yml up -d postgres
+# PostgreSQL + Pocket ID (OIDC)
+docker compose -f deploy/docker-compose.yml up -d postgres pocket-id
+# or: podman-compose -f deploy/docker-compose.yml up -d postgres pocket-id
 # Compose uses subnet 172.25.90.0/24 so Podman works on hosts with a 10.0.0.0/8 route.
 
-# App (lokálně)
-export KC_DATABASE_URL='postgres://kc:kc@localhost:5433/knowledge_core?sslmode=disable'
-go run ./cmd/knowledge-core
+# Pocket ID setup (jednou): otevři http://pocket-id.localhost:1411/setup
+# Vytvoř public PKCE klienta id=knowledge-core, redirect=http://localhost:8080/ui/callback
 
-# nebo celý stack
+# App (lokálně proti compose DB + IdP)
+export KC_DATABASE_URL='postgres://kc:kc@localhost:5433/knowledge_core?sslmode=disable'
+export KC_AUTH_MODE=oidc
+export KC_OIDC_ISSUER='http://pocket-id.localhost:1411'
+export KC_OIDC_AUDIENCE=knowledge-core
+go run ./cmd/knowledge-core
+# (nebo bez OIDC: KC_AUTH_MODE=bootstrap / dev)
+
+# nebo celý stack (app v kontejneru, OIDC)
 docker compose -f deploy/docker-compose.yml up --build
 ```
+
+| Služba | URL |
+|--------|-----|
+| App / UI | http://localhost:8080/ui/ |
+| Pocket ID | http://pocket-id.localhost:1411 |
+| Postgres | localhost:5433 |
 
 Health: `GET http://localhost:8080/healthz`  
 Metrics: `GET http://localhost:8080/metrics`  
