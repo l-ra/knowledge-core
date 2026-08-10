@@ -72,6 +72,14 @@ Graph writes accept optional `packageCode` for ownership.
 - `POST /v1/releases/import` — import exported bundle (promotion)
 - `POST /v1/packages/{code}/releases/{version}/mutate` — rejects immutable release (409)
 
+**Auth policies (fáze 9):**
+
+- `GET /v1/policies` — list
+- `POST /v1/policies` — upsert `{ "name", "priority", "document" }`
+- `GET/PUT/DELETE /v1/policies/{name}`
+
+OpenAPI: [api/openapi.yaml](api/openapi.yaml)
+
 **Lens / domain API (fáze 6):**
 
 - `POST /v1/lenses` — register lens definition (JSON document)

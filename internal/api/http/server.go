@@ -60,6 +60,12 @@ func New(eng *engine.Engine, st *store.Store, authn Authenticator) http.Handler 
 		r.Post("/changesets", s.applyChangeSet)
 		r.Get("/changesets/{cid}", s.getChangeSet)
 
+		r.Get("/policies", s.listPolicies)
+		r.Post("/policies", s.upsertPolicy)
+		r.Get("/policies/{name}", s.getPolicy)
+		r.Put("/policies/{name}", s.upsertPolicy)
+		r.Delete("/policies/{name}", s.deletePolicy)
+
 		r.Post("/lenses", s.createLens)
 		r.Get("/lenses/{code}", s.getLens)
 		r.Get("/lenses/{code}/instances/{key}", s.getLensInstance)
@@ -705,5 +711,25 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 }
 
 func writeError(w http.ResponseWriter, status int, msg string) {
-	writeJSON(w, status, map[string]string{"error": msg})
+	code := "error"
+	switch status {
+	case http.StatusBadRequest:
+		code = "invalid"
+	case http.StatusUnauthorized:
+		code = "unauthenticated"
+	case http.StatusForbidden:
+		code = "forbidden"
+	case http.StatusNotFound:
+		code = "not_found"
+	case http.StatusConflict:
+		code = "conflict"
+	case http.StatusServiceUnavailable:
+		code = "unavailable"
+	}
+	writeJSON(w, status, map[string]any{
+		"error": map[string]any{
+			"code":    code,
+			"message": msg,
+		},
+	})
 }

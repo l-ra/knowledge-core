@@ -77,20 +77,20 @@ Tyto body jsou **úmyslně odložené** nebo **zjednodušené** oproti [technick
 | Search ACL | filtr **před** score (ADR 38.7) | **done** (fáze 11) | 11 |
 | Lens nested | pole `lens` v DSL | Schema existuje, read/write **neimplementováno** | 10 |
 | Lens patch | `add` / `remove` (concepts) | Jen `set` / `clear`; `many` cardinality read-only write | 10 |
-| Policy API | deklarativní správa | Tabulka + seed; **bez REST CRUD** | 9 |
+| Policy API | deklarativní správa | **done** — REST CRUD `/v1/policies` | 9 |
 | Outbox worker | integrace | **done** — CLI + Helm CronJob | 11 |
 | Deploy (ADR 0001) | Docker Compose | Compose + **Helm** | 8 |
 
 ---
 
-## Fáze 9 — API a správa (plánováno)
+## Fáze 9 — API a správa (hotovo)
 
 **Cíl:** Dopsat provozní a administrátorské mezery mimo core graph.
 
-- [ ] REST CRUD pro `auth_policy` (`GET/POST/DELETE /v1/policies`)
-- [ ] OpenAPI 3 popis veřejného API
-- [ ] Konzistentní error envelope a request validation
-- [ ] Acceptance: správa policy bez přímého SQL
+- [x] REST CRUD pro `auth_policy` (`GET/POST/DELETE /v1/policies`)
+- [x] OpenAPI 3 popis veřejného API
+- [x] Konzistentní error envelope a request validation
+- [x] Acceptance: správa policy bez přímého SQL
 
 **Priorita:** střední — bootstrap admin stačí pro early adopters
 

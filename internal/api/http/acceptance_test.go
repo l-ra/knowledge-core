@@ -95,6 +95,55 @@ func seedPolicy(t *testing.T, name string, priority int, doc auth.PolicyDocument
 	}
 }
 
+func TestAcceptancePolicyAPI(t *testing.T) {
+	h := setupTestHandler(t)
+
+	qid := createEntity(t, h, "Policy Target")
+	create := doJSON(t, h, http.MethodPost, "/v1/policies", map[string]any{
+		"name":     "api-viewer",
+		"priority": 200,
+		"document": map[string]any{
+			"effect":     "allow",
+			"operations": []string{"discover", "read"},
+			"roles":      []string{"viewer"},
+			"resource":   map[string]any{"type": "entity", "publicId": qid},
+		},
+	}, nil)
+	if create.StatusCode != http.StatusOK {
+		t.Fatalf("create policy: %d %s", create.StatusCode, create.Body)
+	}
+
+	get := doJSON(t, h, http.MethodGet, "/v1/policies/api-viewer", nil, nil)
+	if get.StatusCode != http.StatusOK {
+		t.Fatalf("get policy: %d %s", get.StatusCode, get.Body)
+	}
+
+	viewer := userHeaders("U-viewer", "viewer")
+	ok := doJSON(t, h, http.MethodGet, "/v1/entities/"+qid, nil, viewer)
+	if ok.StatusCode != http.StatusOK {
+		t.Fatalf("viewer should discover after policy API upsert: %d %s", ok.StatusCode, ok.Body)
+	}
+
+	list := doJSON(t, h, http.MethodGet, "/v1/policies", nil, nil)
+	if list.StatusCode != http.StatusOK {
+		t.Fatalf("list policies: %d %s", list.StatusCode, list.Body)
+	}
+
+	del := doJSON(t, h, http.MethodDelete, "/v1/policies/api-viewer", nil, nil)
+	if del.StatusCode != http.StatusOK {
+		t.Fatalf("delete policy: %d %s", del.StatusCode, del.Body)
+	}
+	hidden := doJSON(t, h, http.MethodGet, "/v1/entities/"+qid, nil, viewer)
+	if hidden.StatusCode != http.StatusNotFound {
+		t.Fatalf("after delete policy entity should 404, got %d", hidden.StatusCode)
+	}
+
+	protect := doJSON(t, h, http.MethodDelete, "/v1/policies/bootstrap-admin", nil, nil)
+	if protect.StatusCode != http.StatusBadRequest {
+		t.Fatalf("bootstrap-admin must be protected, got %d %s", protect.StatusCode, protect.Body)
+	}
+}
+
 func TestAcceptanceA1A2A14(t *testing.T) {
 	h := setupTestHandler(t)
 
