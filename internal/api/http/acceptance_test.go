@@ -95,6 +95,20 @@ func seedPolicy(t *testing.T, name string, priority int, doc auth.PolicyDocument
 	}
 }
 
+func TestAcceptanceSPACallbackFallback(t *testing.T) {
+	h := setupTestHandler(t)
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/ui/callback?code=x&state=y", nil)
+	h.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("SPA /ui/callback: %d %s", rec.Code, rec.Body.String())
+	}
+	ct := rec.Header().Get("Content-Type")
+	if !strings.Contains(ct, "text/html") {
+		t.Fatalf("expected html, got %q body=%q", ct, rec.Body.String()[:min(80, rec.Body.Len())])
+	}
+}
+
 func TestAcceptanceListAndUIConfig(t *testing.T) {
 	h := setupTestHandler(t)
 	_ = createEntity(t, h, "List Me")

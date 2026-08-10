@@ -5,6 +5,7 @@ Tato složka je zdroj pravdy pro vývoj: koncepty, uzavřená implementační ro
 | Složka | Účel |
 |--------|------|
 | [ROADMAP.md](ROADMAP.md) | **Aktuální plán** — stav fází 0–8+, mezery, další kroky |
+| [ops/](ops/) | Provozní návody (post-install, oprávnění) |
 | [design/](design/) | Architektonický návrh v1 (vstupní specifikace) |
 | [concepts/](concepts/) | Stabilní vysvětlení klíčových konceptů |
 | [decisions/](decisions/) | ADR — konkrétní rozhodnutí (stack, §38, schema) |
@@ -13,10 +14,11 @@ Tato složka je zdroj pravdy pro vývoj: koncepty, uzavřená implementační ro
 ## Pořadí čtení
 
 1. [ROADMAP.md](ROADMAP.md) — **co je hotové a co dál**
-2. [design/knowledge_core_v1_technicky_navrh.md](design/knowledge_core_v1_technicky_navrh.md) — cíl a invarianty
-3. [decisions/0001-stack-and-open-questions.md](decisions/0001-stack-and-open-questions.md) — uzavřené volby
-4. [concepts/overview.md](concepts/overview.md) — model v kostce
-5. [specs/](specs/) — detailní zadání jednotlivých fází
+2. [ops/post-install.md](ops/post-install.md) — **po instalaci: admin, OIDC, proč forbidden, první data**
+3. [design/knowledge_core_v1_technicky_navrh.md](design/knowledge_core_v1_technicky_navrh.md) — cíl a invarianty
+4. [decisions/0001-stack-and-open-questions.md](decisions/0001-stack-and-open-questions.md) — uzavřené volby
+5. [concepts/overview.md](concepts/overview.md) — model v kostce
+6. [specs/](specs/) — detailní zadání jednotlivých fází
 
 ## Stav implementace
 

@@ -135,24 +135,25 @@ func mountUI(r chi.Router) {
 		})
 		return
 	}
-	fileServer := http.FileServer(http.FS(sub))
+	fileServer := http.StripPrefix("/ui", http.FileServer(http.FS(sub)))
 	r.Get("/ui", func(w http.ResponseWriter, req *http.Request) {
 		http.Redirect(w, req, "/ui/", http.StatusFound)
 	})
 	r.Handle("/ui/*", http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
-		path := strings.TrimPrefix(req.URL.Path, "/ui")
-		if path == "" || path == "/" {
-			path = "/index.html"
-		}
-		// SPA fallback: if asset missing, serve index.html
-		f, err := sub.Open(strings.TrimPrefix(path, "/"))
-		if err != nil {
-			req.URL.Path = "/"
-			http.StripPrefix("/ui", fileServer).ServeHTTP(w, req)
+		rel := strings.TrimPrefix(req.URL.Path, "/ui/")
+		if rel == "" || rel == "/" {
+			req.URL.Path = "/ui/"
+			fileServer.ServeHTTP(w, req)
 			return
 		}
-		_ = f.Close()
-		http.StripPrefix("/ui", fileServer).ServeHTTP(w, req)
+		// SPA fallback: unknown paths (e.g. /ui/callback) must serve index.html.
+		// Keep the /ui prefix so StripPrefix still matches.
+		if _, err := sub.Open(rel); err != nil {
+			req.URL.Path = "/ui/"
+			fileServer.ServeHTTP(w, req)
+			return
+		}
+		fileServer.ServeHTTP(w, req)
 	}))
 }
 

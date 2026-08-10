@@ -8,6 +8,8 @@ Repository: [github.com/l-ra/knowledge-core](https://github.com/l-ra/knowledge-c
 
 Viz [docs/README.md](docs/README.md): koncepty, ADR, zadání fází. **Aktuální plán:** [docs/ROADMAP.md](docs/ROADMAP.md).
 
+**Po instalaci (forbidden / první data):** [docs/ops/post-install.md](docs/ops/post-install.md) — bootstrap admin, OIDC napojení a jak získat práva zapisovat data.
+
 ## Rychlý start
 
 ```bash
@@ -32,6 +34,8 @@ docker compose -f deploy/docker-compose.yml up --build
 2. Redirect URI: `http://localhost:8080/ui/callback`
 3. Knowledge Core UI → **Admin → OIDC / IdP** → vlož issuer + client_id z Pocket ID → Save.
 4. Odhlásí tě a přihlášení probíhá přes OIDC.
+5. **První OIDC uživatel typicky dostane `403 forbidden`** — nemá roli `admin`.  
+   Jak si dát práva: [docs/ops/post-install.md](docs/ops/post-install.md).
 
 | Služba | URL |
 |--------|-----|
@@ -51,7 +55,8 @@ Vestavěné SPA (React) na `/ui`:
 - i18n cs/en; light/dark dle `prefers-color-scheme`
 - **Data:** search, entity editor (statements + advanced qualifiers/refs/valid time)
 - **Model:** properties, packages, lenses, policies
-- **Admin:** outbox / projection rebuild
+- **Admin:** outbox / projection rebuild, OIDC napojení
+- Po OIDC: práva pro zápis dat — [docs/ops/post-install.md](docs/ops/post-install.md)
 
 ```bash
 make ui-build   # npm build → web/ui/dist (embed)

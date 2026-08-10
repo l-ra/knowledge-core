@@ -47,6 +47,7 @@ podman-compose -f deploy/docker-compose.yml up -d
 2. Redirect: `http://localhost:8080/ui/callback`
 3. V KC UI: **Admin → OIDC / IdP** — vlož issuer + client_id (`PUT /v1/admin/auth`).
 4. Runtime nastavení je v tabulce `auth_runtime` (přepíše env při startu).
+5. Po OIDC loginu očekávej `403`, dokud si neudělíš admin práva — viz [docs/ops/post-install.md](../docs/ops/post-install.md).
 
 ### Helm
 
@@ -63,6 +64,8 @@ Když je nastavený `pocketId.adminApiKey`, post-install Job zaregistruje OIDC k
 `POST /api/oidc/clients` v Pocket ID (idempotentní — existující klient = OK).
 
 Bez API klíče vytvořte klienta ručně v Pocket ID UI s client id = `auth.oidcAudience`.
+
+Po OIDC stejně platí: první uživatel potřebuje práva dle [docs/ops/post-install.md](../docs/ops/post-install.md).
 
 ## PostgreSQL backup
 
