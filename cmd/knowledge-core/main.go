@@ -186,7 +186,7 @@ func runServer() {
 		os.Exit(1)
 	}
 	eng := engine.New(st, authEng)
-	handler := apihttp.New(eng, st, apihttp.NewAuthenticator(cfg))
+	handler := apihttp.New(eng, st, apihttp.NewAuthenticator(cfg), cfg)
 
 	srv := &http.Server{
 		Addr:              cfg.HTTPAddr,

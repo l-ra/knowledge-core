@@ -3,25 +3,31 @@ package apihttp
 import (
 	"encoding/json"
 	"errors"
+	"io/fs"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
+	"github.com/l-ra/knowledge-core/internal/auth"
+	"github.com/l-ra/knowledge-core/internal/config"
 	"github.com/l-ra/knowledge-core/internal/datatype"
 	"github.com/l-ra/knowledge-core/internal/domain"
 	"github.com/l-ra/knowledge-core/internal/engine"
 	"github.com/l-ra/knowledge-core/internal/metrics"
 	"github.com/l-ra/knowledge-core/internal/store"
+	"github.com/l-ra/knowledge-core/web/ui"
 )
 
 type Server struct {
 	engine *engine.Engine
 	store  *store.Store
+	cfg    config.Config
 }
 
-func New(eng *engine.Engine, st *store.Store, authn Authenticator) http.Handler {
-	s := &Server{engine: eng, store: st}
+func New(eng *engine.Engine, st *store.Store, authn Authenticator, cfg config.Config) http.Handler {
+	s := &Server{engine: eng, store: st, cfg: cfg}
 	r := chi.NewRouter()
 	r.Use(middleware.RequestID)
 	r.Use(middleware.RealIP)
@@ -33,18 +39,24 @@ func New(eng *engine.Engine, st *store.Store, authn Authenticator) http.Handler 
 
 	r.Get("/healthz", s.healthz)
 	r.Handle("/metrics", metrics.Handler())
+	r.Get("/v1/ui/config", s.uiConfig)
 
 	r.Route("/v1", func(r chi.Router) {
 		r.Use(authMiddleware(authn))
+		r.Get("/me", s.me)
+
+		r.Get("/entities", s.listEntities)
 		r.Post("/entities", s.createEntity)
 		r.Get("/entities/{qid}", s.getEntity)
 		r.Patch("/entities/{qid}", s.updateEntity)
 		r.Get("/entities/{qid}/history", s.getEntityHistory)
 		r.Get("/entities/{qid}/statements", s.listEntityStatements)
 
+		r.Get("/properties", s.listProperties)
 		r.Post("/properties", s.createProperty)
 		r.Get("/properties/{pid}", s.getProperty)
 
+		r.Get("/packages", s.listPackages)
 		r.Post("/packages", s.createPackage)
 		r.Get("/packages/{code}", s.getPackage)
 		r.Post("/packages/{code}/releases", s.publishRelease)
@@ -70,6 +82,7 @@ func New(eng *engine.Engine, st *store.Store, authn Authenticator) http.Handler 
 		r.Put("/policies/{name}", s.upsertPolicy)
 		r.Delete("/policies/{name}", s.deletePolicy)
 
+		r.Get("/lenses", s.listLenses)
 		r.Post("/lenses", s.createLens)
 		r.Get("/lenses/{code}", s.getLens)
 		r.Get("/lenses/{code}/instances/{key}", s.getLensInstance)
@@ -83,7 +96,46 @@ func New(eng *engine.Engine, st *store.Store, authn Authenticator) http.Handler 
 		r.Get("/projections/rdf", s.exportRDF)
 	})
 
+	mountUI(r)
+
 	return r
+}
+
+func mountUI(r chi.Router) {
+	sub, err := fs.Sub(ui.Assets, "dist")
+	if err != nil {
+		// UI not built yet — serve placeholder
+		r.Get("/ui", func(w http.ResponseWriter, _ *http.Request) {
+			http.Error(w, "UI not built; run: npm run build in web/ui", http.StatusServiceUnavailable)
+		})
+		r.Get("/ui/*", func(w http.ResponseWriter, _ *http.Request) {
+			http.Error(w, "UI not built; run: npm run build in web/ui", http.StatusServiceUnavailable)
+		})
+		return
+	}
+	fileServer := http.FileServer(http.FS(sub))
+	r.Get("/ui", func(w http.ResponseWriter, req *http.Request) {
+		http.Redirect(w, req, "/ui/", http.StatusFound)
+	})
+	r.Handle("/ui/*", http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		path := strings.TrimPrefix(req.URL.Path, "/ui")
+		if path == "" || path == "/" {
+			path = "/index.html"
+		}
+		// SPA fallback: if asset missing, serve index.html
+		f, err := sub.Open(strings.TrimPrefix(path, "/"))
+		if err != nil {
+			req.URL.Path = "/"
+			http.StripPrefix("/ui", fileServer).ServeHTTP(w, req)
+			return
+		}
+		_ = f.Close()
+		http.StripPrefix("/ui", fileServer).ServeHTTP(w, req)
+	}))
+}
+
+func subjectFromRequest(r *http.Request) (auth.Subject, bool) {
+	return auth.SubjectFromContext(r.Context())
 }
 
 func (s *Server) healthz(w http.ResponseWriter, r *http.Request) {

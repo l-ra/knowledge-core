@@ -67,7 +67,7 @@ func setupTestHandler(t *testing.T) http.Handler {
 	}
 	testAuthEng = authEng
 	cfg := config.Config{AuthMode: "dev", BootstrapAdminSubject: "test-admin"}
-	return apihttp.New(engine.New(st, authEng), st, apihttp.NewAuthenticator(cfg))
+	return apihttp.New(engine.New(st, authEng), st, apihttp.NewAuthenticator(cfg), cfg)
 }
 
 func adminHeaders() map[string]string {
@@ -92,6 +92,40 @@ func seedPolicy(t *testing.T, name string, priority int, doc auth.PolicyDocument
 	}
 	if err := testAuthEng.Reload(ctx); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestAcceptanceListAndUIConfig(t *testing.T) {
+	h := setupTestHandler(t)
+	_ = createEntity(t, h, "List Me")
+	_ = createProperty(t, h, "Listed Prop")
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/v1/ui/config", nil)
+	h.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("ui config: %d %s", rec.Code, rec.Body.String())
+	}
+
+	ents := doJSON(t, h, http.MethodGet, "/v1/entities?limit=10", nil, nil)
+	if ents.StatusCode != http.StatusOK {
+		t.Fatalf("list entities: %d %s", ents.StatusCode, ents.Body)
+	}
+	props := doJSON(t, h, http.MethodGet, "/v1/properties?limit=10", nil, nil)
+	if props.StatusCode != http.StatusOK {
+		t.Fatalf("list properties: %d %s", props.StatusCode, props.Body)
+	}
+	lenses := doJSON(t, h, http.MethodGet, "/v1/lenses", nil, nil)
+	if lenses.StatusCode != http.StatusOK {
+		t.Fatalf("list lenses: %d %s", lenses.StatusCode, lenses.Body)
+	}
+	pkgs := doJSON(t, h, http.MethodGet, "/v1/packages", nil, nil)
+	if pkgs.StatusCode != http.StatusOK {
+		t.Fatalf("list packages: %d %s", pkgs.StatusCode, pkgs.Body)
+	}
+	me := doJSON(t, h, http.MethodGet, "/v1/me", nil, nil)
+	if me.StatusCode != http.StatusOK {
+		t.Fatalf("me: %d %s", me.StatusCode, me.Body)
 	}
 }
 

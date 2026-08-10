@@ -1,0 +1,225 @@
+package store
+
+import (
+	"context"
+	"encoding/json"
+	"strconv"
+	"strings"
+	"time"
+
+	"github.com/google/uuid"
+	"github.com/l-ra/knowledge-core/internal/datatype"
+	"github.com/l-ra/knowledge-core/internal/domain"
+)
+
+type ListOptions struct {
+	Limit  int
+	Cursor string
+	Query  string
+}
+
+func (s *Store) ListEntities(ctx context.Context, opt ListOptions) ([]domain.Entity, string, error) {
+	if opt.Limit <= 0 {
+		opt.Limit = 50
+	}
+	if opt.Limit > 200 {
+		opt.Limit = 200
+	}
+	q := strings.TrimSpace(opt.Query)
+	args := []any{}
+	where := `e.status <> 'deleted'`
+	if opt.Cursor != "" {
+		args = append(args, opt.Cursor)
+		where += ` AND e.public_id > $` + strconv.Itoa(len(args))
+	}
+	if q != "" {
+		args = append(args, "%"+strings.ToLower(q)+"%")
+		n := strconv.Itoa(len(args))
+		where += ` AND (
+			lower(e.public_id) LIKE $` + n + `
+			OR EXISTS (
+				SELECT 1 FROM entity_label el
+				WHERE el.entity_id = e.id AND lower(el.text) LIKE $` + n + `
+			)
+		)`
+	}
+	args = append(args, opt.Limit+1)
+	limitArg := `$` + strconv.Itoa(len(args))
+
+	rows, err := s.pool.Query(ctx, `
+		SELECT e.id, e.public_id, e.status, e.current_revision_no, e.created_at, e.updated_at
+		FROM entity e
+		WHERE `+where+`
+		ORDER BY e.public_id
+		LIMIT `+limitArg+`
+	`, args...)
+	if err != nil {
+		return nil, "", err
+	}
+	defer rows.Close()
+
+	var out []domain.Entity
+	for rows.Next() {
+		var e domain.Entity
+		var id uuid.UUID
+		var created, updated time.Time
+		if err := rows.Scan(&id, &e.PublicID, &e.Status, &e.RevisionNo, &created, &updated); err != nil {
+			return nil, "", err
+		}
+		e.ID = id
+		e.CreatedAt = created
+		e.UpdatedAt = updated
+		labels, _ := s.loadLabels(ctx, `SELECT lang, text FROM entity_label WHERE entity_id = $1`, id)
+		descs, _ := s.loadLabels(ctx, `SELECT lang, text FROM entity_description WHERE entity_id = $1`, id)
+		e.Labels = labels
+		e.Descriptions = descs
+		out = append(out, e)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, "", err
+	}
+	next := ""
+	if len(out) > opt.Limit {
+		next = out[opt.Limit-1].PublicID
+		out = out[:opt.Limit]
+	}
+	return out, next, nil
+}
+
+func (s *Store) ListProperties(ctx context.Context, opt ListOptions) ([]domain.Property, string, error) {
+	if opt.Limit <= 0 {
+		opt.Limit = 50
+	}
+	if opt.Limit > 200 {
+		opt.Limit = 200
+	}
+	q := strings.TrimSpace(opt.Query)
+	args := []any{}
+	where := `p.status <> 'deleted'`
+	if opt.Cursor != "" {
+		args = append(args, opt.Cursor)
+		where += ` AND p.public_id > $` + strconv.Itoa(len(args))
+	}
+	if q != "" {
+		args = append(args, "%"+strings.ToLower(q)+"%")
+		n := strconv.Itoa(len(args))
+		where += ` AND (
+			lower(p.public_id) LIKE $` + n + `
+			OR EXISTS (
+				SELECT 1 FROM property_label pl
+				WHERE pl.property_id = p.id AND lower(pl.text) LIKE $` + n + `
+			)
+		)`
+	}
+	args = append(args, opt.Limit+1)
+	limitArg := `$` + strconv.Itoa(len(args))
+
+	rows, err := s.pool.Query(ctx, `
+		SELECT p.id, p.public_id, p.datatype, p.status, p.current_revision_no, p.created_at, p.updated_at
+		FROM property_definition p
+		WHERE `+where+`
+		ORDER BY p.public_id
+		LIMIT `+limitArg+`
+	`, args...)
+	if err != nil {
+		return nil, "", err
+	}
+	defer rows.Close()
+
+	var out []domain.Property
+	for rows.Next() {
+		var p domain.Property
+		var id uuid.UUID
+		var dt string
+		var created, updated time.Time
+		if err := rows.Scan(&id, &p.PublicID, &dt, &p.Status, &p.RevisionNo, &created, &updated); err != nil {
+			return nil, "", err
+		}
+		p.ID = id
+		p.Datatype = datatype.Type(dt)
+		p.CreatedAt = created
+		p.UpdatedAt = updated
+		labels, _ := s.loadLabels(ctx, `SELECT lang, text FROM property_label WHERE property_id = $1`, id)
+		descs, _ := s.loadLabels(ctx, `SELECT lang, text FROM property_description WHERE property_id = $1`, id)
+		p.Labels = labels
+		p.Descriptions = descs
+		out = append(out, p)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, "", err
+	}
+	next := ""
+	if len(out) > opt.Limit {
+		next = out[opt.Limit-1].PublicID
+		out = out[:opt.Limit]
+	}
+	return out, next, nil
+}
+
+func (s *Store) ListLenses(ctx context.Context) ([]domain.LensDefinition, error) {
+	rows, err := s.pool.Query(ctx, `
+		SELECT id, code, version, labels, document, created_at, updated_at
+		FROM lens_definition ORDER BY code
+	`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []domain.LensDefinition
+	for rows.Next() {
+		var lens domain.LensDefinition
+		var id string
+		var labelsJSON, docJSON []byte
+		var createdAt, updatedAt time.Time
+		if err := rows.Scan(&id, &lens.Code, &lens.Version, &labelsJSON, &docJSON, &createdAt, &updatedAt); err != nil {
+			return nil, err
+		}
+		lens.ID = id
+		_ = json.Unmarshal(labelsJSON, &lens.Labels)
+		_ = json.Unmarshal(docJSON, &lens.Document)
+		lens.CreatedAt = createdAt.UTC().Format(time.RFC3339Nano)
+		lens.UpdatedAt = updatedAt.UTC().Format(time.RFC3339Nano)
+		out = append(out, lens)
+	}
+	return out, rows.Err()
+}
+
+func (s *Store) ListPackages(ctx context.Context) ([]domain.Package, error) {
+	rows, err := s.pool.Query(ctx, `
+		SELECT id, code, lifecycle, labels, created_at, updated_at
+		FROM package ORDER BY code
+	`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []domain.Package
+	for rows.Next() {
+		var p domain.Package
+		var labelsJSON []byte
+		if err := rows.Scan(&p.ID, &p.Code, &p.Lifecycle, &labelsJSON, &p.CreatedAt, &p.UpdatedAt); err != nil {
+			return nil, err
+		}
+		_ = json.Unmarshal(labelsJSON, &p.Labels)
+		depRows, err := s.pool.Query(ctx, `
+			SELECT depends_on_code, version_range FROM package_dependency WHERE package_id = $1
+		`, p.ID)
+		if err != nil {
+			return nil, err
+		}
+		for depRows.Next() {
+			var d domain.PackageDependency
+			if err := depRows.Scan(&d.DependsOnCode, &d.VersionRange); err != nil {
+				depRows.Close()
+				return nil, err
+			}
+			p.Dependencies = append(p.Dependencies, d)
+		}
+		depRows.Close()
+		if err := depRows.Err(); err != nil {
+			return nil, err
+		}
+		out = append(out, p)
+	}
+	return out, rows.Err()
+}

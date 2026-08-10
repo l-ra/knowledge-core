@@ -24,5 +24,6 @@
 | 10 | Nested lens, gqlgen, patch add/remove | **done** (ADR 0003: lightweight GQL) |
 | 11 | RDF projection, ACL-aware search, outbox worker | **done** |
 | 12 | sqlc, observability, Helm integrační testy | **done** (ADR 0004: manual SQL) |
+| 13 | Built-in web UI `/ui` | **done** (MVP) |
 
 Rozhodnutí zůstávají v [decisions/](../decisions/).

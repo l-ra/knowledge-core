@@ -23,7 +23,24 @@ docker compose -f deploy/docker-compose.yml up --build
 ```
 
 Health: `GET http://localhost:8080/healthz`  
-Metrics: `GET http://localhost:8080/metrics`
+Metrics: `GET http://localhost:8080/metrics`  
+UI: `http://localhost:8080/ui/`
+
+## Web UI
+
+Vestavěné SPA (React) na `/ui`:
+
+- OIDC (PKCE), bootstrap heslo, nebo dev headers
+- i18n cs/en; light/dark dle `prefers-color-scheme`
+- **Data:** search, entity editor (statements + advanced qualifiers/refs/valid time)
+- **Model:** properties, packages, lenses, policies
+- **Admin:** outbox / projection rebuild
+
+```bash
+make ui-build   # npm build → web/ui/dist (embed)
+make run
+```
+
 
 ## API (Fáze 1–7)
 

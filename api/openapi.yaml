@@ -14,7 +14,41 @@ paths:
       responses:
         "200":
           description: OK
+  /v1/ui/config:
+    get:
+      summary: Public UI/OIDC bootstrap config
+      security: []
+      tags: [ui]
+      responses:
+        "200":
+          description: OK
+  /v1/me:
+    get:
+      summary: Current authenticated principal
+      tags: [auth]
+      responses:
+        "200":
+          description: OK
   /v1/entities:
+    get:
+      summary: List entities (cursor pagination, ACL discover)
+      tags: [graph]
+      parameters:
+        - name: q
+          in: query
+          schema:
+            type: string
+        - name: limit
+          in: query
+          schema:
+            type: integer
+        - name: cursor
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: OK
     post:
       summary: Create entity
       tags: [graph]
@@ -59,6 +93,25 @@ paths:
         "200":
           description: OK
   /v1/properties:
+    get:
+      summary: List properties (cursor pagination)
+      tags: [graph]
+      parameters:
+        - name: q
+          in: query
+          schema:
+            type: string
+        - name: limit
+          in: query
+          schema:
+            type: integer
+        - name: cursor
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: OK
     post:
       summary: Create property
       tags: [graph]
@@ -165,6 +218,12 @@ paths:
         "200":
           description: OK
   /v1/packages:
+    get:
+      summary: List packages
+      tags: [packages]
+      responses:
+        "200":
+          description: OK
     post:
       summary: Create package
       tags: [packages]
@@ -312,6 +371,12 @@ paths:
         "200":
           description: OK
   /v1/lenses:
+    get:
+      summary: List lenses
+      tags: [lenses]
+      responses:
+        "200":
+          description: OK
     post:
       summary: Register lens
       tags: [lenses]

@@ -1,9 +1,15 @@
 # Makefile for Knowledge Core
 
-.PHONY: test test-unit test-acceptance run tidy helm-lint docker-build
+.PHONY: test test-unit test-acceptance run tidy helm-lint docker-build ui-build ui-dev
 
 tidy:
 	go mod tidy
+
+ui-build:
+	cd web/ui && npm install && npm run build
+
+ui-dev:
+	cd web/ui && npm run dev
 
 test-unit:
 	go test ./internal/datatype/... ./internal/bootstrap/...
@@ -15,7 +21,7 @@ test-acceptance:
 test: test-unit
 	go test ./...
 
-run:
+run: ui-build
 	go run ./cmd/knowledge-core
 
 helm-lint:

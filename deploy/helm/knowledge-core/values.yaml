@@ -114,6 +114,7 @@ pocketId:
   oidcClient:
     name: Knowledge Core
     callbackURLs:
+      - http://localhost:8080/ui/callback
       - http://localhost:8080/callback
 
 outboxWorker:

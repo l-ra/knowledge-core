@@ -15,6 +15,7 @@ Tento dokument nahrazuje „aktuální vývojové zadání“ v [docs/README.md]
 | **Provoz / distribuce** (fáze 8) | **Hotovo** — Helm, CI, release, runbook, OIDC Job |
 | **Dokončení mezer v1** (fáze 9–11) | **Hotovo** |
 | **Refaktoring / kvalita** (fáze 12) | **Hotovo** |
+| **Web UI** (fáze 13) | **Hotovo** (MVP) |
 
 ---
 
@@ -132,10 +133,23 @@ Tyto body jsou **úmyslně odložené** nebo **zjednodušené** oproti [technick
 
 ---
 
+## Fáze 13 — Web UI (hotovo MVP)
+
+- [x] Vestavěné SPA `/ui` (React + Vite, go:embed)
+- [x] OIDC PKCE + bootstrap/dev login
+- [x] i18n cs/en, light/dark dle systému
+- [x] Oddělená navigace Data / Model / Admin
+- [x] Entity editor s advanced (qualifiers, references, valid time)
+- [x] List API entities/properties/packages/lenses
+
+Detail: [specs/phase-13-web-ui.md](specs/phase-13-web-ui.md)
+
+---
+
 ## Doporučené pořadí další práce
 
 ```text
-v1 post-roadmap backlog dle potřeby (UI, SPARQL non-goal, …)
+UI v1.1: lens domain editor, OIDC groups→roles, bundle wizard
 ```
 
 ---
