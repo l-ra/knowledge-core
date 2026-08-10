@@ -4,7 +4,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/rasekl/knowledge-core/internal/datatype"
+	"github.com/l-ra/knowledge-core/internal/datatype"
 )
 
 type EntityStatus string

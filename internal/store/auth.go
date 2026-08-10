@@ -4,8 +4,8 @@ import (
 	"context"
 	"encoding/json"
 
-	"github.com/rasekl/knowledge-core/internal/auth"
-	"github.com/rasekl/knowledge-core/internal/datatype"
+	"github.com/l-ra/knowledge-core/internal/auth"
+	"github.com/l-ra/knowledge-core/internal/datatype"
 )
 
 func (s *Store) ListAuthPolicies(ctx context.Context) ([]auth.Policy, error) {

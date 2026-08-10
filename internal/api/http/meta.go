@@ -6,8 +6,8 @@ import (
 	"io"
 	"net/http"
 
-	"github.com/rasekl/knowledge-core/internal/auth"
-	"github.com/rasekl/knowledge-core/internal/domain"
+	"github.com/l-ra/knowledge-core/internal/auth"
+	"github.com/l-ra/knowledge-core/internal/domain"
 )
 
 func writeMetaFromRequest(r *http.Request, operationType string, bodyHash string) domain.WriteMeta {

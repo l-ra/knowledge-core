@@ -1,0 +1,113 @@
+# Default values for knowledge-core.
+
+replicaCount: 1
+
+image:
+  repository: ghcr.io/l-ra/knowledge-core
+  tag: ""
+  pullPolicy: IfNotPresent
+
+imagePullSecrets: []
+nameOverride: ""
+fullnameOverride: ""
+
+serviceAccount:
+  create: true
+  annotations: {}
+  name: ""
+
+podAnnotations: {}
+podSecurityContext:
+  fsGroup: 65532
+  runAsNonRoot: true
+  runAsUser: 65532
+
+securityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities:
+    drop:
+      - ALL
+
+service:
+  type: ClusterIP
+  port: 8080
+
+ingress:
+  enabled: false
+  className: ""
+  annotations: {}
+  hosts:
+    - host: knowledge-core.local
+      paths:
+        - path: /
+          pathType: Prefix
+  tls: []
+
+resources: {}
+
+nodeSelector: {}
+tolerations: []
+affinity: {}
+
+persistence:
+  enabled: true
+  storageClass: ""
+  accessMode: ReadWriteOnce
+  size: 1Gi
+  mountPath: /data
+
+auth:
+  # dev | bootstrap | oidc — bootstrap is default for Helm (password in logs / PVC)
+  mode: bootstrap
+  bootstrapAdminSubject: admin
+  bootstrapPasswordFile: /data/admin.password
+
+  # Used when pocketId.enabled=true (overrides mode to oidc unless auth.mode is set explicitly)
+  oidcAudience: knowledge-core
+
+postgresql:
+  enabled: true
+  auth:
+    username: kc
+    database: knowledge_core
+    # empty = chart generates a random password on first install
+    password: ""
+  primary:
+    persistence:
+      enabled: true
+      size: 8Gi
+      storageClass: ""
+
+pocketId:
+  enabled: false
+  image:
+    repository: ghcr.io/pocket-id/pocket-id
+    tag: v2.9.0
+  service:
+    port: 1411
+  persistence:
+    enabled: true
+    size: 1Gi
+    storageClass: ""
+  # Public URL users reach Pocket ID at (required when enabled)
+  appUrl: ""
+  # empty = chart generates random encryption key
+  encryptionKey: ""
+  trustProxy: "true"
+
+extraEnv: []
+
+livenessProbe:
+  httpGet:
+    path: /healthz
+    port: http
+  initialDelaySeconds: 10
+  periodSeconds: 15
+
+readinessProbe:
+  httpGet:
+    path: /healthz
+    port: http
+  initialDelaySeconds: 5
+  periodSeconds: 10

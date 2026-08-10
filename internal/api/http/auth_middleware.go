@@ -8,7 +8,7 @@ import (
 	"sync"
 
 	"github.com/coreos/go-oidc/v3/oidc"
-	"github.com/rasekl/knowledge-core/internal/auth"
+	"github.com/l-ra/knowledge-core/internal/auth"
 )
 
 var errUnauthenticated = errors.New("unauthenticated")

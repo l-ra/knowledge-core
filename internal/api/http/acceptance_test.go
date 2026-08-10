@@ -13,11 +13,11 @@ import (
 	"strings"
 	"testing"
 
-	apihttp "github.com/rasekl/knowledge-core/internal/api/http"
-	"github.com/rasekl/knowledge-core/internal/auth"
-	"github.com/rasekl/knowledge-core/internal/config"
-	"github.com/rasekl/knowledge-core/internal/engine"
-	"github.com/rasekl/knowledge-core/internal/store"
+	apihttp "github.com/l-ra/knowledge-core/internal/api/http"
+	"github.com/l-ra/knowledge-core/internal/auth"
+	"github.com/l-ra/knowledge-core/internal/config"
+	"github.com/l-ra/knowledge-core/internal/engine"
+	"github.com/l-ra/knowledge-core/internal/store"
 )
 
 var (

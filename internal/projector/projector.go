@@ -4,7 +4,7 @@ import (
 	"context"
 
 	"github.com/google/uuid"
-	"github.com/rasekl/knowledge-core/internal/domain"
+	"github.com/l-ra/knowledge-core/internal/domain"
 )
 
 type OutboxStore interface {

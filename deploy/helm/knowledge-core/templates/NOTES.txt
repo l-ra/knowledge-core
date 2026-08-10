@@ -1,0 +1,31 @@
+1. Get the Knowledge Core URL:
+{{- if .Values.ingress.enabled }}
+{{- range .Values.ingress.hosts }}
+  http{{ if $.Values.ingress.tls }}s{{ end }}://{{ .host }}
+{{- end }}
+{{- else }}
+  kubectl port-forward svc/{{ include "knowledge-core.fullname" . }} 8080:{{ .Values.service.port }} -n {{ .Release.Namespace }}
+  http://127.0.0.1:8080
+{{- end }}
+
+2. Authentication mode: {{ include "knowledge-core.authMode" . }}
+{{- if and (eq (include "knowledge-core.authMode" .) "bootstrap") (not .Values.pocketId.enabled) }}
+
+   Bootstrap admin subject: {{ .Values.auth.bootstrapAdminSubject }}
+
+   Initial password is generated on first start and logged once:
+     kubectl logs deploy/{{ include "knowledge-core.fullname" . }} -n {{ .Release.Namespace }} | grep bootstrap
+
+   Reset password inside the pod:
+     kubectl exec -it deploy/{{ include "knowledge-core.fullname" . }} -n {{ .Release.Namespace }} -- /knowledge-core admin reset-password
+{{- end }}
+{{- if .Values.pocketId.enabled }}
+
+3. Pocket ID (optional OIDC) is enabled.
+   Configure OIDC client in Pocket ID UI with redirect URIs for your apps.
+   Issuer URL: {{ include "knowledge-core.oidcIssuer" . }}
+   Audience (client id): {{ .Values.auth.oidcAudience }}
+{{- end }}
+
+4. Health check:
+   curl -sS http://127.0.0.1:8080/healthz

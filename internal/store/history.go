@@ -5,7 +5,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
-	"github.com/rasekl/knowledge-core/internal/domain"
+	"github.com/l-ra/knowledge-core/internal/domain"
 	"github.com/shopspring/decimal"
 )
 

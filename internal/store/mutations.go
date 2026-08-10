@@ -8,8 +8,8 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
-	"github.com/rasekl/knowledge-core/internal/datatype"
-	"github.com/rasekl/knowledge-core/internal/domain"
+	"github.com/l-ra/knowledge-core/internal/datatype"
+	"github.com/l-ra/knowledge-core/internal/domain"
 )
 
 func (s *Store) UpdateEntity(ctx context.Context, meta domain.WriteMeta, publicID string, in domain.UpdateEntityInput) (*domain.WriteResult[domain.Entity], error) {

@@ -3,10 +3,12 @@ package apihttp
 import (
 	"encoding/json"
 	"net/http"
+	"os"
 	"strings"
 
-	"github.com/rasekl/knowledge-core/internal/auth"
-	"github.com/rasekl/knowledge-core/internal/config"
+	"github.com/l-ra/knowledge-core/internal/auth"
+	"github.com/l-ra/knowledge-core/internal/bootstrap"
+	"github.com/l-ra/knowledge-core/internal/config"
 )
 
 type Authenticator interface {
@@ -25,6 +27,13 @@ func NewAuthenticator(cfg config.Config) Authenticator {
 			Audience:       cfg.OIDCAudience,
 			BootstrapAdmin: cfg.BootstrapAdminSubject,
 		}
+	case "bootstrap":
+		if cfg.BootstrapPasswordFile != "" {
+			os.Setenv("KC_BOOTSTRAP_PASSWORD_FILE", cfg.BootstrapPasswordFile)
+		}
+		return NewBootstrapAuthenticator(cfg.BootstrapAdminSubject, func() (string, error) {
+			return bootstrap.ReadPassword(bootstrap.PasswordFile())
+		})
 	default:
 		return &DevAuthenticator{BootstrapAdmin: cfg.BootstrapAdminSubject}
 	}

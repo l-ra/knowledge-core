@@ -2,9 +2,11 @@
 
 All-in-one knowledge graph core (Wikibase-inspired) — Go + PostgreSQL.
 
+Repository: [github.com/l-ra/knowledge-core](https://github.com/l-ra/knowledge-core)
+
 ## Dokumentace
 
-Viz [docs/README.md](docs/README.md): koncepty, ADR, zadání fází.
+Viz [docs/README.md](docs/README.md): koncepty, ADR, zadání fází. **Aktuální plán:** [docs/ROADMAP.md](docs/ROADMAP.md).
 
 ## Rychlý start
 
@@ -26,7 +28,18 @@ Health: `GET http://localhost:8080/healthz`
 
 All `/v1/*` endpoints require authentication.
 
-**Dev auth** (`KC_AUTH_MODE=dev`, default):
+**Bootstrap auth** (`KC_AUTH_MODE=bootstrap`, default in Helm):
+
+```bash
+# Password is generated on first start (logged once) or set via KC_BOOTSTRAP_ADMIN_PASSWORD
+curl -H 'Authorization: Bearer <password>' ...
+# or
+curl -H 'X-Admin-Password: <password>' ...
+```
+
+Reset inside container: `knowledge-core admin reset-password`
+
+**Dev auth** (`KC_AUTH_MODE=dev`):
 
 ```bash
 curl -H 'X-Subject: alice' -H 'X-Roles: editor,viewer' ...
@@ -80,10 +93,26 @@ Graph writes accept optional `packageCode` for ownership.
 | `KC_HTTP_ADDR` | `:8080` |
 | `KC_DATABASE_URL` | `postgres://kc:kc@localhost:5433/knowledge_core?sslmode=disable` |
 | `KC_LOG_LEVEL` | `info` |
-| `KC_AUTH_MODE` | `dev` (`dev` \| `oidc`) |
+| `KC_AUTH_MODE` | `dev` (`dev` \| `oidc` \| `bootstrap`) |
 | `KC_BOOTSTRAP_ADMIN_SUBJECT` | `admin` |
+| `KC_BOOTSTRAP_PASSWORD_FILE` | `/data/admin.password` |
+| `KC_BOOTSTRAP_ADMIN_PASSWORD` | — (optional fixed password) |
 | `KC_OIDC_ISSUER` | — (required for `oidc` mode) |
 | `KC_OIDC_AUDIENCE` | — (optional JWT audience) |
+
+## Kubernetes (Helm)
+
+Chart v `deploy/helm/knowledge-core` — subcharts **postgresql** (default) a volitelný **pocket-id** (OIDC).
+
+```bash
+helm upgrade --install kc deploy/helm/knowledge-core \
+  --set image.repository=ghcr.io/l-ra/knowledge-core \
+  --set image.tag=latest
+```
+
+Detail: [deploy/helm/README.md](deploy/helm/README.md)
+
+CI (`.github/workflows/ci.yml`) buildí image `ghcr.io/l-ra/knowledge-core` a publikuje chart do `oci://ghcr.io/l-ra`.
 
 ## Testy
 

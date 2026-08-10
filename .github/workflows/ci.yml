@@ -1,0 +1,120 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+  packages: write
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: l-ra/knowledge-core
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: kc
+          POSTGRES_PASSWORD: kc
+          POSTGRES_DB: knowledge_core
+        ports:
+          - 5433:5432
+        options: >-
+          --health-cmd "pg_isready -U kc -d knowledge_core"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: Unit tests
+        run: go test ./internal/datatype/... ./internal/pkgversion/... -count=1
+      - name: Acceptance tests
+        env:
+          KC_DATABASE_URL: postgres://kc:kc@localhost:5433/knowledge_core?sslmode=disable
+        run: go test ./internal/api/http/ -count=1
+
+  build:
+    runs-on: ubuntu-latest
+    needs: test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: Build binary
+        run: CGO_ENABLED=0 go build -o /tmp/knowledge-core ./cmd/knowledge-core
+      - name: Build container image
+        run: docker build -f deploy/Dockerfile -t knowledge-core:ci .
+
+  helm:
+    runs-on: ubuntu-latest
+    needs: test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: azure/setup-helm@v4
+        with:
+          version: v3.16.4
+      - name: Lint chart
+        run: helm lint deploy/helm/knowledge-core
+      - name: Template render smoke test
+        run: |
+          helm template kc deploy/helm/knowledge-core --set image.tag=ci > /tmp/rendered.yaml
+          grep -q "kind: Deployment" /tmp/rendered.yaml
+          helm template kc deploy/helm/knowledge-core --set pocketId.enabled=true --set postgresql.enabled=true > /tmp/rendered-pocket.yaml
+          grep -q "pocket-id" /tmp/rendered-pocket.yaml
+
+  publish-image:
+    runs-on: ubuntu-latest
+    needs: [test, build, helm]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/metadata-action@v5
+        id: meta
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=sha,prefix=
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: deploy/Dockerfile
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+
+  publish-chart:
+    runs-on: ubuntu-latest
+    needs: publish-image
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: azure/setup-helm@v4
+        with:
+          version: v3.16.4
+      - name: Package Helm chart
+        run: helm package deploy/helm/knowledge-core --destination /tmp/chart
+      - uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Push chart to OCI registry
+        run: |
+          helm push /tmp/chart/knowledge-core-*.tgz oci://${{ env.REGISTRY }}/l-ra

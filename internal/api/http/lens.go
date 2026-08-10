@@ -5,7 +5,7 @@ import (
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
-	"github.com/rasekl/knowledge-core/internal/domain"
+	"github.com/l-ra/knowledge-core/internal/domain"
 )
 
 type createLensReq struct {

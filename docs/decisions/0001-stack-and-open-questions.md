@@ -9,15 +9,15 @@
 | Volba | Hodnota |
 |-------|---------|
 | Jazyk | Go 1.24+ (runtime 1.25 OK) |
-| Modul | `github.com/rasekl/knowledge-core` |
+| Modul | `github.com/l-ra/knowledge-core` |
 | HTTP | `chi` + `net/http` |
 | DB | PostgreSQL 16 |
-| Driver / SQL | `pgx/v5` + `sqlc` |
+| Driver / SQL | `pgx/v5` (ruční SQL; sqlc — odloženo, viz ROADMAP fáze 12) |
 | Migrace | `goose` |
-| Auth | OIDC (`coreos/go-oidc`); bootstrap admin pro dev |
-| GraphQL (fáze 6) | `gqlgen` nad Lens engine |
+| Auth | OIDC (`coreos/go-oidc`); dev headers; bootstrap password (Helm) |
+| GraphQL (fáze 6) | Lightweight adapter nad Lens engine (gqlgen — odloženo, viz ROADMAP fáze 10) |
 | Logging | `log/slog` |
-| Deploy | Docker Compose: `app` + `postgres` |
+| Deploy | Docker Compose + Helm chart (`deploy/helm/knowledge-core`) |
 
 ## Rozhodnutí — otevřené body §38
 

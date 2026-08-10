@@ -3,9 +3,9 @@ package engine
 import (
 	"context"
 
-	"github.com/rasekl/knowledge-core/internal/auth"
-	"github.com/rasekl/knowledge-core/internal/domain"
-	"github.com/rasekl/knowledge-core/internal/projector"
+	"github.com/l-ra/knowledge-core/internal/auth"
+	"github.com/l-ra/knowledge-core/internal/domain"
+	"github.com/l-ra/knowledge-core/internal/projector"
 )
 
 func (e *Engine) ProcessOutbox(ctx context.Context, limit int) (int, error) {

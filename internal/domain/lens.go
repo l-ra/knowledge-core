@@ -1,6 +1,6 @@
 package domain
 
-import "github.com/rasekl/knowledge-core/internal/datatype"
+import "github.com/l-ra/knowledge-core/internal/datatype"
 
 type LensCardinality string
 

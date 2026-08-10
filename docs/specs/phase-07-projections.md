@@ -17,6 +17,12 @@ Transactional outbox pro publikaci změn do externích projekcí. Search project
 - Query: `GET /v1/projections/search?q=…`
 - Acceptance A15
 
+**Out (odloženo — viz [ROADMAP](../ROADMAP.md) fáze 11):**
+
+- RDF export projection
+- ACL-aware search (filtr discover/read na úrovni hitů)
+- Background outbox worker (CronJob)
+
 ## Acceptance
 
 | ID | Scénář | Status |

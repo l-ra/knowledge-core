@@ -6,8 +6,8 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/rasekl/knowledge-core/internal/datatype"
-	"github.com/rasekl/knowledge-core/internal/domain"
+	"github.com/l-ra/knowledge-core/internal/datatype"
+	"github.com/l-ra/knowledge-core/internal/domain"
 )
 
 func (s *Store) CreateLens(ctx context.Context, in domain.CreateLensInput) (*domain.LensDefinition, error) {

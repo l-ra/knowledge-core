@@ -1,0 +1,17 @@
+auth:
+  username: kc
+  database: knowledge_core
+  password: ""
+
+primary:
+  persistence:
+    enabled: true
+    size: 8Gi
+    storageClass: ""
+
+image:
+  repository: docker.io/library/postgres
+  tag: "16-alpine"
+  pullPolicy: IfNotPresent
+
+resources: {}

@@ -1,0 +1,19 @@
+image:
+  repository: ghcr.io/pocket-id/pocket-id
+  tag: v2.9.0
+  pullPolicy: IfNotPresent
+
+service:
+  type: ClusterIP
+  port: 1411
+
+persistence:
+  enabled: true
+  size: 1Gi
+  storageClass: ""
+
+appUrl: ""
+encryptionKey: ""
+trustProxy: "true"
+
+resources: {}

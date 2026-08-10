@@ -13,7 +13,8 @@ Centrální authorization na každém read/write path. Default deny. RBAC + omez
 - Tabulka `auth_policy` (deklarativní JSON dokumenty)
 - Bootstrap admin role / subject (`KC_BOOTSTRAP_ADMIN_SUBJECT`)
 - Dev auth: `X-Subject`, `X-Roles`, volitelně `X-Subject-Attributes` (JSON)
-- OIDC JWT (`KC_OIDC_ISSUER`, `KC_OIDC_AUDIENCE`) — volitelné
+- Bootstrap auth: `Authorization: Bearer <password>` nebo `X-Admin-Password` (`KC_AUTH_MODE=bootstrap`, default v Helm)
+- OIDC JWT (`KC_OIDC_ISSUER`, `KC_OIDC_AUDIENCE`) — volitelné (Pocket ID subchart)
 - Operace: `discover`, `read`, `create`, `update`, `delete`, `manage`
 - Granularita: entity, property (v kontextu entity), package
 - Read filtering: bez `discover` → 404; bez `read` na property → skryté ve výsledcích / 404

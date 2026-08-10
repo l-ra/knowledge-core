@@ -6,7 +6,7 @@ Spustitelná Go služba s PostgreSQL, migracemi a health checkem. Žádná domé
 
 ## Deliverables
 
-- [x] Go module `github.com/rasekl/knowledge-core`
+- [x] Go module `github.com/l-ra/knowledge-core`
 - [x] `cmd/knowledge-core` — HTTP server (chi)
 - [x] `internal/config` — env konfigurace (`KC_*`)
 - [x] goose migrace (`migrations/00001_canonical_graph.sql`)

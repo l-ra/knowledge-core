@@ -8,10 +8,10 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
-	"github.com/rasekl/knowledge-core/internal/datatype"
-	"github.com/rasekl/knowledge-core/internal/domain"
-	"github.com/rasekl/knowledge-core/internal/engine"
-	"github.com/rasekl/knowledge-core/internal/store"
+	"github.com/l-ra/knowledge-core/internal/datatype"
+	"github.com/l-ra/knowledge-core/internal/domain"
+	"github.com/l-ra/knowledge-core/internal/engine"
+	"github.com/l-ra/knowledge-core/internal/store"
 )
 
 type Server struct {

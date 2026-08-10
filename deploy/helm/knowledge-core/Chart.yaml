@@ -1,0 +1,13 @@
+apiVersion: v2
+name: knowledge-core
+description: Knowledge Core knowledge graph platform
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+dependencies:
+  - name: postgresql
+    version: 0.1.0
+    condition: postgresql.enabled
+  - name: pocket-id
+    version: 0.1.0
+    condition: pocketId.enabled
