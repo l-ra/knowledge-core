@@ -45,7 +45,7 @@ func setupTestHandler(t *testing.T) http.Handler {
 
 	_, _ = pool.Exec(ctx, `
 		TRUNCATE change_set_item, change_set,
-			outbox_event, projection_search,
+			outbox_event, projection_search, projection_rdf,
 			release_object, release_dependency, release,
 			package_dependency, package,
 			lens_definition,
@@ -656,6 +656,118 @@ func TestAcceptanceA15(t *testing.T) {
 	}
 }
 
+func TestAcceptanceSearchACL(t *testing.T) {
+	h := setupTestHandler(t)
+
+	qVisible := createEntity(t, h, "Visible Search Target")
+	qHidden := createEntity(t, h, "Hidden Search Target")
+	pName := createProperty(t, h, "name")
+	pSecret := createProperty(t, h, "secretToken")
+
+	_ = createStatement(t, h, qVisible, pName, "ACL-TOKEN-VISIBLE")
+	sSecret := createStatement(t, h, qVisible, pSecret, "ACL-TOKEN-SECRET")
+	_ = createStatement(t, h, qHidden, pName, "ACL-TOKEN-HIDDEN")
+
+	seedPolicy(t, "search-viewer", 500, auth.PolicyDocument{
+		Effect:     "allow",
+		Operations: []auth.Operation{auth.OpDiscover, auth.OpRead},
+		Roles:      []string{"viewer"},
+		Resource:   auth.PolicyResource{Type: auth.ResourceEntity, PublicID: qVisible},
+		Properties: []string{pName},
+	})
+
+	proc := doJSON(t, h, http.MethodPost, "/v1/projections/outbox/process", nil, nil)
+	if proc.StatusCode != http.StatusOK {
+		t.Fatalf("process outbox: %d %s", proc.StatusCode, proc.Body)
+	}
+
+	viewer := userHeaders("U-viewer", "viewer")
+
+	visible := doJSON(t, h, http.MethodGet, "/v1/projections/search?q=ACL-TOKEN-VISIBLE", nil, viewer)
+	if visible.StatusCode != http.StatusOK {
+		t.Fatalf("search visible: %d %s", visible.StatusCode, visible.Body)
+	}
+	var visRes struct {
+		Results []struct {
+			ObjectType  string `json:"objectType"`
+			PublicID    string `json:"publicId"`
+			PropertyPID string `json:"propertyPid"`
+		} `json:"results"`
+	}
+	_ = json.Unmarshal([]byte(visible.Body), &visRes)
+	if len(visRes.Results) == 0 {
+		t.Fatalf("viewer should see allowed statement hits")
+	}
+	for _, r := range visRes.Results {
+		if r.ObjectType == "statement" && r.PropertyPID == pSecret {
+			t.Fatalf("viewer must not see secret property hit")
+		}
+		if r.PublicID == qHidden || r.PublicID == sSecret {
+			t.Fatalf("viewer must not see hidden/secret publicId %s", r.PublicID)
+		}
+	}
+
+	hidden := doJSON(t, h, http.MethodGet, "/v1/projections/search?q=ACL-TOKEN-HIDDEN", nil, viewer)
+	var hidRes struct {
+		Results []any `json:"results"`
+	}
+	_ = json.Unmarshal([]byte(hidden.Body), &hidRes)
+	if len(hidRes.Results) != 0 {
+		t.Fatalf("viewer must not discover hidden entity via search, got %v", hidRes.Results)
+	}
+
+	secret := doJSON(t, h, http.MethodGet, "/v1/projections/search?q=ACL-TOKEN-SECRET", nil, viewer)
+	var secRes struct {
+		Results []any `json:"results"`
+	}
+	_ = json.Unmarshal([]byte(secret.Body), &secRes)
+	if len(secRes.Results) != 0 {
+		t.Fatalf("viewer must not see secret token via search")
+	}
+}
+
+func TestAcceptanceRDFProjection(t *testing.T) {
+	h := setupTestHandler(t)
+
+	qid := createEntity(t, h, "RDF Customer")
+	pid := createProperty(t, h, "Code")
+	_ = createStatement(t, h, qid, pid, "RDF-TOKEN-1")
+
+	proc := doJSON(t, h, http.MethodPost, "/v1/projections/outbox/process", nil, nil)
+	if proc.StatusCode != http.StatusOK {
+		t.Fatalf("process outbox: %d %s", proc.StatusCode, proc.Body)
+	}
+
+	export1 := doJSON(t, h, http.MethodGet, "/v1/projections/rdf", nil, nil)
+	if export1.StatusCode != http.StatusOK {
+		t.Fatalf("rdf export: %d %s", export1.StatusCode, export1.Body)
+	}
+	if !strings.Contains(export1.Body, "RDF Customer") && !strings.Contains(export1.Body, qid) {
+		t.Fatalf("rdf export missing entity data: %s", export1.Body)
+	}
+	if !strings.Contains(export1.Body, "RDF-TOKEN-1") {
+		t.Fatalf("rdf export missing statement value: %s", export1.Body)
+	}
+
+	ctx := context.Background()
+	if _, err := testStore.Pool().Exec(ctx, `TRUNCATE projection_rdf`); err != nil {
+		t.Fatal(err)
+	}
+	empty := doJSON(t, h, http.MethodGet, "/v1/projections/rdf", nil, nil)
+	if strings.TrimSpace(empty.Body) != "" {
+		t.Fatalf("expected empty rdf after truncate, got %q", empty.Body)
+	}
+
+	rebuild := doJSON(t, h, http.MethodPost, "/v1/projections/rdf/rebuild", nil, nil)
+	if rebuild.StatusCode != http.StatusOK {
+		t.Fatalf("rdf rebuild: %d %s", rebuild.StatusCode, rebuild.Body)
+	}
+	export2 := doJSON(t, h, http.MethodGet, "/v1/projections/rdf", nil, nil)
+	if !strings.Contains(export2.Body, "RDF-TOKEN-1") {
+		t.Fatalf("rdf rebuild missing statement value: %s", export2.Body)
+	}
+}
+
 func truncateTestDB(t *testing.T) {
 	t.Helper()
 	dsn := os.Getenv("KC_DATABASE_URL")
@@ -670,7 +782,7 @@ func truncateTestDB(t *testing.T) {
 	defer pool.Close()
 	_, err = pool.Exec(ctx, `
 		TRUNCATE change_set_item, change_set,
-			outbox_event, projection_search,
+			outbox_event, projection_search, projection_rdf,
 			release_object, release_dependency, release,
 			package_dependency, package,
 			lens_definition,

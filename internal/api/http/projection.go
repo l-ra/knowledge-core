@@ -47,3 +47,22 @@ func (s *Server) searchProjection(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"results": hits})
 }
+
+func (s *Server) rebuildRDFProjection(w http.ResponseWriter, r *http.Request) {
+	if err := s.engine.RebuildRDFProjection(r.Context()); err != nil {
+		writeEngineError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+}
+
+func (s *Server) exportRDF(w http.ResponseWriter, r *http.Request) {
+	nt, err := s.engine.ExportRDF(r.Context())
+	if err != nil {
+		writeEngineError(w, err)
+		return
+	}
+	w.Header().Set("Content-Type", "application/n-triples")
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write([]byte(nt))
+}

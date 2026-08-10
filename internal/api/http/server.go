@@ -69,6 +69,8 @@ func New(eng *engine.Engine, st *store.Store, authn Authenticator) http.Handler 
 		r.Post("/projections/outbox/process", s.processOutbox)
 		r.Post("/projections/search/rebuild", s.rebuildSearchProjection)
 		r.Get("/projections/search", s.searchProjection)
+		r.Post("/projections/rdf/rebuild", s.rebuildRDFProjection)
+		r.Get("/projections/rdf", s.exportRDF)
 	})
 
 	return r

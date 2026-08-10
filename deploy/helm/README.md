@@ -70,3 +70,16 @@ helm install kc oci://ghcr.io/l-ra/knowledge-core --version 0.1.0
 | `postgresql.enabled` | `true` | Deploy bundled PostgreSQL |
 | `pocketId.enabled` | `false` | Deploy Pocket ID subchart |
 | `persistence.enabled` | `true` | PVC for bootstrap password file (`/data`) |
+| `outboxWorker.enabled` | `true` | CronJob running `knowledge-core outbox process` |
+| `outboxWorker.schedule` | `*/1 * * * *` | Cron schedule |
+
+## Outbox worker
+
+```bash
+# Manual
+kubectl exec -it deploy/kc-knowledge-core -- /knowledge-core outbox process --limit 100
+
+# Or rely on CronJob (enabled by default)
+kubectl get cronjob
+```
+

@@ -10,6 +10,7 @@ import (
 type OutboxStore interface {
 	ListPendingOutboxEvents(ctx context.Context, limit int) ([]domain.OutboxEvent, error)
 	ApplyOutboxToSearchProjection(ctx context.Context, ev domain.OutboxEvent) error
+	ApplyOutboxToRDFProjection(ctx context.Context, ev domain.OutboxEvent) error
 	MarkOutboxPublished(ctx context.Context, ids []uuid.UUID) error
 }
 
@@ -24,6 +25,9 @@ func ProcessPending(ctx context.Context, store OutboxStore, limit int) (int, err
 	ids := make([]uuid.UUID, 0, len(events))
 	for _, ev := range events {
 		if err := store.ApplyOutboxToSearchProjection(ctx, ev); err != nil {
+			return 0, err
+		}
+		if err := store.ApplyOutboxToRDFProjection(ctx, ev); err != nil {
 			return 0, err
 		}
 		id, err := uuid.Parse(ev.ID)

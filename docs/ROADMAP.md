@@ -73,12 +73,12 @@ Tyto body jsou **úmyslně odložené** nebo **zjednodušené** oproti [technick
 |--------|-------------|---------------|-----------------|
 | SQL vrstva | `pgx` + **sqlc** | Ruční SQL v `internal/store` | 12 (refactor) |
 | GraphQL | **gqlgen** nad lens engine | Regex adapter (`application`, `domain`) | 10 |
-| RDF export | volitelná projekce (§39 fáze 7) | **neimplementováno** | 11 |
-| Search ACL | filtr **před** score (ADR 38.7) | Jen globální `OpRead`; bez per-entity ACL | 11 |
+| RDF export | volitelná projekce (§39 fáze 7) | **done** (fáze 11) | 11 |
+| Search ACL | filtr **před** score (ADR 38.7) | **done** (fáze 11) | 11 |
 | Lens nested | pole `lens` v DSL | Schema existuje, read/write **neimplementováno** | 10 |
 | Lens patch | `add` / `remove` (concepts) | Jen `set` / `clear`; `many` cardinality read-only write | 10 |
 | Policy API | deklarativní správa | Tabulka + seed; **bez REST CRUD** | 9 |
-| Outbox worker | integrace | Manuální `POST .../outbox/process` | 11 |
+| Outbox worker | integrace | **done** — CLI + Helm CronJob | 11 |
 | Deploy (ADR 0001) | Docker Compose | Compose + **Helm** (nad rámec původního ADR) | 8 (dokončit) |
 
 ---
@@ -109,14 +109,14 @@ Tyto body jsou **úmyslně odložené** nebo **zjednodušené** oproti [technick
 
 ---
 
-## Fáze 11 — Projections v2 (plánováno)
+## Fáze 11 — Projections v2 (hotovo)
 
 **Cíl:** Dokončit §39 fázi 7 a ADR 38.7.
 
-- [ ] RDF export projection (+ rebuild endpoint)
-- [ ] ACL-aware search (discover/read filter na hit úrovni)
-- [ ] Background outbox processor (CronJob v Helm nebo vestavěný worker)
-- [ ] Acceptance: search neprozrazuje entity bez `discover`
+- [x] RDF export projection (+ rebuild endpoint)
+- [x] ACL-aware search (discover/read filter na hit úrovni)
+- [x] Background outbox processor (CLI + Helm CronJob)
+- [x] Acceptance: search neprozrazuje entity bez `discover`
 
 **Priorita:** vysoká pro multi-tenant / produkční nasazení s jemným ACL
 

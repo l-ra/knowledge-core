@@ -25,6 +25,8 @@ func main() {
 		switch os.Args[1] {
 		case "admin":
 			os.Exit(runAdmin(os.Args[2:]))
+		case "outbox":
+			os.Exit(runOutbox(os.Args[2:]))
 		case "serve", "server":
 			os.Args = append(os.Args[:1], os.Args[2:]...)
 			runServer()
@@ -41,11 +43,66 @@ func printUsage() {
 	fmt.Fprintf(os.Stderr, `Usage:
   knowledge-core [serve] [flags]
   knowledge-core admin reset-password
+  knowledge-core outbox process [--limit N]
 
 Environment:
   KC_DATABASE_URL, KC_AUTH_MODE (dev|oidc|bootstrap), KC_BOOTSTRAP_PASSWORD_FILE, ...
 
 `)
+}
+
+func runOutbox(args []string) int {
+	fs := flag.NewFlagSet("outbox process", flag.ContinueOnError)
+	limit := fs.Int("limit", 100, "max pending events to process")
+	migrationsDir := fs.String("migrations", "migrations", "path to goose migrations")
+	if len(args) == 0 || args[0] != "process" {
+		fmt.Fprintln(os.Stderr, "usage: knowledge-core outbox process [--limit N]")
+		return 2
+	}
+	if err := fs.Parse(args[1:]); err != nil {
+		return 2
+	}
+
+	cfg, err := config.Load()
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "config:", err)
+		return 1
+	}
+	setupLogger(cfg.LogLevel)
+
+	ctx := context.Background()
+	pool, err := store.Connect(ctx, cfg.DatabaseURL)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "database:", err)
+		return 1
+	}
+	defer pool.Close()
+
+	migPath, err := filepath.Abs(*migrationsDir)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "migrations path:", err)
+		return 1
+	}
+	if err := store.Migrate(ctx, pool, migPath); err != nil {
+		fmt.Fprintln(os.Stderr, "migrate:", err)
+		return 1
+	}
+
+	st := store.New(pool)
+	authEng := auth.NewEngine(st, cfg.BootstrapAdminSubject)
+	if err := authEng.Reload(ctx); err != nil {
+		fmt.Fprintln(os.Stderr, "auth:", err)
+		return 1
+	}
+	eng := engine.New(st, authEng)
+	n, err := eng.ProcessOutboxInternal(ctx, *limit)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "outbox:", err)
+		return 1
+	}
+	slog.Info("outbox processed", "count", n)
+	fmt.Printf("processed=%d\n", n)
+	return 0
 }
 
 func runAdmin(args []string) int {

@@ -80,11 +80,15 @@ Graph writes accept optional `packageCode` for ownership.
 - `POST /v1/lenses/{code}/instances/{key}/patch` — `{ "operations": [{ "op": "set", "field": "name", "value": … }] }`
 - `POST /v1/graphql` — GraphQL adapter (`application(code: "…")`, generic `domain(lens, key)`)
 
-**Projections (fáze 7):**
+**Projections (fáze 7 + 11):**
 
 - `POST /v1/projections/outbox/process` — zpracovat pending outbox události
 - `POST /v1/projections/search/rebuild` — full rebuild search projekce z canonical
-- `GET /v1/projections/search?q=…` — full-text vyhledávání v projekci
+- `GET /v1/projections/search?q=…` — full-text vyhledávání (ACL-aware)
+- `POST /v1/projections/rdf/rebuild` — full rebuild RDF projekce
+- `GET /v1/projections/rdf` — export N-Triples
+
+Outbox worker (CLI / CronJob): `knowledge-core outbox process`
 
 ## Env
 

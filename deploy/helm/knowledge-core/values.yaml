@@ -96,6 +96,12 @@ pocketId:
   encryptionKey: ""
   trustProxy: "true"
 
+outboxWorker:
+  enabled: true
+  schedule: "*/1 * * * *"
+  limit: 100
+  resources: {}
+
 extraEnv: []
 
 livenessProbe:

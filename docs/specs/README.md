@@ -22,7 +22,7 @@
 | 8 | Helm, CI, PostgreSQL + Pocket ID subcharts, bootstrap admin | **partial** — viz [ROADMAP](../ROADMAP.md) |
 | 9 | Policy REST API, OpenAPI | planned |
 | 10 | Nested lens, gqlgen, patch add/remove | planned |
-| 11 | RDF projection, ACL-aware search, outbox worker | planned |
+| 11 | RDF projection, ACL-aware search, outbox worker | **done** |
 | 12 | sqlc, observability, Helm integrační testy | planned |
 
 Rozhodnutí zůstávají v [decisions/](../decisions/).
