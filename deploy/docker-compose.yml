@@ -61,6 +61,8 @@ services:
       KC_AUTH_MODE: oidc
       KC_OIDC_ISSUER: http://pocket-id.localhost:1411
       KC_OIDC_AUDIENCE: knowledge-core
+      # Bootstrap fallback (set KC_AUTH_MODE=bootstrap). Image ships writable /data for nonroot.
+      KC_BOOTSTRAP_PASSWORD_FILE: /data/admin.password
     ports:
       - "8080:8080"
     depends_on:
