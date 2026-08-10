@@ -1,0 +1,9 @@
+dependencies:
+- name: postgresql
+  repository: ""
+  version: 0.1.0
+- name: pocket-id
+  repository: ""
+  version: 0.1.0
+digest: sha256:7d681cb8e8bb3c663d414ab74eeea836d26f2f3188ebee5368bee3b769a2bfce
+generated: "2026-08-10T16:45:51.920360881+02:00"

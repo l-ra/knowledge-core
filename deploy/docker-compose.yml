@@ -26,7 +26,7 @@ services:
   # Create a public PKCE client id "knowledge-core" with redirect:
   #   http://localhost:8080/ui/callback
   pocket-id:
-    image: ghcr.io/pocket-id/pocket-id:v2.9.0
+    image: ghcr.io/pocket-id/pocket-id:v2.13.0
     environment:
       # *.localhost resolves to 127.0.0.1 in browsers; compose alias reaches the container.
       APP_URL: http://pocket-id.localhost:1411

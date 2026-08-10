@@ -1,6 +1,6 @@
 image:
   repository: ghcr.io/pocket-id/pocket-id
-  tag: v2.9.0
+  tag: v2.13.0
   pullPolicy: IfNotPresent
 
 service:
