@@ -1,0 +1,9 @@
+# Ignore
+bin/
+dist/
+*.exe
+.idea/
+.vscode/
+*.test
+coverage.out
+.env

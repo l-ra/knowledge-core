@@ -1,0 +1,34 @@
+version: "3.8"
+
+services:
+  postgres:
+    image: docker.io/library/postgres:16-alpine
+    environment:
+      POSTGRES_USER: kc
+      POSTGRES_PASSWORD: kc
+      POSTGRES_DB: knowledge_core
+    ports:
+      - "5433:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U kc -d knowledge_core"]
+      interval: 3s
+      timeout: 3s
+      retries: 10
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+  app:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+    environment:
+      KC_HTTP_ADDR: ":8080"
+      KC_DATABASE_URL: postgres://kc:kc@postgres:5432/knowledge_core?sslmode=disable
+      KC_LOG_LEVEL: info
+    ports:
+      - "8080:8080"
+    depends_on:
+      - postgres
+
+volumes:
+  pgdata:
