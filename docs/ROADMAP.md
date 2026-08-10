@@ -72,11 +72,11 @@ Tyto body jsou **úmyslně odložené** nebo **zjednodušené** oproti [technick
 | Oblast | Návrh / ADR | Skutečný stav | Doporučená fáze |
 |--------|-------------|---------------|-----------------|
 | SQL vrstva | `pgx` + **sqlc** | Ruční SQL v `internal/store` | 12 (refactor) |
-| GraphQL | **gqlgen** nad lens engine | Regex adapter (`application`, `domain`) | 10 |
+| GraphQL | **gqlgen** nad lens engine | **done** — lightweight adapter (ADR 0003) | 10 |
 | RDF export | volitelná projekce (§39 fáze 7) | **done** (fáze 11) | 11 |
 | Search ACL | filtr **před** score (ADR 38.7) | **done** (fáze 11) | 11 |
-| Lens nested | pole `lens` v DSL | Schema existuje, read/write **neimplementováno** | 10 |
-| Lens patch | `add` / `remove` (concepts) | Jen `set` / `clear`; `many` cardinality read-only write | 10 |
+| Lens nested | pole `lens` v DSL | **done** (fáze 10) | 10 |
+| Lens patch | `add` / `remove` (concepts) | **done** (fáze 10) | 10 |
 | Policy API | deklarativní správa | **done** — REST CRUD `/v1/policies` | 9 |
 | Outbox worker | integrace | **done** — CLI + Helm CronJob | 11 |
 | Deploy (ADR 0001) | Docker Compose | Compose + **Helm** | 8 |
@@ -96,14 +96,14 @@ Tyto body jsou **úmyslně odložené** nebo **zjednodušené** oproti [technick
 
 ---
 
-## Fáze 10 — Lens a GraphQL (plánováno)
+## Fáze 10 — Lens a GraphQL (hotovo)
 
 **Cíl:** Srovnat implementaci s Lens DSL v1 z návrhu §21.
 
-- [ ] Nested lens (read; případně patch)
-- [ ] Patch operace `add` / `remove` pro `many` cardinality
-- [ ] Migrace GraphQL na gqlgen (nebo explicitní rozhodnutí v ADR pro lightweight adapter)
-- [ ] Rozšířené acceptance pro nested a many-field writes
+- [x] Nested lens (read)
+- [x] Patch operace `add` / `remove` pro `many` cardinality
+- [x] Explicitní ADR 0003: lightweight GraphQL adapter (ne gqlgen)
+- [x] Rozšířené acceptance pro nested a many-field writes
 
 **Priorita:** střední — základní lens scénáře (A3) fungují
 

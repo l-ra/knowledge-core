@@ -21,7 +21,7 @@
 |------|-------|------|
 | 8 | Helm, CI, PostgreSQL + Pocket ID subcharts, bootstrap admin | **done** |
 | 9 | Policy REST API, OpenAPI | **done** |
-| 10 | Nested lens, gqlgen, patch add/remove | planned |
+| 10 | Nested lens, gqlgen, patch add/remove | **done** (ADR 0003: lightweight GQL) |
 | 11 | RDF projection, ACL-aware search, outbox worker | **done** |
 | 12 | sqlc, observability, Helm integrační testy | planned |
 

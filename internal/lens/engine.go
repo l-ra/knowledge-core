@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"reflect"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/l-ra/knowledge-core/internal/datatype"
@@ -17,6 +18,7 @@ type StatementReader interface {
 type StatementWriter interface {
 	CreateStatement(ctx context.Context, meta domain.WriteMeta, in domain.CreateStatementInput) (*domain.WriteResult[domain.Statement], error)
 	ReviseStatement(ctx context.Context, meta domain.WriteMeta, sid string, in domain.ReviseStatementInput) (*domain.WriteResult[domain.Statement], error)
+	DeprecateStatement(ctx context.Context, meta domain.WriteMeta, sid string, expectedRevision int) (*domain.WriteResult[domain.Statement], error)
 }
 
 type LensStore interface {
@@ -45,6 +47,18 @@ func (e *Engine) ReadInstance(ctx context.Context, lensCode, key string) (map[st
 	if err != nil {
 		return nil, err
 	}
+	return e.readByEntity(ctx, lens, qid)
+}
+
+func (e *Engine) ReadInstanceByEntity(ctx context.Context, lensCode, qid string) (map[string]any, error) {
+	lens, err := e.store.GetLensByCode(ctx, lensCode)
+	if err != nil {
+		return nil, err
+	}
+	return e.readByEntity(ctx, lens, qid)
+}
+
+func (e *Engine) readByEntity(ctx context.Context, lens *domain.LensDefinition, qid string) (map[string]any, error) {
 	statements, err := e.reader.ListEntityStatements(ctx, qid)
 	if err != nil {
 		return nil, err
@@ -56,7 +70,7 @@ func (e *Engine) ReadInstance(ctx context.Context, lensCode, key string) (map[st
 	out := map[string]any{}
 	for fieldName, field := range lens.Document.Fields {
 		sts := byProperty[field.Property]
-		val, err := fieldValue(field, sts)
+		val, err := e.fieldValue(ctx, field, sts)
 		if err != nil {
 			return nil, fmt.Errorf("field %q: %w", fieldName, err)
 		}
@@ -67,7 +81,10 @@ func (e *Engine) ReadInstance(ctx context.Context, lensCode, key string) (map[st
 	return out, nil
 }
 
-func fieldValue(field domain.LensField, statements []domain.Statement) (any, error) {
+func (e *Engine) fieldValue(ctx context.Context, field domain.LensField, statements []domain.Statement) (any, error) {
+	if field.NestedLens != "" {
+		return e.nestedFieldValue(ctx, field, statements)
+	}
 	switch field.Cardinality {
 	case domain.CardinalityMany:
 		vals := make([]any, 0, len(statements))
@@ -92,6 +109,37 @@ func fieldValue(field domain.LensField, statements []domain.Statement) (any, err
 			return nil, nil
 		}
 		return valueToJSON(statements[0].Value, field.Type)
+	}
+}
+
+func (e *Engine) nestedFieldValue(ctx context.Context, field domain.LensField, statements []domain.Statement) (any, error) {
+	resolveOne := func(st domain.Statement) (any, error) {
+		if st.Value.EntityID == nil || *st.Value.EntityID == "" {
+			return nil, nil
+		}
+		return e.ReadInstanceByEntity(ctx, field.NestedLens, *st.Value.EntityID)
+	}
+	switch field.Cardinality {
+	case domain.CardinalityMany:
+		vals := make([]any, 0, len(statements))
+		for i := range statements {
+			v, err := resolveOne(statements[i])
+			if err != nil {
+				return nil, err
+			}
+			if v != nil {
+				vals = append(vals, v)
+			}
+		}
+		if len(vals) == 0 {
+			return nil, nil
+		}
+		return vals, nil
+	default:
+		if len(statements) == 0 {
+			return nil, nil
+		}
+		return resolveOne(statements[0])
 	}
 }
 
@@ -158,6 +206,14 @@ func (e *Engine) PatchInstance(ctx context.Context, meta domain.WriteMeta, lensC
 			if err := e.clearField(ctx, meta, qid, field); err != nil {
 				return nil, err
 			}
+		case "add":
+			if err := e.addField(ctx, meta, qid, field, op.Value); err != nil {
+				return nil, err
+			}
+		case "remove":
+			if err := e.removeField(ctx, meta, qid, field, op.Value); err != nil {
+				return nil, err
+			}
 		default:
 			return nil, fmt.Errorf("unsupported op %q", op.Op)
 		}
@@ -167,7 +223,7 @@ func (e *Engine) PatchInstance(ctx context.Context, meta domain.WriteMeta, lensC
 
 func (e *Engine) setField(ctx context.Context, meta domain.WriteMeta, qid string, field domain.LensField, val datatype.Value) error {
 	if field.Cardinality == domain.CardinalityMany {
-		return fmt.Errorf("set on many cardinality not supported in v1")
+		return fmt.Errorf("set on many cardinality not supported; use add/remove")
 	}
 	if err := datatype.Validate(field.Type, val); err != nil {
 		return err
@@ -189,6 +245,18 @@ func (e *Engine) setField(ctx context.Context, meta domain.WriteMeta, qid string
 }
 
 func (e *Engine) clearField(ctx context.Context, meta domain.WriteMeta, qid string, field domain.LensField) error {
+	if field.Cardinality == domain.CardinalityMany {
+		sts, err := e.store.ListActiveStatementsBySubjectProperty(ctx, qid, field.Property)
+		if err != nil {
+			return err
+		}
+		for i := range sts {
+			if _, err := e.writer.DeprecateStatement(ctx, meta, sts[i].PublicID, sts[i].RevisionNo); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
 	existing, err := e.store.FindActiveStatementBySubjectProperty(ctx, qid, field.Property)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil
@@ -196,11 +264,86 @@ func (e *Engine) clearField(ctx context.Context, meta domain.WriteMeta, qid stri
 	if err != nil {
 		return err
 	}
-	empty := emptyValue(field.Type)
-	_, err = e.writer.ReviseStatement(ctx, meta, existing.PublicID, domain.ReviseStatementInput{
-		Value: &empty, ExpectedRevision: existing.RevisionNo,
+	_, err = e.writer.DeprecateStatement(ctx, meta, existing.PublicID, existing.RevisionNo)
+	return err
+}
+
+func (e *Engine) addField(ctx context.Context, meta domain.WriteMeta, qid string, field domain.LensField, val datatype.Value) error {
+	if field.Cardinality != domain.CardinalityMany {
+		return fmt.Errorf("add requires many cardinality")
+	}
+	if err := datatype.Validate(field.Type, val); err != nil {
+		return err
+	}
+	existing, err := e.store.ListActiveStatementsBySubjectProperty(ctx, qid, field.Property)
+	if err != nil {
+		return err
+	}
+	for i := range existing {
+		if valuesEqual(existing[i].Value, val) {
+			return nil
+		}
+	}
+	_, err = e.writer.CreateStatement(ctx, meta, domain.CreateStatementInput{
+		SubjectPublicID: qid, PropertyPublicID: field.Property, Value: val,
 	})
 	return err
+}
+
+func (e *Engine) removeField(ctx context.Context, meta domain.WriteMeta, qid string, field domain.LensField, val datatype.Value) error {
+	if field.Cardinality != domain.CardinalityMany {
+		return fmt.Errorf("remove requires many cardinality")
+	}
+	existing, err := e.store.ListActiveStatementsBySubjectProperty(ctx, qid, field.Property)
+	if err != nil {
+		return err
+	}
+	for i := range existing {
+		if valuesEqual(existing[i].Value, val) {
+			_, err = e.writer.DeprecateStatement(ctx, meta, existing[i].PublicID, existing[i].RevisionNo)
+			return err
+		}
+	}
+	return nil
+}
+
+func valuesEqual(a, b datatype.Value) bool {
+	if a.Type != "" && b.Type != "" && a.Type != b.Type {
+		return false
+	}
+	return reflect.DeepEqual(normalizeComparable(a), normalizeComparable(b))
+}
+
+func normalizeComparable(v datatype.Value) map[string]any {
+	m := map[string]any{}
+	if v.EntityID != nil {
+		m["entityId"] = *v.EntityID
+	}
+	if v.String != nil {
+		m["string"] = *v.String
+	}
+	if v.URI != nil {
+		m["uri"] = *v.URI
+	}
+	if v.Bool != nil {
+		m["bool"] = *v.Bool
+	}
+	if v.Int64 != nil {
+		m["int64"] = *v.Int64
+	}
+	if v.Decimal != nil {
+		m["decimal"] = *v.Decimal
+	}
+	if v.Date != nil {
+		m["date"] = *v.Date
+	}
+	if v.DateTime != nil {
+		m["dateTime"] = *v.DateTime
+	}
+	if v.LangMap != nil {
+		m["langMap"] = v.LangMap
+	}
+	return m
 }
 
 func emptyValue(dt datatype.Type) datatype.Value {

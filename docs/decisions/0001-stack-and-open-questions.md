@@ -15,7 +15,7 @@
 | Driver / SQL | `pgx/v5` (ruční SQL; sqlc — odloženo, viz ROADMAP fáze 12) |
 | Migrace | `goose` |
 | Auth | OIDC (`coreos/go-oidc`); dev headers; bootstrap password (Helm) |
-| GraphQL (fáze 6) | Lightweight adapter nad Lens engine (gqlgen — odloženo, viz ROADMAP fáze 10) |
+| GraphQL (fáze 6) | Lightweight adapter nad Lens engine ([ADR 0003](0003-graphql-lightweight.md)) |
 | Logging | `log/slog` |
 | Deploy | Docker Compose + Helm chart (`deploy/helm/knowledge-core`) |
 

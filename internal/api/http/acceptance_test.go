@@ -144,6 +144,117 @@ func TestAcceptancePolicyAPI(t *testing.T) {
 	}
 }
 
+func TestAcceptanceNestedLensAndMany(t *testing.T) {
+	h := setupTestHandler(t)
+
+	pCode := createProperty(t, h, "code")
+	pName := createProperty(t, h, "name")
+	pTag := createProperty(t, h, "tag")
+	pOwnerRes := doJSON(t, h, http.MethodPost, "/v1/properties", map[string]any{
+		"datatype": "EntityReference",
+		"labels":   map[string]string{"en": "ownerRef"},
+	}, nil)
+	if pOwnerRes.StatusCode != http.StatusCreated {
+		t.Fatalf("owner property: %d %s", pOwnerRes.StatusCode, pOwnerRes.Body)
+	}
+	pOwner := parseDataID(t, pOwnerRes.Body)
+
+	owner := createEntity(t, h, "Owner Org")
+	_ = createStatement(t, h, owner, pCode, "OWNER-1")
+	_ = createStatement(t, h, owner, pName, "Architecture")
+
+	app := createEntity(t, h, "App")
+	_ = createStatement(t, h, app, pCode, "APP-1")
+	_ = createStatement(t, h, app, pName, "CRM")
+	ownerStmt := doJSON(t, h, http.MethodPost, "/v1/statements", map[string]any{
+		"subject":  app,
+		"property": pOwner,
+		"value":    map[string]any{"type": "EntityReference", "entityId": owner},
+	}, nil)
+	if ownerStmt.StatusCode != http.StatusCreated {
+		t.Fatalf("owner ref: %d %s", ownerStmt.StatusCode, ownerStmt.Body)
+	}
+
+	orgLens := doJSON(t, h, http.MethodPost, "/v1/lenses", map[string]any{
+		"code":   "organization",
+		"labels": map[string]string{"en": "Organization"},
+		"document": map[string]any{
+			"key": map[string]any{"property": pCode},
+			"fields": map[string]any{
+				"name": map[string]any{"property": pName, "type": "String", "cardinality": "one"},
+			},
+		},
+	}, nil)
+	if orgLens.StatusCode != http.StatusCreated {
+		t.Fatalf("org lens: %d %s", orgLens.StatusCode, orgLens.Body)
+	}
+
+	appLens := doJSON(t, h, http.MethodPost, "/v1/lenses", map[string]any{
+		"code":   "application",
+		"labels": map[string]string{"en": "Application"},
+		"document": map[string]any{
+			"key": map[string]any{"property": pCode},
+			"fields": map[string]any{
+				"name": map[string]any{"property": pName, "type": "String", "cardinality": "one"},
+				"owner": map[string]any{
+					"property": pOwner, "type": "EntityReference", "cardinality": "zeroOrOne",
+					"lens": "organization",
+				},
+				"tags": map[string]any{"property": pTag, "type": "String", "cardinality": "many"},
+			},
+		},
+	}, nil)
+	if appLens.StatusCode != http.StatusCreated {
+		t.Fatalf("app lens: %d %s", appLens.StatusCode, appLens.Body)
+	}
+
+	read := doJSON(t, h, http.MethodGet, "/v1/lenses/application/instances/APP-1", nil, nil)
+	if read.StatusCode != http.StatusOK {
+		t.Fatalf("nested read: %d %s", read.StatusCode, read.Body)
+	}
+	var view map[string]any
+	_ = json.Unmarshal([]byte(read.Body), &view)
+	ownerView, ok := view["owner"].(map[string]any)
+	if !ok || ownerView["name"] != "Architecture" {
+		t.Fatalf("expected nested owner name, got %v", view["owner"])
+	}
+
+	add := doJSON(t, h, http.MethodPost, "/v1/lenses/application/instances/APP-1/patch", map[string]any{
+		"operations": []map[string]any{
+			{"op": "add", "field": "tags", "value": map[string]any{"type": "String", "string": "alpha"}},
+			{"op": "add", "field": "tags", "value": map[string]any{"type": "String", "string": "beta"}},
+		},
+	}, nil)
+	if add.StatusCode != http.StatusOK {
+		t.Fatalf("add tags: %d %s", add.StatusCode, add.Body)
+	}
+	var afterAdd struct {
+		Data map[string]any `json:"data"`
+	}
+	_ = json.Unmarshal([]byte(add.Body), &afterAdd)
+	tags, _ := afterAdd.Data["tags"].([]any)
+	if len(tags) != 2 {
+		t.Fatalf("expected 2 tags, got %v", afterAdd.Data["tags"])
+	}
+
+	rm := doJSON(t, h, http.MethodPost, "/v1/lenses/application/instances/APP-1/patch", map[string]any{
+		"operations": []map[string]any{
+			{"op": "remove", "field": "tags", "value": map[string]any{"type": "String", "string": "alpha"}},
+		},
+	}, nil)
+	if rm.StatusCode != http.StatusOK {
+		t.Fatalf("remove tag: %d %s", rm.StatusCode, rm.Body)
+	}
+	var afterRm struct {
+		Data map[string]any `json:"data"`
+	}
+	_ = json.Unmarshal([]byte(rm.Body), &afterRm)
+	tags2, _ := afterRm.Data["tags"].([]any)
+	if len(tags2) != 1 || tags2[0] != "beta" {
+		t.Fatalf("expected only beta, got %v", afterRm.Data["tags"])
+	}
+}
+
 func TestAcceptanceA1A2A14(t *testing.T) {
 	h := setupTestHandler(t)
 

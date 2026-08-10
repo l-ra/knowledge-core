@@ -167,6 +167,27 @@ func (e *Engine) ReviseStatement(ctx context.Context, meta domain.WriteMeta, sid
 	return res, nil
 }
 
+func (e *Engine) DeprecateStatement(ctx context.Context, meta domain.WriteMeta, sid string, expectedRevision int) (*domain.WriteResult[domain.Statement], error) {
+	if _, err := datatype.ParsePublicStatementID(sid); err != nil {
+		return nil, fmt.Errorf("%w: %v", ErrInvalid, err)
+	}
+	st, err := e.store.GetStatementByPublicID(ctx, sid)
+	if err != nil {
+		return nil, mapErr(err)
+	}
+	if err := e.authorizeEntity(ctx, auth.OpDiscover, st.SubjectQID); err != nil {
+		return nil, err
+	}
+	if err := e.authorizeStatementProperty(ctx, auth.OpUpdate, st.SubjectQID, st.PropertyPID); err != nil {
+		return nil, err
+	}
+	res, err := e.store.DeprecateStatement(ctx, meta, sid, expectedRevision)
+	if err != nil {
+		return nil, mapErr(err)
+	}
+	return res, nil
+}
+
 func (e *Engine) GetStatement(ctx context.Context, sid string) (*domain.Statement, error) {
 	if _, err := datatype.ParsePublicStatementID(sid); err != nil {
 		return nil, fmt.Errorf("%w: %v", ErrInvalid, err)
