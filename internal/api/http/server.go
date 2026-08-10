@@ -11,6 +11,7 @@ import (
 	"github.com/l-ra/knowledge-core/internal/datatype"
 	"github.com/l-ra/knowledge-core/internal/domain"
 	"github.com/l-ra/knowledge-core/internal/engine"
+	"github.com/l-ra/knowledge-core/internal/metrics"
 	"github.com/l-ra/knowledge-core/internal/store"
 )
 
@@ -27,8 +28,11 @@ func New(eng *engine.Engine, st *store.Store, authn Authenticator) http.Handler 
 	r.Use(middleware.Logger)
 	r.Use(middleware.Recoverer)
 	r.Use(middleware.Timeout(60 * time.Second))
+	r.Use(metrics.Middleware)
+	r.Use(correlationMiddleware)
 
 	r.Get("/healthz", s.healthz)
+	r.Handle("/metrics", metrics.Handler())
 
 	r.Route("/v1", func(r chi.Router) {
 		r.Use(authMiddleware(authn))

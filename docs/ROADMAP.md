@@ -13,8 +13,8 @@ Tento dokument nahrazuje „aktuální vývojové zadání“ v [docs/README.md]
 |--------|------|
 | **v1 jádro** (fáze 0–7) | **Hotovo** — všechny plánované acceptance testy procházejí |
 | **Provoz / distribuce** (fáze 8) | **Hotovo** — Helm, CI, release, runbook, OIDC Job |
-| **Dokončení mezer v1** | Plánováno (fáze 9–11) |
-| **Refaktoring / kvalita** | Průběžně (fáze 12+) |
+| **Dokončení mezer v1** (fáze 9–11) | **Hotovo** |
+| **Refaktoring / kvalita** (fáze 12) | **Hotovo** |
 
 ---
 
@@ -71,7 +71,7 @@ Tyto body jsou **úmyslně odložené** nebo **zjednodušené** oproti [technick
 
 | Oblast | Návrh / ADR | Skutečný stav | Doporučená fáze |
 |--------|-------------|---------------|-----------------|
-| SQL vrstva | `pgx` + **sqlc** | Ruční SQL v `internal/store` | 12 (refactor) |
+| SQL vrstva | `pgx` + **sqlc** | **done** — ruční SQL (ADR 0004) | 12 |
 | GraphQL | **gqlgen** nad lens engine | **done** — lightweight adapter (ADR 0003) | 10 |
 | RDF export | volitelná projekce (§39 fáze 7) | **done** (fáze 11) | 11 |
 | Search ACL | filtr **před** score (ADR 38.7) | **done** (fáze 11) | 11 |
@@ -122,24 +122,20 @@ Tyto body jsou **úmyslně odložené** nebo **zjednodušené** oproti [technick
 
 ---
 
-## Fáze 12 — Kvalita a refaktoring (průběžně)
+## Fáze 12 — Kvalita a refaktoring (hotovo)
 
-- [ ] `sqlc` pro store vrstvu (nebo ADR revize: ponechat ruční SQL)
-- [ ] Integrační testy Helm (kind/k3s v CI)
-- [ ] Load / concurrency testy ChangeSet
-- [ ] Observability: metriky (Prometheus), strukturované trace ID
-- [ ] Aktualizace ADR 0001 (deploy, gqlgen/sqlc realita)
+- [x] ADR 0004: ponechat ruční SQL (`pgx`), ne sqlc
+- [x] Integrační testy Helm (kind job v CI)
+- [x] Concurrency test ChangeSet / optimistic lock
+- [x] Observability: Prometheus `/metrics`, `X-Request-Id` / `X-Correlation-Id`
+- [x] Aktualizace ADR 0001 (deploy, GraphQL, SQL)
 
 ---
 
 ## Doporučené pořadí další práce
 
 ```text
-1. Fáze 11 (search ACL + outbox worker)     ← produkční bezpečnost
-2. Fáze 8 dokončení (OIDC wiring, runbook)  ← snadné nasazení
-3. Fáze 9 (policy API, OpenAPI)             ← operabilita
-4. Fáze 10 (lens/graphql)                   ← developer experience
-5. Fáze 12 (sqlc, observability)            ← údržba
+v1 post-roadmap backlog dle potřeby (UI, SPARQL non-goal, …)
 ```
 
 ---

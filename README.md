@@ -22,7 +22,8 @@ go run ./cmd/knowledge-core
 docker compose -f deploy/docker-compose.yml up --build
 ```
 
-Health: `GET http://localhost:8080/healthz`
+Health: `GET http://localhost:8080/healthz`  
+Metrics: `GET http://localhost:8080/metrics`
 
 ## API (Fáze 1–7)
 

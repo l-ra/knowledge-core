@@ -6,6 +6,7 @@ import (
 
 	"github.com/l-ra/knowledge-core/internal/auth"
 	"github.com/l-ra/knowledge-core/internal/domain"
+	"github.com/l-ra/knowledge-core/internal/metrics"
 	"github.com/l-ra/knowledge-core/internal/projector"
 )
 
@@ -17,6 +18,9 @@ func (e *Engine) ProcessOutbox(ctx context.Context, limit int) (int, error) {
 	if err != nil {
 		return 0, mapErr(err)
 	}
+	if n > 0 {
+		metrics.OutboxProcessed.Add(float64(n))
+	}
 	return n, nil
 }
 
@@ -25,6 +29,9 @@ func (e *Engine) ProcessOutboxInternal(ctx context.Context, limit int) (int, err
 	n, err := projector.ProcessPending(ctx, e.store, limit)
 	if err != nil {
 		return 0, mapErr(err)
+	}
+	if n > 0 {
+		metrics.OutboxProcessed.Add(float64(n))
 	}
 	return n, nil
 }

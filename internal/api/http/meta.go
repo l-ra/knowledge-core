@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 
+	"github.com/go-chi/chi/v5/middleware"
 	"github.com/l-ra/knowledge-core/internal/auth"
 	"github.com/l-ra/knowledge-core/internal/domain"
 )
@@ -20,10 +21,14 @@ func writeMetaFromRequest(r *http.Request, operationType string, bodyHash string
 	if actor == "" {
 		actor = "system"
 	}
+	corr := r.Header.Get("X-Correlation-Id")
+	if corr == "" {
+		corr = middleware.GetReqID(r.Context())
+	}
 	return domain.WriteMeta{
 		Actor:          actor,
 		IdempotencyKey: r.Header.Get("Idempotency-Key"),
-		CorrelationID:  r.Header.Get("X-Correlation-Id"),
+		CorrelationID:  corr,
 		OperationType:  operationType,
 		RequestHash:    bodyHash,
 	}

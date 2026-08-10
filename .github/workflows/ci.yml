@@ -73,6 +73,36 @@ jobs:
           helm template kc deploy/helm/knowledge-core --set pocketId.enabled=true --set postgresql.enabled=true > /tmp/rendered-pocket.yaml
           grep -q "pocket-id" /tmp/rendered-pocket.yaml
 
+  helm-kind:
+    runs-on: ubuntu-latest
+    needs: [test, helm]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: azure/setup-helm@v4
+        with:
+          version: v3.16.4
+      - uses: helm/kind-action@v1
+        with:
+          cluster_name: kc
+      - name: Build and load image
+        run: |
+          docker build -f deploy/Dockerfile -t knowledge-core:kind .
+          kind load docker-image knowledge-core:kind --name kc
+      - name: Install chart
+        run: |
+          helm upgrade --install kc deploy/helm/knowledge-core \
+            --set image.repository=knowledge-core \
+            --set image.tag=kind \
+            --set image.pullPolicy=Never \
+            --set outboxWorker.enabled=false \
+            --wait --timeout 180s
+      - name: Health check
+        run: |
+          kubectl port-forward svc/kc-knowledge-core 8080:8080 &
+          sleep 3
+          curl -fsS http://127.0.0.1:8080/healthz
+          curl -fsS http://127.0.0.1:8080/metrics | grep -q kc_http_requests_total || true
+
   publish-image:
     runs-on: ubuntu-latest
     needs: [test, build, helm]

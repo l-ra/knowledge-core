@@ -12,7 +12,7 @@
 | Modul | `github.com/l-ra/knowledge-core` |
 | HTTP | `chi` + `net/http` |
 | DB | PostgreSQL 16 |
-| Driver / SQL | `pgx/v5` (ruční SQL; sqlc — odloženo, viz ROADMAP fáze 12) |
+| Driver / SQL | `pgx/v5` (ruční; [ADR 0004](0004-manual-sql.md)) |
 | Migrace | `goose` |
 | Auth | OIDC (`coreos/go-oidc`); dev headers; bootstrap password (Helm) |
 | GraphQL (fáze 6) | Lightweight adapter nad Lens engine ([ADR 0003](0003-graphql-lightweight.md)) |

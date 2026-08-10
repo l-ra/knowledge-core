@@ -39,4 +39,6 @@ Tato složka je zdroj pravdy pro vývoj: koncepty, uzavřená implementační ro
 |------|-------|--------|
 | 8 | Helm, CI, release, Pocket ID OIDC Job, runbook | done |
 
-Detailní plán dalších fází (9–12): [ROADMAP.md](ROADMAP.md).
+Detailní plán dalších fází (9–12): [ROADMAP.md](ROADMAP.md) — **fáze 8–12 hotové**.
+
+Fáze 8–12: provoz, policy API, nested lenses, ACL/RDF/outbox, kvalita (viz ROADMAP).
