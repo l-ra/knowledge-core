@@ -1,4 +1,7 @@
-version: "3.8"
+# Project name avoids "deploy_default" when run from this directory.
+# Explicit subnet: default Podman pools (10.89+) collide with hosts that
+# advertise a 10.0.0.0/8 route (common on corporate Wi‑Fi / VPN).
+name: knowledge-core
 
 services:
   postgres:
@@ -16,6 +19,8 @@ services:
       retries: 10
     volumes:
       - pgdata:/var/lib/postgresql/data
+    networks:
+      - kc
 
   app:
     build:
@@ -25,10 +30,21 @@ services:
       KC_HTTP_ADDR: ":8080"
       KC_DATABASE_URL: postgres://kc:kc@postgres:5432/knowledge_core?sslmode=disable
       KC_LOG_LEVEL: info
+      KC_AUTH_MODE: bootstrap
     ports:
       - "8080:8080"
     depends_on:
       - postgres
+    networks:
+      - kc
 
 volumes:
   pgdata:
+
+networks:
+  kc:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.25.90.0/24
+          gateway: 172.25.90.1

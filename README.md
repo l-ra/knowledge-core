@@ -13,6 +13,8 @@ Viz [docs/README.md](docs/README.md): koncepty, ADR, zadání fází. **Aktuáln
 ```bash
 # PostgreSQL
 docker compose -f deploy/docker-compose.yml up -d postgres
+# or: podman-compose -f deploy/docker-compose.yml up -d postgres
+# Compose uses subnet 172.25.90.0/24 so Podman works on hosts with a 10.0.0.0/8 route.
 
 # App (lokálně)
 export KC_DATABASE_URL='postgres://kc:kc@localhost:5433/knowledge_core?sslmode=disable'
