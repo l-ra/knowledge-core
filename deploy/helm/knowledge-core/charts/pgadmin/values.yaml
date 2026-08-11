@@ -1,0 +1,32 @@
+image:
+  repository: docker.io/dpage/pgadmin4
+  tag: "9.16"
+  pullPolicy: IfNotPresent
+
+service:
+  type: ClusterIP
+  port: 80
+
+auth:
+  email: admin@kc.local
+  # empty = chart generates a random password on first install
+  password: ""
+
+persistence:
+  enabled: true
+  size: 1Gi
+  storageClass: ""
+
+# Bundled PostgreSQL connection (pre-registered in pgAdmin when enabled).
+postgres:
+  host: ""
+  port: 5432
+  username: kc
+  database: knowledge_core
+  # empty = read password from the postgresql subchart secret
+  password: ""
+
+config:
+  masterPasswordRequired: false
+
+resources: {}

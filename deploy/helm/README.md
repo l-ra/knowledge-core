@@ -6,6 +6,7 @@ Includes optional subcharts:
 
 - **postgresql** — PostgreSQL 16 with generated credentials (enabled by default)
 - **pocket-id** — Pocket ID OIDC provider (disabled by default)
+- **pgadmin** — pgAdmin 4 web UI for PostgreSQL (disabled by default, tag 9.16)
 
 ## Quick install (local cluster)
 
@@ -49,6 +50,21 @@ When `pocketId.enabled=true`, Knowledge Core switches to `KC_AUTH_MODE=oidc` and
 If `pocketId.adminApiKey` is set, a Helm hook Job registers OIDC client id `auth.oidcAudience` via Pocket ID API.
 Otherwise configure the client manually in Pocket ID UI.
 
+## With pgAdmin (PostgreSQL UI)
+
+```bash
+helm upgrade --install kc deploy/helm/knowledge-core \
+  --set pgAdmin.enabled=true \
+  --set postgresql.enabled=true
+
+kubectl port-forward svc/kc-pgadmin 5050:80
+
+# Login email: pgAdmin.auth.email (default admin@kc.local)
+kubectl get secret kc-pgadmin -o jsonpath='{.data.password}' | base64 -d; echo
+```
+
+When enabled, pgAdmin pre-registers the bundled PostgreSQL server (`kc` user). Password is read from the postgresql subchart secret unless `pgAdmin.postgres.password` is set.
+
 ## Hardening
 
 - PDB enabled by default (`podDisruptionBudget.enabled`)
@@ -79,6 +95,7 @@ helm install kc oci://ghcr.io/l-ra/knowledge-core --version 0.2.0
 | `auth.bootstrapAdminSubject` | `admin` | Subject id with admin role |
 | `postgresql.enabled` | `true` | Deploy bundled PostgreSQL |
 | `pocketId.enabled` | `false` | Deploy Pocket ID subchart |
+| `pgAdmin.enabled` | `false` | Deploy pgAdmin 4 subchart (requires postgresql) |
 | `pocketId.adminApiKey` | `""` | Enables OIDC client registration Job |
 | `persistence.enabled` | `true` | PVC for bootstrap password file (`/data`) |
 | `outboxWorker.enabled` | `true` | CronJob running `knowledge-core outbox process` |

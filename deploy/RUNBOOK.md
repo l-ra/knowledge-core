@@ -41,6 +41,7 @@ Default auth mode v Helm je `bootstrap`.
 ```bash
 podman-compose -f deploy/docker-compose.yml up -d
 # App startuje v bootstrap režimu. Pocket ID: http://pocket-id.localhost:1411/setup
+# pgAdmin: http://localhost:5050 (admin@kc.local / admin)
 ```
 
 1. V Pocket ID vytvoř public PKCE klienta (client_id z IdP — po create immutable).

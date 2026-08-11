@@ -1,0 +1,22 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "pgadmin.fullname" . }}-servers
+  labels:
+    {{- include "pgadmin.labels" . | nindent 4 }}
+data:
+  servers.json: |
+    {
+      "Servers": {
+        "1": {
+          "Name": "Knowledge Core",
+          "Group": "Servers",
+          "Host": {{ include "pgadmin.postgresHost" . | quote }},
+          "Port": {{ .Values.postgres.port }},
+          "MaintenanceDB": {{ .Values.postgres.database | quote }},
+          "Username": {{ .Values.postgres.username | quote }},
+          "PassFile": "/pgpass",
+          "SSLMode": "prefer"
+        }
+      }
+    }

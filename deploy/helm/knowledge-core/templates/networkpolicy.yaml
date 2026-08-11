@@ -45,6 +45,17 @@ spec:
         - protocol: TCP
           port: {{ .Values.pocketId.service.port }}
     {{- end }}
+    # pgAdmin (PostgreSQL admin UI)
+    {{- if .Values.pgAdmin.enabled }}
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: pgadmin
+              app.kubernetes.io/instance: {{ .Release.Name }}
+      ports:
+        - protocol: TCP
+          port: {{ .Values.pgAdmin.service.port }}
+    {{- end }}
     # External HTTPS (OIDC issuer discovery when issuer is external)
     - ports:
         - protocol: TCP

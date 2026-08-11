@@ -1,0 +1,14 @@
+{
+  "Servers": {
+    "1": {
+      "Name": "Knowledge Core",
+      "Group": "Servers",
+      "Host": "postgres",
+      "Port": 5432,
+      "MaintenanceDB": "knowledge_core",
+      "Username": "kc",
+      "PassFile": "/pgpass",
+      "SSLMode": "prefer"
+    }
+  }
+}

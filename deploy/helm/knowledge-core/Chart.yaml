@@ -12,3 +12,7 @@ dependencies:
     version: 0.1.0
     condition: pocketId.enabled
     alias: pocketId
+  - name: pgadmin
+    version: 0.1.0
+    condition: pgAdmin.enabled
+    alias: pgAdmin

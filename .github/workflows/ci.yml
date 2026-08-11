@@ -92,6 +92,8 @@ jobs:
           grep -q "kind: Deployment" /tmp/rendered.yaml
           helm template kc deploy/helm/knowledge-core --set pocketId.enabled=true --set postgresql.enabled=true > /tmp/rendered-pocket.yaml
           grep -q "pocket-id" /tmp/rendered-pocket.yaml
+          helm template kc deploy/helm/knowledge-core --set pgAdmin.enabled=true --set postgresql.enabled=true > /tmp/rendered-pgadmin.yaml
+          grep -q "pgadmin" /tmp/rendered-pgadmin.yaml
 
   helm-kind:
     runs-on: ubuntu-latest

@@ -117,6 +117,30 @@ pocketId:
       - http://localhost:8080/ui/callback
       - http://localhost:8080/callback
 
+pgAdmin:
+  enabled: false
+  image:
+    repository: docker.io/dpage/pgadmin4
+    tag: "9.16"
+  service:
+    type: ClusterIP
+    port: 80
+  auth:
+    email: admin@kc.local
+    password: ""
+  persistence:
+    enabled: true
+    size: 1Gi
+    storageClass: ""
+  postgres:
+    host: ""
+    port: 5432
+    username: kc
+    database: knowledge_core
+    password: ""
+  config:
+    masterPasswordRequired: false
+
 outboxWorker:
   enabled: true
   schedule: "*/1 * * * *"

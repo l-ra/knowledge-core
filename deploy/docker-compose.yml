@@ -22,6 +22,33 @@ services:
     networks:
       - kc
 
+  # PostgreSQL admin UI (dev only). Login: admin@kc.local / admin
+  # Server "Knowledge Core" is pre-registered (host postgres, user kc, password kc).
+  pgadmin:
+    image: docker.io/dpage/pgadmin4:9.16
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@kc.local
+      PGADMIN_DEFAULT_PASSWORD: admin
+      PGADMIN_CONFIG_MASTER_PASSWORD_REQUIRED: "False"
+      PGADMIN_SERVER_JSON_FILE: /pgadmin4/servers.json
+    ports:
+      - "5050:80"
+    volumes:
+      - pgadmin-data:/var/lib/pgadmin
+      - ./pgadmin/servers.json:/pgadmin4/servers.json:ro
+      - ./pgadmin/pgpass:/pgpass:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "-", "http://localhost:80/misc/ping"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    networks:
+      - kc
+
   # Local OIDC IdP (passkeys). First visit: http://pocket-id.localhost:1411/setup
   # Create a public PKCE client, then paste issuer + client_id in KC Admin → OIDC / IdP.
   # Redirect URI: http://localhost:8080/ui/callback (client_id is immutable after create).
@@ -71,6 +98,7 @@ services:
 
 volumes:
   pgdata:
+  pgadmin-data:
   pocketid-data:
 
 networks:
