@@ -49,13 +49,13 @@ func setupTestHandler(t *testing.T) http.Handler {
 			release_object, release_dependency, release,
 			package_dependency, package,
 			lens_definition, validation_report, shape_profile,
-			class_description, class_label, class_definition,
+			class_profile, property_profile,
 			statement_revision_qualifier, statement_revision_reference,
 			statement_qualifier, statement_reference, reference,
-			statement_revision, property_revision, entity_revision,
+			statement_revision, entity_revision,
 			statement_current, statement,
-			entity_label, entity_description, property_label, property_description,
-			property_definition, entity, auth_runtime RESTART IDENTITY CASCADE;
+			entity_label, entity_description,
+			entity, auth_runtime RESTART IDENTITY CASCADE;
 		UPDATE id_counter SET last_value = 0;
 		UPDATE model_schema_config SET instance_of_property = '', updated_at = now() WHERE id = 1;
 	`)
@@ -1054,13 +1054,14 @@ func truncateTestDB(t *testing.T) {
 			outbox_event, projection_search, projection_rdf,
 			release_object, release_dependency, release,
 			package_dependency, package,
-			lens_definition,
+			lens_definition, validation_report, shape_profile,
+			class_profile, property_profile,
 			statement_revision_qualifier, statement_revision_reference,
 			statement_qualifier, statement_reference, reference,
-			statement_revision, property_revision, entity_revision,
+			statement_revision, entity_revision,
 			statement_current, statement,
-			entity_label, entity_description, property_label, property_description,
-			property_definition, entity RESTART IDENTITY CASCADE;
+			entity_label, entity_description,
+			entity RESTART IDENTITY CASCADE;
 		UPDATE id_counter SET last_value = 0;
 	`)
 	if err != nil {
@@ -1259,14 +1260,8 @@ func TestAcceptanceSchemaValidationRelaxed(t *testing.T) {
 	}, adminHeaders())
 	pidName := parseDataID(t, nameProp.Body)
 
-	classEnt := doJSON(t, h, http.MethodPost, "/v1/entities", map[string]any{
-		"labels": map[string]string{"en": "Person class"},
-	}, adminHeaders())
-	classQID := parseDataID(t, classEnt.Body)
-
 	class := doJSON(t, h, http.MethodPost, "/v1/classes", map[string]any{
-		"labels":            map[string]string{"en": "Person"},
-		"canonicalEntityId": classQID,
+		"labels": map[string]string{"en": "Person"},
 	}, adminHeaders())
 	if class.StatusCode != http.StatusCreated {
 		t.Fatalf("create class: %d %s", class.StatusCode, class.Body)
@@ -1289,7 +1284,7 @@ func TestAcceptanceSchemaValidationRelaxed(t *testing.T) {
 	doJSON(t, h, http.MethodPost, "/v1/statements", map[string]any{
 		"subject":  qid,
 		"property": pidType,
-		"value":    map[string]any{"type": "EntityReference", "entityId": classQID},
+		"value":    map[string]any{"type": "EntityReference", "entityId": classID},
 	}, adminHeaders())
 
 	// relaxed: write name without class typing would fail domain - but we typed entity above.
@@ -1332,6 +1327,53 @@ func TestAcceptanceSchemaValidationRelaxed(t *testing.T) {
 	if val.StatusCode != http.StatusOK {
 		t.Fatalf("validation report: %d %s", val.StatusCode, val.Body)
 	}
+}
+
+func TestAcceptanceEntityProfile(t *testing.T) {
+	h := setupTestHandler(t)
+
+	prop := doJSON(t, h, http.MethodPost, "/v1/properties", map[string]any{
+		"datatype": "String",
+		"labels":   map[string]string{"en": "note"},
+	}, adminHeaders())
+	if prop.StatusCode != http.StatusCreated {
+		t.Fatalf("create property: %d %s", prop.StatusCode, prop.Body)
+	}
+	pid := parseDataID(t, prop.Body)
+
+	ent := doJSON(t, h, http.MethodGet, "/v1/entities/"+pid, nil, adminHeaders())
+	if ent.StatusCode != http.StatusOK {
+		t.Fatalf("get property as entity: %d %s", ent.StatusCode, ent.Body)
+	}
+
+	class := doJSON(t, h, http.MethodPost, "/v1/classes", map[string]any{
+		"labels": map[string]string{"en": "Thing"},
+	}, adminHeaders())
+	cid := parseDataID(t, class.Body)
+
+	st := doJSON(t, h, http.MethodPost, "/v1/statements", map[string]any{
+		"subject":  pid,
+		"property": pid,
+		"value":    map[string]any{"type": "String", "string": "meta about property"},
+	}, adminHeaders())
+	if st.StatusCode != http.StatusCreated {
+		t.Fatalf("statement about property: %d %s", st.StatusCode, st.Body)
+	}
+
+	qEnt := doJSON(t, h, http.MethodPost, "/v1/entities", map[string]any{
+		"labels": map[string]string{"en": "ordinary"},
+	}, adminHeaders())
+	qid := parseDataID(t, qEnt.Body)
+	bad := doJSON(t, h, http.MethodPost, "/v1/statements", map[string]any{
+		"subject":  qid,
+		"property": qid,
+		"value":    map[string]any{"type": "String", "string": "no"},
+	}, adminHeaders())
+	if bad.StatusCode == http.StatusCreated {
+		t.Fatal("expected reject when predicate has no property_profile")
+	}
+
+	_ = cid
 }
 
 func mergeHeaders(base, extra map[string]string) map[string]string {

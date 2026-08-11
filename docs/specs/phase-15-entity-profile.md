@@ -23,9 +23,9 @@ Greenfield přepis: properties a classes jsou entity s profilem. Viz [ADR 0005](
 
 ## Acceptance
 
-- [ ] Create property → entity `P1` + datatype; `GET /v1/entities/P1` OK
-- [ ] Create class → entity `C1`; statement `instanceOf → C1` OK
-- [ ] Statement o property (subject `P1`) OK
-- [ ] Statement s property = `Q*` bez profile → 400
-- [ ] Shape/validation domainClasses používá `C*`
-- [ ] Packages/ChangeSet stále fungují
+- [x] Create property → entity `P1` + datatype; `GET /v1/entities/P1` OK
+- [x] Create class → entity `C1`; statement `instanceOf → C1` OK
+- [x] Statement o property (subject `P1`) OK
+- [x] Statement s property = `Q*` bez profile → 400
+- [x] Shape/validation domainClasses používá `C*`
+- [x] Packages/ChangeSet stále fungují

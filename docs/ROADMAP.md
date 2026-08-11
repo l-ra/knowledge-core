@@ -16,6 +16,8 @@ Tento dokument nahrazuje „aktuální vývojové zadání“ v [docs/README.md]
 | **Dokončení mezer v1** (fáze 9–11) | **Hotovo** |
 | **Refaktoring / kvalita** (fáze 12) | **Hotovo** |
 | **Web UI** (fáze 13) | **Hotovo** (MVP) |
+| **Schema validation** (fáze 14) | **Hotovo** |
+| **Entity + Profile** (fáze 15) | **Hotovo** — P*/C* jako entity s profilem |
 
 ---
 
@@ -146,6 +148,24 @@ Detail: [specs/phase-13-web-ui.md](specs/phase-13-web-ui.md)
 
 ---
 
+## Fáze 14 — Schema validation (hotovo)
+
+- [x] Property constraints, shape profiles, validation modes
+- Detail: [specs/phase-14-schema-validation.md](specs/phase-14-schema-validation.md)
+
+---
+
+## Fáze 15 — Entity + Profile (hotovo)
+
+- [x] Properties/classes = entity + `property_profile` / `class_profile` (public_id `P*`/`C*`)
+- [x] Statementy o schema entitách; predicate jen s property_profile
+- [x] RDF emit `rdf:Property` / `rdfs:Class` z profile
+- Detail: [specs/phase-15-entity-profile.md](specs/phase-15-entity-profile.md), [ADR 0005](decisions/0005-entity-profile-schema.md)
+
+**Poznámka:** greenfield rewrite migrací — lokální DB wipe (`compose down -v`) před upgrade.
+
+---
+
 ## Doporučené pořadí další práce
 
 ```text
@@ -174,6 +194,8 @@ UI v1.1: lens domain editor, OIDC groups→roles, bundle wizard
 | A14 | Label.en required | `TestAcceptanceA1A2A14` | done |
 | A15 | Projection rebuild | `TestAcceptanceA15` | done |
 | — | Import promotion | `TestAcceptanceImportPromotion` | done |
+| — | Schema validation relaxed | `TestAcceptanceSchemaValidationRelaxed` | done |
+| — | Entity+Profile | `TestAcceptanceEntityProfile` | done |
 
 ---
 

@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
@@ -18,13 +19,16 @@ const (
 	rdfNSStmt     = "https://knowledge-core.local/statement/"
 	rdfPredicateLabel = "http://www.w3.org/2000/01/rdf-schema#label"
 	rdfPredicateType  = "http://www.w3.org/1999/02/22-rdf-syntax-ns#type"
+	rdfPredicateSubClass = "http://www.w3.org/2000/01/rdf-schema#subClassOf"
 	rdfTypeEntity     = "https://knowledge-core.local/ontology/Entity"
 	rdfTypeStatement  = "https://knowledge-core.local/ontology/Statement"
+	rdfTypeProperty   = "http://www.w3.org/1999/02/22-rdf-syntax-ns#Property"
+	rdfTypeClass      = "http://www.w3.org/2000/01/rdf-schema#Class"
 )
 
 func (s *Store) ApplyOutboxToRDFProjection(ctx context.Context, ev domain.OutboxEvent) error {
 	switch ev.AggregateType {
-	case "entity":
+	case "entity", "property", "class":
 		return s.projectEntityRDF(ctx, ev.AggregateID)
 	case "statement":
 		return s.projectStatementRDF(ctx, ev.AggregateID)
@@ -52,6 +56,29 @@ func (s *Store) projectEntityRDF(ctx context.Context, qid string) error {
 	now := time.Now().UTC()
 	if err := s.insertRDFTriple(ctx, "entity", qid, subj, rdfPredicateType, "<"+rdfTypeEntity+">", now); err != nil {
 		return err
+	}
+	var hasProp, hasClass bool
+	_ = s.pool.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM property_profile WHERE entity_id = $1)`, entityID).Scan(&hasProp)
+	_ = s.pool.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM class_profile WHERE entity_id = $1)`, entityID).Scan(&hasClass)
+	if hasProp {
+		if err := s.insertRDFTriple(ctx, "entity", qid, subj, rdfPredicateType, "<"+rdfTypeProperty+">", now); err != nil {
+			return err
+		}
+	}
+	if hasClass {
+		if err := s.insertRDFTriple(ctx, "entity", qid, subj, rdfPredicateType, "<"+rdfTypeClass+">", now); err != nil {
+			return err
+		}
+		var docJSON []byte
+		if err := s.pool.QueryRow(ctx, `SELECT document FROM class_profile WHERE entity_id = $1`, entityID).Scan(&docJSON); err == nil {
+			var doc domain.ClassDocument
+			_ = json.Unmarshal(docJSON, &doc)
+			if doc.SubClassOf != "" {
+				if err := s.insertRDFTriple(ctx, "entity", qid, subj, rdfPredicateSubClass, "<"+rdfNSEntity+doc.SubClassOf+">", now); err != nil {
+					return err
+				}
+			}
+		}
 	}
 	if en, ok := labels["en"]; ok && en != "" {
 		return s.insertRDFTriple(ctx, "entity", qid, subj, rdfPredicateLabel, quoteLiteral(en), now)
@@ -220,6 +247,29 @@ func (s *Store) projectEntityRDFTx(ctx context.Context, tx pgx.Tx, qid string) e
 	now := time.Now().UTC()
 	if err := insertRDFTripleTx(ctx, tx, "entity", qid, subj, rdfPredicateType, "<"+rdfTypeEntity+">", now); err != nil {
 		return err
+	}
+	var hasProp, hasClass bool
+	_ = tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM property_profile WHERE entity_id = $1)`, entityID).Scan(&hasProp)
+	_ = tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM class_profile WHERE entity_id = $1)`, entityID).Scan(&hasClass)
+	if hasProp {
+		if err := insertRDFTripleTx(ctx, tx, "entity", qid, subj, rdfPredicateType, "<"+rdfTypeProperty+">", now); err != nil {
+			return err
+		}
+	}
+	if hasClass {
+		if err := insertRDFTripleTx(ctx, tx, "entity", qid, subj, rdfPredicateType, "<"+rdfTypeClass+">", now); err != nil {
+			return err
+		}
+		var docJSON []byte
+		if err := tx.QueryRow(ctx, `SELECT document FROM class_profile WHERE entity_id = $1`, entityID).Scan(&docJSON); err == nil {
+			var doc domain.ClassDocument
+			_ = json.Unmarshal(docJSON, &doc)
+			if doc.SubClassOf != "" {
+				if err := insertRDFTripleTx(ctx, tx, "entity", qid, subj, rdfPredicateSubClass, "<"+rdfNSEntity+doc.SubClassOf+">", now); err != nil {
+					return err
+				}
+			}
+		}
 	}
 	if en, ok := labels["en"]; ok && en != "" {
 		return insertRDFTripleTx(ctx, tx, "entity", qid, subj, rdfPredicateLabel, quoteLiteral(en), now)
