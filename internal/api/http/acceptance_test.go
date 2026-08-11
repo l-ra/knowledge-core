@@ -48,7 +48,8 @@ func setupTestHandler(t *testing.T) http.Handler {
 			outbox_event, projection_search, projection_rdf,
 			release_object, release_dependency, release,
 			package_dependency, package,
-			lens_definition,
+			lens_definition, validation_report, shape_profile,
+			class_description, class_label, class_definition,
 			statement_revision_qualifier, statement_revision_reference,
 			statement_qualifier, statement_reference, reference,
 			statement_revision, property_revision, entity_revision,
@@ -56,6 +57,7 @@ func setupTestHandler(t *testing.T) http.Handler {
 			entity_label, entity_description, property_label, property_description,
 			property_definition, entity, auth_runtime RESTART IDENTITY CASCADE;
 		UPDATE id_counter SET last_value = 0;
+		UPDATE model_schema_config SET instance_of_property = '', updated_at = now() WHERE id = 1;
 	`)
 	_, _ = pool.Exec(ctx, `DELETE FROM auth_policy WHERE name <> 'bootstrap-admin'`)
 
@@ -1228,4 +1230,117 @@ func doJSON(t *testing.T, h http.Handler, method, path string, body any, headers
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, req)
 	return httpResult{StatusCode: rec.Code, Body: rec.Body.String()}
+}
+
+func TestAcceptanceSchemaValidationRelaxed(t *testing.T) {
+	h := setupTestHandler(t)
+
+	ent := doJSON(t, h, http.MethodPost, "/v1/entities", map[string]any{
+		"labels": map[string]string{"en": "Person"},
+	}, adminHeaders())
+	if ent.StatusCode != http.StatusCreated {
+		t.Fatalf("create entity: %d %s", ent.StatusCode, ent.Body)
+	}
+	qid := parseDataID(t, ent.Body)
+
+	typeProp := doJSON(t, h, http.MethodPost, "/v1/properties", map[string]any{
+		"datatype": "EntityReference",
+		"labels":   map[string]string{"en": "instance of"},
+	}, adminHeaders())
+	pidType := parseDataID(t, typeProp.Body)
+
+	nameProp := doJSON(t, h, http.MethodPost, "/v1/properties", map[string]any{
+		"datatype": "String",
+		"labels":   map[string]string{"en": "name"},
+		"constraints": map[string]any{
+			"domainClasses": []string{"C1"},
+			"severity":      "warning",
+		},
+	}, adminHeaders())
+	pidName := parseDataID(t, nameProp.Body)
+
+	classEnt := doJSON(t, h, http.MethodPost, "/v1/entities", map[string]any{
+		"labels": map[string]string{"en": "Person class"},
+	}, adminHeaders())
+	classQID := parseDataID(t, classEnt.Body)
+
+	class := doJSON(t, h, http.MethodPost, "/v1/classes", map[string]any{
+		"labels":            map[string]string{"en": "Person"},
+		"canonicalEntityId": classQID,
+	}, adminHeaders())
+	if class.StatusCode != http.StatusCreated {
+		t.Fatalf("create class: %d %s", class.StatusCode, class.Body)
+	}
+	classID := parseDataID(t, class.Body)
+
+	doJSON(t, h, http.MethodPut, "/v1/admin/schema-config", map[string]any{
+		"instanceOfProperty": pidType,
+	}, adminHeaders())
+
+	doJSON(t, h, http.MethodPost, "/v1/shapes", map[string]any{
+		"code":    "person-shape",
+		"classId": classID,
+		"document": map[string]any{
+			"requiredProperties": []string{pidName},
+			"severity":           "warning",
+		},
+	}, adminHeaders())
+
+	doJSON(t, h, http.MethodPost, "/v1/statements", map[string]any{
+		"subject":  qid,
+		"property": pidType,
+		"value":    map[string]any{"type": "EntityReference", "entityId": classQID},
+	}, adminHeaders())
+
+	// relaxed: write name without class typing would fail domain - but we typed entity above.
+	// Remove instanceOf to trigger domain warning on name property usage - actually domain checks entity classes.
+	// Add name statement - should pass. Add second name to test cardinality if we set maxCount.
+
+	st := doJSON(t, h, http.MethodPost, "/v1/statements", map[string]any{
+		"subject":  qid,
+		"property": pidName,
+		"value":    map[string]any{"type": "String", "string": "Alice"},
+	}, mergeHeaders(adminHeaders(), map[string]string{"X-Validation-Mode": "relaxed"}))
+	if st.StatusCode != http.StatusCreated {
+		t.Fatalf("create statement relaxed: %d %s", st.StatusCode, st.Body)
+	}
+	var wrap struct {
+		Validation *struct {
+			Summary struct {
+				Warnings int `json:"warnings"`
+				Errors   int `json:"errors"`
+			} `json:"summary"`
+		} `json:"validation"`
+	}
+	if err := json.Unmarshal([]byte(st.Body), &wrap); err != nil {
+		t.Fatal(err)
+	}
+	if wrap.Validation == nil {
+		t.Fatal("expected validation block in relaxed response")
+	}
+
+	strict := doJSON(t, h, http.MethodPost, "/v1/statements", map[string]any{
+		"subject":  qid,
+		"property": pidName,
+		"value":    map[string]any{"type": "String", "string": "Bob"},
+	}, mergeHeaders(adminHeaders(), map[string]string{"X-Validation-Mode": "strict"}))
+	if strict.StatusCode != http.StatusCreated {
+		t.Fatalf("strict duplicate name should still pass without maxCount: %d", strict.StatusCode)
+	}
+
+	val := doJSON(t, h, http.MethodGet, "/v1/entities/"+qid+"/validation", nil, adminHeaders())
+	if val.StatusCode != http.StatusOK {
+		t.Fatalf("validation report: %d %s", val.StatusCode, val.Body)
+	}
+}
+
+func mergeHeaders(base, extra map[string]string) map[string]string {
+	out := map[string]string{}
+	for k, v := range base {
+		out[k] = v
+	}
+	for k, v := range extra {
+		out[k] = v
+	}
+	return out
 }

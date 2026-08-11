@@ -50,6 +50,7 @@ type Property struct {
 	Status       PropertyStatus
 	Labels       map[string]string
 	Descriptions map[string]string
+	Constraints  PropertyConstraints
 	RevisionNo   int
 	CreatedAt    time.Time
 	UpdatedAt    time.Time
@@ -92,11 +93,12 @@ type QualifierInput struct {
 }
 
 type WriteMeta struct {
-	Actor          string
-	IdempotencyKey string
-	CorrelationID  string
-	OperationType  string
-	RequestHash    string
+	Actor           string
+	IdempotencyKey  string
+	CorrelationID   string
+	OperationType   string
+	RequestHash     string
+	ValidationMode  ValidationMode
 }
 
 type ChangeSet struct {
@@ -141,10 +143,11 @@ type StatementRevision struct {
 }
 
 type WriteResult[T any] struct {
-	Value      T
-	ChangeSet  *ChangeSet
-	Replay     bool
+	Value       T
+	ChangeSet   *ChangeSet
+	Replay      bool
 	ResponseRaw []byte
+	Validation  *ValidationResult
 }
 
 type CreateEntityInput struct {
@@ -164,6 +167,7 @@ type CreatePropertyInput struct {
 	Datatype     datatype.Type
 	Labels       map[string]string
 	Descriptions map[string]string
+	Constraints  PropertyConstraints
 }
 
 type CreateStatementInput struct {

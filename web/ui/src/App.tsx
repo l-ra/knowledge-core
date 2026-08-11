@@ -12,6 +12,10 @@ import { PackagesPage } from "./pages/PackagesPage";
 import { LensesPage } from "./pages/LensesPage";
 import { PoliciesPage } from "./pages/PoliciesPage";
 import { OpsPage } from "./pages/OpsPage";
+import { ClassesPage } from "./pages/ClassesPage";
+import { ShapesPage } from "./pages/ShapesPage";
+import { SchemaConfigPage } from "./pages/SchemaConfigPage";
+import { ValidationPage } from "./pages/ValidationPage";
 import { AuthPage } from "./pages/AuthPage";
 
 function RequireAuth({ children }: { children: React.ReactNode }) {
@@ -37,13 +41,17 @@ export function App() {
         <Route index element={<Navigate to="/search" replace />} />
         <Route path="search" element={<SearchPage />} />
         <Route path="entities" element={<EntitiesPage />} />
-        <Route path="entities/:qid" element={<EntityPage />} />
+        <Route path="entities/:qid/validation" element={<ValidationPage />} />
         <Route path="entities/:qid/history" element={<EntityHistoryPage />} />
+        <Route path="entities/:qid" element={<EntityPage />} />
         <Route path="model/properties" element={<PropertiesPage />} />
+        <Route path="model/classes" element={<ClassesPage />} />
+        <Route path="model/shapes" element={<ShapesPage />} />
         <Route path="model/packages" element={<PackagesPage />} />
         <Route path="model/lenses" element={<LensesPage />} />
         <Route path="model/policies" element={<PoliciesPage />} />
         <Route path="admin/auth" element={<AuthPage />} />
+        <Route path="admin/schema" element={<SchemaConfigPage />} />
         <Route path="admin/ops" element={<OpsPage />} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />

@@ -126,6 +126,11 @@ func (e *Engine) CreateStatement(ctx context.Context, meta domain.WriteMeta, in 
 	if err := e.authorizeStatementProperty(ctx, auth.OpUpdate, in.SubjectPublicID, in.PropertyPublicID); err != nil {
 		return nil, err
 	}
+	if meta.ValidationMode == domain.ValidationStrict {
+		if err := e.checkStrictValidation(ctx, in.SubjectPublicID, &in); err != nil {
+			return nil, err
+		}
+	}
 	res, err := e.store.CreateStatement(ctx, meta, in)
 	if err != nil {
 		return nil, mapErr(err)
@@ -135,6 +140,7 @@ func (e *Engine) CreateStatement(ctx context.Context, meta domain.WriteMeta, in 
 		return nil, err
 	}
 	res.Value = *st
+	e.attachValidation(ctx, meta, in.SubjectPublicID, res)
 	return res, nil
 }
 

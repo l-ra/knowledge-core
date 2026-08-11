@@ -115,7 +115,7 @@ func (s *Store) ListProperties(ctx context.Context, opt ListOptions) ([]domain.P
 	limitArg := `$` + strconv.Itoa(len(args))
 
 	rows, err := s.pool.Query(ctx, `
-		SELECT p.id, p.public_id, p.datatype, p.status, p.current_revision_no, p.created_at, p.updated_at
+		SELECT p.id, p.public_id, p.datatype, p.status, p.current_revision_no, p.constraints, p.created_at, p.updated_at
 		FROM property_definition p
 		WHERE `+where+`
 		ORDER BY p.public_id
@@ -131,12 +131,16 @@ func (s *Store) ListProperties(ctx context.Context, opt ListOptions) ([]domain.P
 		var p domain.Property
 		var id uuid.UUID
 		var dt string
+		var constraintsJSON []byte
 		var created, updated time.Time
-		if err := rows.Scan(&id, &p.PublicID, &dt, &p.Status, &p.RevisionNo, &created, &updated); err != nil {
+		if err := rows.Scan(&id, &p.PublicID, &dt, &p.Status, &p.RevisionNo, &constraintsJSON, &created, &updated); err != nil {
 			return nil, "", err
 		}
 		p.ID = id
 		p.Datatype = datatype.Type(dt)
+		if len(constraintsJSON) > 0 {
+			_ = json.Unmarshal(constraintsJSON, &p.Constraints)
+		}
 		p.CreatedAt = created
 		p.UpdatedAt = updated
 		labels, _ := s.loadLabels(ctx, `SELECT lang, text FROM property_label WHERE property_id = $1`, id)

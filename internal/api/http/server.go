@@ -57,10 +57,11 @@ func New(eng *engine.Engine, st *store.Store, authn Authenticator, cfg config.Co
 
 		r.Get("/entities", s.listEntities)
 		r.Post("/entities", s.createEntity)
-		r.Get("/entities/{qid}", s.getEntity)
-		r.Patch("/entities/{qid}", s.updateEntity)
+		r.Get("/entities/{qid}/validation", s.getEntityValidation)
 		r.Get("/entities/{qid}/history", s.getEntityHistory)
 		r.Get("/entities/{qid}/statements", s.listEntityStatements)
+		r.Get("/entities/{qid}", s.getEntity)
+		r.Patch("/entities/{qid}", s.updateEntity)
 
 		r.Get("/properties", s.listProperties)
 		r.Post("/properties", s.createProperty)
@@ -98,6 +99,20 @@ func New(eng *engine.Engine, st *store.Store, authn Authenticator, cfg config.Co
 		r.Get("/lenses/{code}/instances/{key}", s.getLensInstance)
 		r.Post("/lenses/{code}/instances/{key}/patch", s.patchLensInstance)
 		r.Post("/graphql", s.graphql)
+
+		r.Get("/admin/schema-config", s.getSchemaConfig)
+		r.Put("/admin/schema-config", s.putSchemaConfig)
+
+		r.Post("/validation/reports", s.createValidationReport)
+		r.Get("/validation/reports/{id}", s.getValidationReport)
+
+		r.Get("/classes", s.listClasses)
+		r.Post("/classes", s.createClass)
+		r.Get("/classes/{cid}", s.getClass)
+
+		r.Get("/shapes", s.listShapes)
+		r.Post("/shapes", s.createShape)
+		r.Get("/shapes/{code}", s.getShape)
 
 		r.Post("/projections/outbox/process", s.processOutbox)
 		r.Post("/projections/search/rebuild", s.rebuildSearchProjection)
@@ -256,10 +271,11 @@ func (s *Server) getEntityHistory(w http.ResponseWriter, r *http.Request) {
 }
 
 type createPropertyReq struct {
-	PackageCode  string            `json:"packageCode,omitempty"`
-	Datatype     string            `json:"datatype"`
-	Labels       map[string]string `json:"labels"`
-	Descriptions map[string]string `json:"descriptions"`
+	PackageCode  string                     `json:"packageCode,omitempty"`
+	Datatype     string                     `json:"datatype"`
+	Labels       map[string]string          `json:"labels"`
+	Descriptions map[string]string          `json:"descriptions"`
+	Constraints  domain.PropertyConstraints `json:"constraints,omitempty"`
 }
 
 func (s *Server) createProperty(w http.ResponseWriter, r *http.Request) {
@@ -280,7 +296,8 @@ func (s *Server) createProperty(w http.ResponseWriter, r *http.Request) {
 	}
 	meta := writeMetaFromRequest(r, "createProperty", hashBody(body))
 	res, err := s.engine.CreateProperty(r.Context(), meta, domain.CreatePropertyInput{
-		PackageCode: req.PackageCode, Datatype: dt, Labels: req.Labels, Descriptions: req.Descriptions,
+		PackageCode: req.PackageCode, Datatype: dt, Labels: req.Labels,
+		Descriptions: req.Descriptions, Constraints: req.Constraints,
 	})
 	if err != nil {
 		writeEngineError(w, err)
@@ -338,7 +355,7 @@ func (s *Server) createStatement(w http.ResponseWriter, r *http.Request) {
 	if res.Replay {
 		status = http.StatusOK
 	}
-	writeJSON(w, status, writeResponse(statementDTO(&res.Value), res.ChangeSet))
+	writeJSON(w, status, writeResponse(statementDTO(&res.Value), res.ChangeSet, res.Validation))
 }
 
 type reviseStatementReq struct {
@@ -655,10 +672,13 @@ func releaseDTO(rel *domain.Release) map[string]any {
 	}
 }
 
-func writeResponse(data map[string]any, cs *domain.ChangeSet) map[string]any {
+func writeResponse(data map[string]any, cs *domain.ChangeSet, validation ...*domain.ValidationResult) map[string]any {
 	out := map[string]any{"data": data}
 	if cs != nil {
 		out["changeSet"] = changeSetDTO(cs)
+	}
+	if len(validation) > 0 && validation[0] != nil {
+		out["validation"] = validationDTO(validation[0])
 	}
 	return out
 }
@@ -678,6 +698,7 @@ func propertyDTO(p *domain.Property) map[string]any {
 		"id": p.PublicID, "canonicalId": p.ID.String(), "datatype": p.Datatype, "status": p.Status,
 		"revisionNo": p.RevisionNo,
 		"labels": p.Labels, "descriptions": p.Descriptions,
+		"constraints": p.Constraints,
 		"createdAt": p.CreatedAt.UTC().Format(time.RFC3339Nano),
 		"updatedAt": p.UpdatedAt.UTC().Format(time.RFC3339Nano),
 	}
@@ -765,6 +786,14 @@ func statementRevisionDTO(rev *domain.StatementRevision) map[string]any {
 }
 
 func writeEngineError(w http.ResponseWriter, err error) {
+	var vf engine.ValidationFailure
+	if errors.As(err, &vf) {
+		writeJSON(w, http.StatusUnprocessableEntity, map[string]any{
+			"error":      map[string]any{"code": "validation", "message": vf.Error()},
+			"validation": validationDTO(&vf.Result),
+		})
+		return
+	}
 	switch {
 	case errors.Is(err, engine.ErrNotFound):
 		writeError(w, http.StatusNotFound, err.Error())

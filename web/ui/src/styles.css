@@ -219,6 +219,19 @@ button:disabled {
   color: var(--danger);
 }
 
+.validation-error {
+  color: var(--danger);
+}
+
+.validation-warning {
+  color: #b45309;
+}
+
+.validation-panel ul {
+  margin: 0;
+  padding-left: 1.25rem;
+}
+
 .table {
   width: 100%;
   border-collapse: collapse;

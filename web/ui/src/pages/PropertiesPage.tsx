@@ -3,7 +3,12 @@ import { Link } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { apiFetch } from "../api";
 
-type Property = { id: string; datatype: string; labels?: Record<string, string> };
+type Property = {
+  id: string;
+  datatype: string;
+  labels?: Record<string, string>;
+  constraints?: Record<string, unknown>;
+};
 
 const DATATYPES = [
   "String",
@@ -25,6 +30,7 @@ export function PropertiesPage() {
   const [items, setItems] = useState<Property[]>([]);
   const [label, setLabel] = useState("");
   const [datatype, setDatatype] = useState("String");
+  const [constraintsJSON, setConstraintsJSON] = useState("{}");
   const [error, setError] = useState("");
 
   async function load() {
@@ -43,9 +49,15 @@ export function PropertiesPage() {
   async function create(e: FormEvent) {
     e.preventDefault();
     try {
+      let constraints = {};
+      try {
+        constraints = JSON.parse(constraintsJSON);
+      } catch {
+        throw new Error("invalid constraints JSON");
+      }
       await apiFetch("/v1/properties", {
         method: "POST",
-        body: JSON.stringify({ datatype, labels: { en: label } }),
+        body: JSON.stringify({ datatype, labels: { en: label }, constraints }),
       });
       setLabel("");
       await load();
@@ -72,6 +84,13 @@ export function PropertiesPage() {
             ))}
           </select>
         </label>
+        <details className="advanced">
+          <summary>{t("properties.constraints")}</summary>
+          <label className="field" style={{ marginTop: "0.75rem" }}>
+            JSON
+            <textarea rows={4} value={constraintsJSON} onChange={(e) => setConstraintsJSON(e.target.value)} />
+          </label>
+        </details>
         <button className="primary">{t("properties.create")}</button>
       </form>
       {error && <p className="error">{error}</p>}
@@ -81,6 +100,7 @@ export function PropertiesPage() {
             <th>ID</th>
             <th>Label</th>
             <th>Datatype</th>
+            <th>{t("properties.constraints")}</th>
           </tr>
         </thead>
         <tbody>
@@ -89,6 +109,7 @@ export function PropertiesPage() {
               <td>{p.id}</td>
               <td>{p.labels?.en}</td>
               <td>{p.datatype}</td>
+              <td className="muted">{p.constraints ? JSON.stringify(p.constraints) : "—"}</td>
             </tr>
           ))}
         </tbody>

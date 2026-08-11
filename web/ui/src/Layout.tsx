@@ -23,6 +23,8 @@ export function Layout() {
         <div className="nav-section">
           <h2>{t("nav.model")}</h2>
           <NavLink to="/model/properties">{t("nav.properties")}</NavLink>
+          <NavLink to="/model/classes">{t("nav.classes")}</NavLink>
+          <NavLink to="/model/shapes">{t("nav.shapes")}</NavLink>
           <NavLink to="/model/packages">{t("nav.packages")}</NavLink>
           <NavLink to="/model/lenses">{t("nav.lenses")}</NavLink>
           <NavLink to="/model/policies">{t("nav.policies")}</NavLink>
@@ -31,6 +33,7 @@ export function Layout() {
         <div className="nav-section">
           <h2>{t("nav.admin")}</h2>
           <NavLink to="/admin/auth">{t("nav.auth")}</NavLink>
+          <NavLink to="/admin/schema">{t("nav.schema")}</NavLink>
           <NavLink to="/admin/ops">{t("nav.ops")}</NavLink>
         </div>
 

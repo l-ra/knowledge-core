@@ -196,10 +196,11 @@ func (s *Store) CreateProperty(ctx context.Context, meta domain.WriteMeta, in do
 		return nil, err
 	}
 	now := time.Now().UTC()
+	constraintsJSON, _ := json.Marshal(in.Constraints)
 	_, err = tx.Exec(ctx, `
-		INSERT INTO property_definition (id, public_id, datatype, status, current_revision_no, package_id, created_at, updated_at)
-		VALUES ($1,$2,$3,'active',1,$4,$5,$5)
-	`, id, publicID, string(in.Datatype), pkgID, now)
+		INSERT INTO property_definition (id, public_id, datatype, status, current_revision_no, package_id, constraints, created_at, updated_at)
+		VALUES ($1,$2,$3,'active',1,$4,$5,$6,$6)
+	`, id, publicID, string(in.Datatype), pkgID, constraintsJSON, now)
 	if err != nil {
 		return nil, err
 	}
@@ -233,7 +234,7 @@ func (s *Store) CreateProperty(ctx context.Context, meta domain.WriteMeta, in do
 
 	p := domain.Property{
 		ID: id, PublicID: publicID, Datatype: in.Datatype, Status: domain.PropertyActive,
-		Labels: labels, Descriptions: descs, RevisionNo: 1,
+		Labels: labels, Descriptions: descs, Constraints: in.Constraints, RevisionNo: 1,
 		CreatedAt: now, UpdatedAt: now,
 	}
 	if err := s.finalizeChangeSet(ctx, tx, cs, p); err != nil {
@@ -248,14 +249,18 @@ func (s *Store) CreateProperty(ctx context.Context, meta domain.WriteMeta, in do
 func (s *Store) GetPropertyByPublicID(ctx context.Context, pid string) (*domain.Property, error) {
 	var p domain.Property
 	var dt string
+	var constraintsJSON []byte
 	err := s.pool.QueryRow(ctx, `
-		SELECT id, public_id, datatype, status, current_revision_no, created_at, updated_at
+		SELECT id, public_id, datatype, status, current_revision_no, constraints, created_at, updated_at
 		FROM property_definition WHERE public_id = $1
-	`, pid).Scan(&p.ID, &p.PublicID, &dt, &p.Status, &p.RevisionNo, &p.CreatedAt, &p.UpdatedAt)
+	`, pid).Scan(&p.ID, &p.PublicID, &dt, &p.Status, &p.RevisionNo, &constraintsJSON, &p.CreatedAt, &p.UpdatedAt)
 	if err != nil {
 		return nil, err
 	}
 	p.Datatype = datatype.Type(dt)
+	if len(constraintsJSON) > 0 {
+		_ = json.Unmarshal(constraintsJSON, &p.Constraints)
+	}
 	p.Labels, err = s.loadLabels(ctx, `SELECT lang, text FROM property_label WHERE property_id = $1`, p.ID)
 	if err != nil {
 		return nil, err

@@ -25,12 +25,17 @@ func writeMetaFromRequest(r *http.Request, operationType string, bodyHash string
 	if corr == "" {
 		corr = middleware.GetReqID(r.Context())
 	}
+	mode := domain.ParseValidationMode(r.Header.Get("X-Validation-Mode"))
+	if q := r.URL.Query().Get("validation"); q != "" {
+		mode = domain.ParseValidationMode(q)
+	}
 	return domain.WriteMeta{
 		Actor:          actor,
 		IdempotencyKey: r.Header.Get("Idempotency-Key"),
 		CorrelationID:  corr,
 		OperationType:  operationType,
 		RequestHash:    bodyHash,
+		ValidationMode: mode,
 	}
 }
 

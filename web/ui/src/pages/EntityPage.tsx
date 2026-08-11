@@ -3,6 +3,8 @@ import { Link, useParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { apiFetch } from "../api";
 
+type Finding = { code: string; severity: string; message: string };
+
 type Entity = {
   id: string;
   revisionNo: number;
@@ -73,6 +75,8 @@ export function EntityPage() {
   const [refs, setRefs] = useState("");
   const [validFrom, setValidFrom] = useState("");
   const [validTo, setValidTo] = useState("");
+  const [validationMode, setValidationMode] = useState<"relaxed" | "strict" | "off">("relaxed");
+  const [validationMsg, setValidationMsg] = useState<Finding[]>([]);
 
   async function reload() {
     setError("");
@@ -138,7 +142,12 @@ export function EntityPage() {
       if (refIds.length) body.referenceIds = refIds;
       if (validFrom) body.validFrom = new Date(validFrom).toISOString();
       if (validTo) body.validTo = new Date(validTo).toISOString();
-      await apiFetch("/v1/statements", { method: "POST", body: JSON.stringify(body) });
+      const res = await apiFetch<{ validation?: { findings: Finding[] } }>("/v1/statements", {
+        method: "POST",
+        headers: { "X-Validation-Mode": validationMode },
+        body: JSON.stringify(body),
+      });
+      setValidationMsg(res.validation?.findings || []);
       setVal("");
       setQualJSON("[]");
       setRefs("");
@@ -176,6 +185,19 @@ export function EntityPage() {
       </p>
       <h1>{entity?.labels?.en || qid}</h1>
       {error && <p className="error">{error}</p>}
+      {validationMsg.length > 0 && (
+        <div className="panel stack validation-panel">
+          <h3>{t("validation.afterSave")}</h3>
+          <ul>
+            {validationMsg.map((f, i) => (
+              <li key={i} className={f.severity === "error" ? "validation-error" : "validation-warning"}>
+                [{f.severity}] {f.message}
+              </li>
+            ))}
+          </ul>
+          <Link to={`/entities/${qid}/validation`}>{t("validation.fullReport")}</Link>
+        </div>
+      )}
 
       {entity && (
         <form className="panel row" onSubmit={saveLabels}>
@@ -213,6 +235,14 @@ export function EntityPage() {
             <summary>{t("entity.advanced")}</summary>
             <div className="stack" style={{ marginTop: "0.75rem" }}>
               <label className="field">
+                {t("validation.mode")}
+                <select value={validationMode} onChange={(e) => setValidationMode(e.target.value as typeof validationMode)}>
+                  <option value="relaxed">{t("validation.relaxed")}</option>
+                  <option value="strict">{t("validation.strict")}</option>
+                  <option value="off">{t("validation.off")}</option>
+                </select>
+              </label>
+              <label className="field">
                 {t("entity.qualifiers")}
                 <textarea rows={3} value={qualJSON} onChange={(e) => setQualJSON(e.target.value)} />
               </label>
@@ -247,6 +277,8 @@ export function EntityPage() {
 
       <p>
         <Link to={`/entities/${qid}/history`}>{t("entity.history")}</Link>
+        {" · "}
+        <Link to={`/entities/${qid}/validation`}>{t("validation.title")}</Link>
       </p>
     </div>
   );
