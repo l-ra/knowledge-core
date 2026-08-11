@@ -8,7 +8,7 @@ service:
   port: 80
 
 auth:
-  email: admin@kc.local
+  email: admin@example.com
   # empty = chart generates a random password on first install
   password: ""
 

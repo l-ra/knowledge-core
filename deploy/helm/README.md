@@ -59,7 +59,7 @@ helm upgrade --install kc deploy/helm/knowledge-core \
 
 kubectl port-forward svc/kc-pgadmin 5050:80
 
-# Login email: pgAdmin.auth.email (default admin@kc.local)
+# Login email: pgAdmin.auth.email (default admin@example.com)
 kubectl get secret kc-pgadmin -o jsonpath='{.data.password}' | base64 -d; echo
 ```
 

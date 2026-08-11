@@ -126,7 +126,7 @@ pgAdmin:
     type: ClusterIP
     port: 80
   auth:
-    email: admin@kc.local
+    email: admin@example.com
     password: ""
   persistence:
     enabled: true

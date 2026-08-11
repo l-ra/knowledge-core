@@ -42,7 +42,7 @@ docker compose -f deploy/docker-compose.yml up --build
 | App / UI | http://localhost:8080/ui/ |
 | Pocket ID | http://pocket-id.localhost:1411 |
 | Postgres | localhost:5433 |
-| pgAdmin | http://localhost:5050 (admin@kc.local / admin) |
+| pgAdmin | http://localhost:5050 (admin@example.com / admin) |
 
 Health: `GET http://localhost:8080/healthz`  
 Metrics: `GET http://localhost:8080/metrics`  

@@ -22,12 +22,13 @@ services:
     networks:
       - kc
 
-  # PostgreSQL admin UI (dev only). Login: admin@kc.local / admin
+  # PostgreSQL admin UI (dev only). Login: admin@example.com / admin
   # Server "Knowledge Core" is pre-registered (host postgres, user kc, password kc).
+  # Note: pgAdmin rejects reserved TLDs like .local for PGADMIN_DEFAULT_EMAIL.
   pgadmin:
     image: docker.io/dpage/pgadmin4:9.16
     environment:
-      PGADMIN_DEFAULT_EMAIL: admin@kc.local
+      PGADMIN_DEFAULT_EMAIL: admin@example.com
       PGADMIN_DEFAULT_PASSWORD: admin
       PGADMIN_CONFIG_MASTER_PASSWORD_REQUIRED: "False"
       PGADMIN_SERVER_JSON_FILE: /pgadmin4/servers.json
