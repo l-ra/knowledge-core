@@ -118,7 +118,8 @@ func (s *Store) projectStatementSearch(ctx context.Context, sid string) error {
 			sc.value_text, sc.value_bool, sc.value_int64, sc.value_numeric::text, sc.value_date::text
 		FROM statement st
 		JOIN entity e ON e.id = st.subject_id
-		JOIN property_definition p ON p.id = st.property_id
+		JOIN property_profile pp ON pp.entity_id = st.property_id
+		JOIN entity p ON p.id = pp.entity_id
 		LEFT JOIN statement_current sc ON sc.statement_id = st.id
 		WHERE st.public_id = $1
 	`, sid)
@@ -137,7 +138,7 @@ func (s *Store) projectStatementSearch(ctx context.Context, sid string) error {
 	}
 	val := formatSearchValue(valueType, valueText, valueBool, valueInt, numeric, date)
 	subjectLabels, _ := s.loadLabels(ctx, `SELECT lang, text FROM entity_label WHERE entity_id = $1`, subjectID)
-	propLabels, _ := s.loadLabels(ctx, `SELECT lang, text FROM property_label WHERE property_id = $1`, propertyID)
+	propLabels, _ := s.loadLabels(ctx, `SELECT lang, text FROM entity_label WHERE entity_id = $1`, propertyID)
 	text := strings.TrimSpace(joinLabelTexts(subjectLabels) + " " + joinLabelTexts(propLabels) + " " + val)
 	now := time.Now().UTC()
 	_, err := s.pool.Exec(ctx, `
@@ -280,7 +281,8 @@ func (s *Store) projectStatementSearchTx(ctx context.Context, tx pgx.Tx, sid str
 			sc.value_text, sc.value_bool, sc.value_int64, sc.value_numeric::text, sc.value_date::text
 		FROM statement st
 		JOIN entity e ON e.id = st.subject_id
-		JOIN property_definition p ON p.id = st.property_id
+		JOIN property_profile pp ON pp.entity_id = st.property_id
+		JOIN entity p ON p.id = pp.entity_id
 		LEFT JOIN statement_current sc ON sc.statement_id = st.id
 		WHERE st.public_id = $1 AND st.status = 'active'
 	`, sid)
@@ -293,7 +295,7 @@ func (s *Store) projectStatementSearchTx(ctx context.Context, tx pgx.Tx, sid str
 		return err
 	}
 	subjectLabels, _ := s.loadLabelsTx(ctx, tx, `SELECT lang, text FROM entity_label WHERE entity_id = $1`, subjectID)
-	propLabels, _ := s.loadLabelsTx(ctx, tx, `SELECT lang, text FROM property_label WHERE property_id = $1`, propertyID)
+	propLabels, _ := s.loadLabelsTx(ctx, tx, `SELECT lang, text FROM entity_label WHERE entity_id = $1`, propertyID)
 	val := formatSearchValue(valueType, valueText, valueBool, valueInt, numeric, date)
 	text := strings.TrimSpace(joinLabelTexts(subjectLabels) + " " + joinLabelTexts(propLabels) + " " + val)
 	now := time.Now().UTC()

@@ -92,7 +92,8 @@ func (s *Store) ResolveEntityByLensKey(ctx context.Context, doc domain.LensDocum
 		SELECT DISTINCT e.public_id
 		FROM entity e
 		JOIN statement st ON st.subject_id = e.id AND st.status = 'active'
-		JOIN property_definition pk ON pk.id = st.property_id
+		JOIN property_profile ppk ON ppk.entity_id = st.property_id
+		JOIN entity pk ON pk.id = ppk.entity_id
 		JOIN statement_current sc ON sc.statement_id = st.id
 		WHERE pk.public_id = $1 AND sc.value_type = 'String' AND sc.value_text = $2
 	`, doc.Key.Property, keyValue)
@@ -129,7 +130,8 @@ func (s *Store) FindActiveStatementBySubjectProperty(ctx context.Context, qid, p
 			st.current_revision_no, st.created_at, st.updated_at
 		FROM statement st
 		JOIN entity e ON e.id = st.subject_id
-		JOIN property_definition p ON p.id = st.property_id
+		JOIN property_profile pp ON pp.entity_id = st.property_id
+		JOIN entity p ON p.id = pp.entity_id
 		WHERE e.public_id = $1 AND p.public_id = $2 AND st.status = 'active'
 		ORDER BY st.public_id
 		LIMIT 1
@@ -152,7 +154,8 @@ func (s *Store) ListActiveStatementsBySubjectProperty(ctx context.Context, qid, 
 			st.current_revision_no, st.created_at, st.updated_at
 		FROM statement st
 		JOIN entity e ON e.id = st.subject_id
-		JOIN property_definition p ON p.id = st.property_id
+		JOIN property_profile pp ON pp.entity_id = st.property_id
+		JOIN entity p ON p.id = pp.entity_id
 		WHERE e.public_id = $1 AND p.public_id = $2 AND st.status = 'active'
 		ORDER BY st.public_id
 	`, qid, pid)

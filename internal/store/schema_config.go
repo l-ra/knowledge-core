@@ -89,7 +89,10 @@ func (s *Store) GetValidationReport(ctx context.Context, id string) (*domain.Val
 
 func (s *Store) LoadPropertyConstraints(ctx context.Context) (map[string]domain.PropertyConstraints, error) {
 	rows, err := s.pool.Query(ctx, `
-		SELECT public_id, constraints FROM property_definition WHERE status <> 'deleted'
+		SELECT e.public_id, pp.constraints
+		FROM property_profile pp
+		JOIN entity e ON e.id = pp.entity_id
+		WHERE e.status <> 'deleted'
 	`)
 	if err != nil {
 		return nil, err

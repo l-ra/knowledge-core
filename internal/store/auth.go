@@ -58,7 +58,8 @@ func (s *Store) LoadEntityAuthAttributes(ctx context.Context, entityPublicID str
 		FROM statement_current sc
 		JOIN statement st ON st.id = sc.statement_id
 		JOIN entity e ON e.id = st.subject_id
-		JOIN property_definition p ON p.id = st.property_id
+		JOIN property_profile pp ON pp.entity_id = st.property_id
+		JOIN entity p ON p.id = pp.entity_id
 		WHERE e.public_id = $1 AND sc.value_type = 'String' AND sc.value_text IS NOT NULL
 	`, entityPublicID)
 	if err != nil {

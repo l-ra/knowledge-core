@@ -52,34 +52,46 @@ func (s *Store) CreateClass(ctx context.Context, meta domain.WriteMeta, in domai
 	if err != nil {
 		return nil, err
 	}
-	var canonicalID *uuid.UUID
-	if in.CanonicalEntityID != "" {
-		var entID uuid.UUID
-		var qid string
-		err = tx.QueryRow(ctx, `SELECT id, public_id FROM entity WHERE public_id = $1 OR id::text = $1`, in.CanonicalEntityID).
-			Scan(&entID, &qid)
-		if err != nil {
-			return nil, fmt.Errorf("canonical entity: %w", err)
+	if in.SubClassOf != "" {
+		if _, err := datatype.ParsePublicClassID(in.SubClassOf); err != nil {
+			return nil, fmt.Errorf("subClassOf: %w", err)
 		}
-		canonicalID = &entID
+		var exists bool
+		err = tx.QueryRow(ctx, `
+			SELECT EXISTS(
+				SELECT 1 FROM class_profile cp
+				JOIN entity e ON e.id = cp.entity_id
+				WHERE e.public_id = $1 AND e.status <> 'deleted'
+			)
+		`, in.SubClassOf).Scan(&exists)
+		if err != nil {
+			return nil, err
+		}
+		if !exists {
+			return nil, fmt.Errorf("subClassOf class not found")
+		}
 	}
 	doc := domain.ClassDocument{SubClassOf: in.SubClassOf}
 	docJSON, _ := json.Marshal(doc)
 	now := time.Now().UTC()
 	_, err = tx.Exec(ctx, `
-		INSERT INTO class_definition (id, public_id, status, package_id, canonical_entity_id, document, created_at, updated_at)
-		VALUES ($1,$2,'active',$3,$4,$5,$6,$6)
-	`, id, publicID, pkgID, canonicalID, docJSON, now)
+		INSERT INTO entity (id, public_id, status, current_revision_no, package_id, created_at, updated_at)
+		VALUES ($1,$2,'active',1,$3,$4,$4)
+	`, id, publicID, pkgID, now)
+	if err != nil {
+		return nil, err
+	}
+	_, err = tx.Exec(ctx, `INSERT INTO class_profile (entity_id, document) VALUES ($1,$2)`, id, docJSON)
 	if err != nil {
 		return nil, err
 	}
 	for lang, text := range labels {
-		if _, err := tx.Exec(ctx, `INSERT INTO class_label (class_id, lang, text) VALUES ($1,$2,$3)`, id, lang, text); err != nil {
+		if _, err := tx.Exec(ctx, `INSERT INTO entity_label (entity_id, lang, text) VALUES ($1,$2,$3)`, id, lang, text); err != nil {
 			return nil, err
 		}
 	}
 	for lang, text := range descs {
-		if _, err := tx.Exec(ctx, `INSERT INTO class_description (class_id, lang, text) VALUES ($1,$2,$3)`, id, lang, text); err != nil {
+		if _, err := tx.Exec(ctx, `INSERT INTO entity_description (entity_id, lang, text) VALUES ($1,$2,$3)`, id, lang, text); err != nil {
 			return nil, err
 		}
 	}
@@ -88,7 +100,16 @@ func (s *Store) CreateClass(ctx context.Context, meta domain.WriteMeta, in domai
 	if err != nil {
 		return nil, err
 	}
-	if err := cs.addItem(ctx, tx, "class", id, publicID, "create", nil); err != nil {
+	labelsJSON, _ := labelsToJSON(labels)
+	descJSON, _ := labelsToJSON(descs)
+	_, err = tx.Exec(ctx, `
+		INSERT INTO entity_revision (id, entity_id, revision_no, status, labels, descriptions, change_set_id, actor, created_at)
+		VALUES ($1,$2,1,'active',$3,$4,$5,$6,$7)
+	`, datatype.NewUUID(), id, labelsJSON, descJSON, cs.id, meta.Actor, now)
+	if err != nil {
+		return nil, err
+	}
+	if err := cs.addItem(ctx, tx, "class", id, publicID, "create", docJSON); err != nil {
 		return nil, err
 	}
 
@@ -96,9 +117,6 @@ func (s *Store) CreateClass(ctx context.Context, meta domain.WriteMeta, in domai
 		ID: id.String(), PublicID: publicID, Status: domain.PropertyActive,
 		PackageCode: in.PackageCode, Document: doc, Labels: labels, Descriptions: descs,
 		CreatedAt: now.Format(time.RFC3339Nano), UpdatedAt: now.Format(time.RFC3339Nano),
-	}
-	if in.CanonicalEntityID != "" {
-		c.CanonicalEntityID = in.CanonicalEntityID
 	}
 	if err := s.finalizeChangeSet(ctx, tx, cs, c); err != nil {
 		return nil, err
@@ -113,18 +131,15 @@ func (s *Store) GetClassByPublicID(ctx context.Context, cid string) (*domain.Cla
 	var c domain.ClassDefinition
 	var id uuid.UUID
 	var pkgCode *string
-	var canonicalID *uuid.UUID
-	var canonicalQID *string
 	var docJSON []byte
 	var createdAt, updatedAt time.Time
 	err := s.pool.QueryRow(ctx, `
-		SELECT c.id, c.public_id, c.status, pkg.code, c.canonical_entity_id, ce.public_id,
-			c.document, c.created_at, c.updated_at
-		FROM class_definition c
-		LEFT JOIN package pkg ON pkg.id = c.package_id
-		LEFT JOIN entity ce ON ce.id = c.canonical_entity_id
-		WHERE c.public_id = $1 AND c.status <> 'deleted'
-	`, cid).Scan(&id, &c.PublicID, &c.Status, &pkgCode, &canonicalID, &canonicalQID, &docJSON, &createdAt, &updatedAt)
+		SELECT e.id, e.public_id, e.status, pkg.code, cp.document, e.created_at, e.updated_at
+		FROM class_profile cp
+		JOIN entity e ON e.id = cp.entity_id
+		LEFT JOIN package pkg ON pkg.id = e.package_id
+		WHERE e.public_id = $1 AND e.status <> 'deleted'
+	`, cid).Scan(&id, &c.PublicID, &c.Status, &pkgCode, &docJSON, &createdAt, &updatedAt)
 	if err != nil {
 		return nil, err
 	}
@@ -132,13 +147,9 @@ func (s *Store) GetClassByPublicID(ctx context.Context, cid string) (*domain.Cla
 	if pkgCode != nil {
 		c.PackageCode = *pkgCode
 	}
-	if canonicalQID != nil {
-		c.CanonicalEntityQID = *canonicalQID
-		c.CanonicalEntityID = canonicalID.String()
-	}
 	_ = json.Unmarshal(docJSON, &c.Document)
-	c.Labels, _ = s.loadLabels(ctx, `SELECT lang, text FROM class_label WHERE class_id = $1`, id)
-	c.Descriptions, _ = s.loadLabels(ctx, `SELECT lang, text FROM class_description WHERE class_id = $1`, id)
+	c.Labels, _ = s.loadLabels(ctx, `SELECT lang, text FROM entity_label WHERE entity_id = $1`, id)
+	c.Descriptions, _ = s.loadLabels(ctx, `SELECT lang, text FROM entity_description WHERE entity_id = $1`, id)
 	c.CreatedAt = createdAt.UTC().Format(time.RFC3339Nano)
 	c.UpdatedAt = updatedAt.UTC().Format(time.RFC3339Nano)
 	return &c, nil
@@ -152,21 +163,21 @@ func (s *Store) ListClasses(ctx context.Context, opt ListOptions) ([]domain.Clas
 		opt.Limit = 200
 	}
 	args := []any{}
-	where := `c.status <> 'deleted'`
+	where := `e.status <> 'deleted'`
 	if opt.Cursor != "" {
 		args = append(args, opt.Cursor)
-		where += fmt.Sprintf(` AND c.public_id > $%d`, len(args))
+		where += fmt.Sprintf(` AND e.public_id > $%d`, len(args))
 	}
 	args = append(args, opt.Limit+1)
 	limitArg := fmt.Sprintf(`$%d`, len(args))
 
 	rows, err := s.pool.Query(ctx, `
-		SELECT c.id, c.public_id, c.status, pkg.code, ce.public_id, c.document, c.created_at, c.updated_at
-		FROM class_definition c
-		LEFT JOIN package pkg ON pkg.id = c.package_id
-		LEFT JOIN entity ce ON ce.id = c.canonical_entity_id
+		SELECT e.id, e.public_id, e.status, pkg.code, cp.document, e.created_at, e.updated_at
+		FROM class_profile cp
+		JOIN entity e ON e.id = cp.entity_id
+		LEFT JOIN package pkg ON pkg.id = e.package_id
 		WHERE `+where+`
-		ORDER BY c.public_id
+		ORDER BY e.public_id
 		LIMIT `+limitArg, args...)
 	if err != nil {
 		return nil, "", err
@@ -177,22 +188,19 @@ func (s *Store) ListClasses(ctx context.Context, opt ListOptions) ([]domain.Clas
 	for rows.Next() {
 		var c domain.ClassDefinition
 		var id uuid.UUID
-		var pkgCode, canonicalQID *string
+		var pkgCode *string
 		var docJSON []byte
 		var createdAt, updatedAt time.Time
-		if err := rows.Scan(&id, &c.PublicID, &c.Status, &pkgCode, &canonicalQID, &docJSON, &createdAt, &updatedAt); err != nil {
+		if err := rows.Scan(&id, &c.PublicID, &c.Status, &pkgCode, &docJSON, &createdAt, &updatedAt); err != nil {
 			return nil, "", err
 		}
 		c.ID = id.String()
 		if pkgCode != nil {
 			c.PackageCode = *pkgCode
 		}
-		if canonicalQID != nil {
-			c.CanonicalEntityQID = *canonicalQID
-		}
 		_ = json.Unmarshal(docJSON, &c.Document)
-		c.Labels, _ = s.loadLabels(ctx, `SELECT lang, text FROM class_label WHERE class_id = $1`, id)
-		c.Descriptions, _ = s.loadLabels(ctx, `SELECT lang, text FROM class_description WHERE class_id = $1`, id)
+		c.Labels, _ = s.loadLabels(ctx, `SELECT lang, text FROM entity_label WHERE entity_id = $1`, id)
+		c.Descriptions, _ = s.loadLabels(ctx, `SELECT lang, text FROM entity_description WHERE entity_id = $1`, id)
 		c.CreatedAt = createdAt.UTC().Format(time.RFC3339Nano)
 		c.UpdatedAt = updatedAt.UTC().Format(time.RFC3339Nano)
 		out = append(out, c)

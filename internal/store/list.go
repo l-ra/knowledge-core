@@ -95,19 +95,19 @@ func (s *Store) ListProperties(ctx context.Context, opt ListOptions) ([]domain.P
 	}
 	q := strings.TrimSpace(opt.Query)
 	args := []any{}
-	where := `p.status <> 'deleted'`
+	where := `e.status <> 'deleted' AND EXISTS (SELECT 1 FROM property_profile pp WHERE pp.entity_id = e.id)`
 	if opt.Cursor != "" {
 		args = append(args, opt.Cursor)
-		where += ` AND p.public_id > $` + strconv.Itoa(len(args))
+		where += ` AND e.public_id > $` + strconv.Itoa(len(args))
 	}
 	if q != "" {
 		args = append(args, "%"+strings.ToLower(q)+"%")
 		n := strconv.Itoa(len(args))
 		where += ` AND (
-			lower(p.public_id) LIKE $` + n + `
+			lower(e.public_id) LIKE $` + n + `
 			OR EXISTS (
-				SELECT 1 FROM property_label pl
-				WHERE pl.property_id = p.id AND lower(pl.text) LIKE $` + n + `
+				SELECT 1 FROM entity_label el
+				WHERE el.entity_id = e.id AND lower(el.text) LIKE $` + n + `
 			)
 		)`
 	}
@@ -115,10 +115,11 @@ func (s *Store) ListProperties(ctx context.Context, opt ListOptions) ([]domain.P
 	limitArg := `$` + strconv.Itoa(len(args))
 
 	rows, err := s.pool.Query(ctx, `
-		SELECT p.id, p.public_id, p.datatype, p.status, p.current_revision_no, p.constraints, p.created_at, p.updated_at
-		FROM property_definition p
+		SELECT e.id, e.public_id, pp.datatype, e.status, e.current_revision_no, pp.constraints, e.created_at, e.updated_at
+		FROM entity e
+		JOIN property_profile pp ON pp.entity_id = e.id
 		WHERE `+where+`
-		ORDER BY p.public_id
+		ORDER BY e.public_id
 		LIMIT `+limitArg+`
 	`, args...)
 	if err != nil {
@@ -143,8 +144,8 @@ func (s *Store) ListProperties(ctx context.Context, opt ListOptions) ([]domain.P
 		}
 		p.CreatedAt = created
 		p.UpdatedAt = updated
-		labels, _ := s.loadLabels(ctx, `SELECT lang, text FROM property_label WHERE property_id = $1`, id)
-		descs, _ := s.loadLabels(ctx, `SELECT lang, text FROM property_description WHERE property_id = $1`, id)
+		labels, _ := s.loadLabels(ctx, `SELECT lang, text FROM entity_label WHERE entity_id = $1`, id)
+		descs, _ := s.loadLabels(ctx, `SELECT lang, text FROM entity_description WHERE entity_id = $1`, id)
 		p.Labels = labels
 		p.Descriptions = descs
 		out = append(out, p)

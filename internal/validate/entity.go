@@ -15,11 +15,10 @@ type Options struct {
 }
 
 type snapshot struct {
-	instanceOf   string
-	classes      map[string]domain.ClassDefinition
-	classByCanon map[string]string
-	constraints  map[string]domain.PropertyConstraints
-	shapes       []domain.ShapeProfile
+	instanceOf  string
+	classes     map[string]domain.ClassDefinition
+	constraints map[string]domain.PropertyConstraints
+	shapes      []domain.ShapeProfile
 }
 
 func Entity(ctx context.Context, st *store.Store, qid string, opt Options) (*domain.ValidationResult, error) {
@@ -62,17 +61,13 @@ func loadSnapshot(ctx context.Context, st *store.Store) (*snapshot, error) {
 		return nil, err
 	}
 	s := &snapshot{
-		instanceOf:   cfg.InstanceOfProperty,
-		constraints:  constraints,
-		shapes:       shapes,
-		classes:      map[string]domain.ClassDefinition{},
-		classByCanon: map[string]string{},
+		instanceOf:  cfg.InstanceOfProperty,
+		constraints: constraints,
+		shapes:      shapes,
+		classes:     map[string]domain.ClassDefinition{},
 	}
 	for _, c := range classes {
 		s.classes[c.PublicID] = c
-		if c.CanonicalEntityQID != "" {
-			s.classByCanon[c.CanonicalEntityQID] = c.PublicID
-		}
 	}
 	return s, nil
 }
@@ -99,8 +94,8 @@ func resolveEntityClasses(s *snapshot, stmts []domain.Statement) []string {
 			continue
 		}
 		target := *st.Value.EntityID
-		if cid, ok := s.classByCanon[target]; ok {
-			direct = append(direct, cid)
+		if _, ok := s.classes[target]; ok {
+			direct = append(direct, target)
 		}
 	}
 	return expandClasses(direct, s.classes)
@@ -204,8 +199,8 @@ func validateStatements(qid string, stmts []domain.Statement, entityClasses []st
 }
 
 func resolveTargetClasses(targetQID string, s *snapshot) []string {
-	if cid, ok := s.classByCanon[targetQID]; ok {
-		return expandClasses([]string{cid}, s.classes)
+	if _, ok := s.classes[targetQID]; ok {
+		return expandClasses([]string{targetQID}, s.classes)
 	}
 	return nil
 }

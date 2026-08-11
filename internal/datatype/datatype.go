@@ -204,6 +204,27 @@ func ParsePublicPropertyID(id string) (int64, error) {
 	return parsePrefixedID("P", id)
 }
 
+func ParsePublicClassID(id string) (int64, error) {
+	return parsePrefixedID("C", id)
+}
+
+// ParsePublicGraphID accepts Q*, P*, or C* (any named entity in the graph).
+func ParsePublicGraphID(id string) (prefix string, n int64, err error) {
+	switch {
+	case strings.HasPrefix(id, "Q"):
+		n, err = parsePrefixedID("Q", id)
+		return "Q", n, err
+	case strings.HasPrefix(id, "P"):
+		n, err = parsePrefixedID("P", id)
+		return "P", n, err
+	case strings.HasPrefix(id, "C"):
+		n, err = parsePrefixedID("C", id)
+		return "C", n, err
+	default:
+		return "", 0, fmt.Errorf("expected Q, P, or C prefix")
+	}
+}
+
 func ParsePublicStatementID(id string) (int64, error) {
 	return parsePrefixedID("S", id)
 }

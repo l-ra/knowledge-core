@@ -107,7 +107,7 @@ func (s *Store) replaceStatementQualifiers(ctx context.Context, tx pgx.Tx, state
 	for _, qin := range inputs {
 		var propertyID uuid.UUID
 		var dt string
-		err := tx.QueryRow(ctx, `SELECT id, datatype FROM property_definition WHERE public_id = $1`, qin.Property).
+		err := tx.QueryRow(ctx, `SELECT e.id, pp.datatype FROM property_profile pp JOIN entity e ON e.id = pp.entity_id WHERE e.public_id = $1`, qin.Property).
 			Scan(&propertyID, &dt)
 		if err != nil {
 			return fmt.Errorf("qualifier property %s: %w", qin.Property, err)
@@ -264,7 +264,8 @@ func (s *Store) loadStatementProvenanceAtRevision(ctx context.Context, q querier
 				sq.value_bool, sq.value_int64, sq.value_numeric, sq.value_date, sq.value_timestamptz,
 				sq.value_text, sq.value_entity_id, sq.value_json
 			FROM statement_revision_qualifier sq
-			JOIN property_definition p ON p.id = sq.property_id
+			JOIN property_profile pp ON pp.entity_id = sq.property_id
+		JOIN entity p ON p.id = pp.entity_id
 			WHERE sq.statement_id = $1 AND sq.revision_no = $2
 		`
 		qualArgs = []any{statementID, revisionNo}
@@ -274,7 +275,8 @@ func (s *Store) loadStatementProvenanceAtRevision(ctx context.Context, q querier
 				sq.value_bool, sq.value_int64, sq.value_numeric, sq.value_date, sq.value_timestamptz,
 				sq.value_text, sq.value_entity_id, sq.value_json
 		 FROM statement_qualifier sq
-		 JOIN property_definition p ON p.id = sq.property_id
+		 JOIN property_profile pp ON pp.entity_id = sq.property_id
+		JOIN entity p ON p.id = pp.entity_id
 		 WHERE sq.statement_id = $1
 		`
 		qualArgs = []any{statementID}

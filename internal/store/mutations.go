@@ -138,9 +138,10 @@ func (s *Store) ReviseStatement(ctx context.Context, meta domain.WriteMeta, publ
 	var propertyPID string
 	var dtype string
 	err = tx.QueryRow(ctx, `
-		SELECT st.id, p.public_id, p.datatype
+		SELECT st.id, p.public_id, pp.datatype
 		FROM statement st
-		JOIN property_definition p ON p.id = st.property_id
+		JOIN property_profile pp ON pp.entity_id = st.property_id
+		JOIN entity p ON p.id = pp.entity_id
 		WHERE st.public_id = $1
 	`, publicID).Scan(&statementID, &propertyPID, &dtype)
 	if err != nil {
@@ -262,8 +263,9 @@ func (s *Store) reviseStatementInTx(ctx context.Context, tx pgx.Tx, cs *changeSe
 	var statementID uuid.UUID
 	var dtype string
 	err := tx.QueryRow(ctx, `
-		SELECT st.id, p.datatype FROM statement st
-		JOIN property_definition p ON p.id = st.property_id
+		SELECT st.id, pp.datatype FROM statement st
+		JOIN property_profile pp ON pp.entity_id = st.property_id
+		JOIN entity p ON p.id = pp.entity_id
 		WHERE st.public_id = $1
 	`, publicID).Scan(&statementID, &dtype)
 	if err != nil {
@@ -379,7 +381,8 @@ func (s *Store) getStatementTx(ctx context.Context, tx pgx.Tx, sid string) (*dom
 			st.current_revision_no, st.created_at, st.updated_at
 		FROM statement st
 		JOIN entity e ON e.id = st.subject_id
-		JOIN property_definition p ON p.id = st.property_id
+		JOIN property_profile pp ON pp.entity_id = st.property_id
+		JOIN entity p ON p.id = pp.entity_id
 		WHERE st.public_id = $1
 	`, sid)
 	return scanStatementRow(row)

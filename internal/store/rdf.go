@@ -66,7 +66,8 @@ func (s *Store) projectStatementRDF(ctx context.Context, sid string) error {
 			sc.value_entity_id
 		FROM statement st
 		JOIN entity e ON e.id = st.subject_id
-		JOIN property_definition p ON p.id = st.property_id
+		JOIN property_profile pp ON pp.entity_id = st.property_id
+		JOIN entity p ON p.id = pp.entity_id
 		LEFT JOIN statement_current sc ON sc.statement_id = st.id
 		WHERE st.public_id = $1
 	`, sid)
@@ -233,7 +234,8 @@ func (s *Store) projectStatementRDFTx(ctx context.Context, tx pgx.Tx, sid string
 			sc.value_entity_id
 		FROM statement st
 		JOIN entity e ON e.id = st.subject_id
-		JOIN property_definition p ON p.id = st.property_id
+		JOIN property_profile pp ON pp.entity_id = st.property_id
+		JOIN entity p ON p.id = pp.entity_id
 		LEFT JOIN statement_current sc ON sc.statement_id = st.id
 		WHERE st.public_id = $1 AND st.status = 'active'
 	`, sid)

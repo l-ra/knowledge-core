@@ -18,8 +18,11 @@ func (s *Store) CreateShape(ctx context.Context, in domain.CreateShapeInput) (*d
 		return nil, fmt.Errorf("class id required")
 	}
 	var classUUID string
-	err := s.pool.QueryRow(ctx, `SELECT id FROM class_definition WHERE public_id = $1 AND status <> 'deleted'`, in.ClassID).
-		Scan(&classUUID)
+	err := s.pool.QueryRow(ctx, `
+		SELECT e.id FROM class_profile cp
+		JOIN entity e ON e.id = cp.entity_id
+		WHERE e.public_id = $1 AND e.status <> 'deleted'
+	`, in.ClassID).Scan(&classUUID)
 	if err != nil {
 		return nil, fmt.Errorf("class: %w", err)
 	}
@@ -53,9 +56,9 @@ func (s *Store) GetShapeByCode(ctx context.Context, code string) (*domain.ShapeP
 	var docJSON []byte
 	var createdAt, updatedAt time.Time
 	err := s.pool.QueryRow(ctx, `
-		SELECT sp.id, sp.code, c.public_id, sp.document, sp.created_at, sp.updated_at
+		SELECT sp.id, sp.code, e.public_id, sp.document, sp.created_at, sp.updated_at
 		FROM shape_profile sp
-		JOIN class_definition c ON c.id = sp.class_id
+		JOIN entity e ON e.id = sp.class_id
 		WHERE sp.code = $1
 	`, code).Scan(&id, &shape.Code, &classPID, &docJSON, &createdAt, &updatedAt)
 	if err != nil {
@@ -72,9 +75,9 @@ func (s *Store) GetShapeByCode(ctx context.Context, code string) (*domain.ShapeP
 
 func (s *Store) ListShapes(ctx context.Context) ([]domain.ShapeProfile, error) {
 	rows, err := s.pool.Query(ctx, `
-		SELECT sp.id, sp.code, c.public_id, sp.document, sp.created_at, sp.updated_at
+		SELECT sp.id, sp.code, e.public_id, sp.document, sp.created_at, sp.updated_at
 		FROM shape_profile sp
-		JOIN class_definition c ON c.id = sp.class_id
+		JOIN entity e ON e.id = sp.class_id
 		ORDER BY sp.code
 	`)
 	if err != nil {

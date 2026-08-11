@@ -198,19 +198,26 @@ func (s *Store) CreateProperty(ctx context.Context, meta domain.WriteMeta, in do
 	now := time.Now().UTC()
 	constraintsJSON, _ := json.Marshal(in.Constraints)
 	_, err = tx.Exec(ctx, `
-		INSERT INTO property_definition (id, public_id, datatype, status, current_revision_no, package_id, constraints, created_at, updated_at)
-		VALUES ($1,$2,$3,'active',1,$4,$5,$6,$6)
-	`, id, publicID, string(in.Datatype), pkgID, constraintsJSON, now)
+		INSERT INTO entity (id, public_id, status, current_revision_no, package_id, created_at, updated_at)
+		VALUES ($1,$2,'active',1,$3,$4,$4)
+	`, id, publicID, pkgID, now)
+	if err != nil {
+		return nil, err
+	}
+	_, err = tx.Exec(ctx, `
+		INSERT INTO property_profile (entity_id, datatype, constraints)
+		VALUES ($1,$2,$3)
+	`, id, string(in.Datatype), constraintsJSON)
 	if err != nil {
 		return nil, err
 	}
 	for lang, text := range labels {
-		if _, err := tx.Exec(ctx, `INSERT INTO property_label (property_id, lang, text) VALUES ($1,$2,$3)`, id, lang, text); err != nil {
+		if _, err := tx.Exec(ctx, `INSERT INTO entity_label (entity_id, lang, text) VALUES ($1,$2,$3)`, id, lang, text); err != nil {
 			return nil, err
 		}
 	}
 	for lang, text := range descs {
-		if _, err := tx.Exec(ctx, `INSERT INTO property_description (property_id, lang, text) VALUES ($1,$2,$3)`, id, lang, text); err != nil {
+		if _, err := tx.Exec(ctx, `INSERT INTO entity_description (entity_id, lang, text) VALUES ($1,$2,$3)`, id, lang, text); err != nil {
 			return nil, err
 		}
 	}
@@ -221,14 +228,15 @@ func (s *Store) CreateProperty(ctx context.Context, meta domain.WriteMeta, in do
 	}
 	labelsJSON, _ := labelsToJSON(labels)
 	descJSON, _ := labelsToJSON(descs)
+	payload, _ := json.Marshal(map[string]any{"datatype": in.Datatype, "constraints": in.Constraints})
 	_, err = tx.Exec(ctx, `
-		INSERT INTO property_revision (id, property_id, revision_no, status, datatype, labels, descriptions, change_set_id, actor, created_at)
-		VALUES ($1,$2,1,'active',$3,$4,$5,$6,$7,$8)
-	`, datatype.NewUUID(), id, string(in.Datatype), labelsJSON, descJSON, cs.id, meta.Actor, now)
+		INSERT INTO entity_revision (id, entity_id, revision_no, status, labels, descriptions, change_set_id, actor, created_at)
+		VALUES ($1,$2,1,'active',$3,$4,$5,$6,$7)
+	`, datatype.NewUUID(), id, labelsJSON, descJSON, cs.id, meta.Actor, now)
 	if err != nil {
 		return nil, err
 	}
-	if err := cs.addItem(ctx, tx, "property", id, publicID, "create", nil); err != nil {
+	if err := cs.addItem(ctx, tx, "property", id, publicID, "create", payload); err != nil {
 		return nil, err
 	}
 
@@ -251,8 +259,10 @@ func (s *Store) GetPropertyByPublicID(ctx context.Context, pid string) (*domain.
 	var dt string
 	var constraintsJSON []byte
 	err := s.pool.QueryRow(ctx, `
-		SELECT id, public_id, datatype, status, current_revision_no, constraints, created_at, updated_at
-		FROM property_definition WHERE public_id = $1
+		SELECT e.id, e.public_id, pp.datatype, e.status, e.current_revision_no, pp.constraints, e.created_at, e.updated_at
+		FROM property_profile pp
+		JOIN entity e ON e.id = pp.entity_id
+		WHERE e.public_id = $1 AND e.status <> 'deleted'
 	`, pid).Scan(&p.ID, &p.PublicID, &dt, &p.Status, &p.RevisionNo, &constraintsJSON, &p.CreatedAt, &p.UpdatedAt)
 	if err != nil {
 		return nil, err
@@ -261,11 +271,11 @@ func (s *Store) GetPropertyByPublicID(ctx context.Context, pid string) (*domain.
 	if len(constraintsJSON) > 0 {
 		_ = json.Unmarshal(constraintsJSON, &p.Constraints)
 	}
-	p.Labels, err = s.loadLabels(ctx, `SELECT lang, text FROM property_label WHERE property_id = $1`, p.ID)
+	p.Labels, err = s.loadLabels(ctx, `SELECT lang, text FROM entity_label WHERE entity_id = $1`, p.ID)
 	if err != nil {
 		return nil, err
 	}
-	p.Descriptions, err = s.loadLabels(ctx, `SELECT lang, text FROM property_description WHERE property_id = $1`, p.ID)
+	p.Descriptions, err = s.loadLabels(ctx, `SELECT lang, text FROM entity_description WHERE entity_id = $1`, p.ID)
 	if err != nil {
 		return nil, err
 	}
@@ -467,7 +477,12 @@ func (s *Store) CreateStatement(ctx context.Context, meta domain.WriteMeta, in d
 
 	var propertyID uuid.UUID
 	var propertyPID, dt string
-	err = tx.QueryRow(ctx, `SELECT id, public_id, datatype FROM property_definition WHERE public_id = $1`, in.PropertyPublicID).
+	err = tx.QueryRow(ctx, `
+		SELECT e.id, e.public_id, pp.datatype
+		FROM property_profile pp
+		JOIN entity e ON e.id = pp.entity_id
+		WHERE e.public_id = $1 AND e.status <> 'deleted'
+	`, in.PropertyPublicID).
 		Scan(&propertyID, &propertyPID, &dt)
 	if err != nil {
 		return nil, fmt.Errorf("property: %w", err)
@@ -594,7 +609,8 @@ func (s *Store) GetStatementByPublicID(ctx context.Context, sid string) (*domain
 			st.current_revision_no, st.created_at, st.updated_at
 		FROM statement st
 		JOIN entity e ON e.id = st.subject_id
-		JOIN property_definition p ON p.id = st.property_id
+		JOIN property_profile pp ON pp.entity_id = st.property_id
+		JOIN entity p ON p.id = pp.entity_id
 		WHERE st.public_id = $1
 	`, sid)
 	st, err := scanStatement(row)
@@ -616,7 +632,8 @@ func (s *Store) ListStatementsBySubject(ctx context.Context, qid string) ([]doma
 		FROM statement_current sc
 		JOIN statement st ON st.id = sc.statement_id
 		JOIN entity e ON e.id = st.subject_id
-		JOIN property_definition p ON p.id = st.property_id
+		JOIN property_profile pp ON pp.entity_id = st.property_id
+		JOIN entity p ON p.id = pp.entity_id
 		WHERE e.public_id = $1
 		ORDER BY st.public_id
 	`, qid)

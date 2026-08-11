@@ -205,9 +205,12 @@ func (s *Store) PublishRelease(ctx context.Context, meta domain.WriteMeta, packa
 	now := time.Now().UTC()
 	var objects []domain.ReleaseObject
 
-	// Owned entities
+	// Ordinary entities (not property/class profiles)
 	entRows, err := tx.Query(ctx, `
-		SELECT public_id, current_revision_no FROM entity WHERE package_id = $1
+		SELECT e.public_id, e.current_revision_no FROM entity e
+		WHERE e.package_id = $1
+		  AND NOT EXISTS (SELECT 1 FROM property_profile pp WHERE pp.entity_id = e.id)
+		  AND NOT EXISTS (SELECT 1 FROM class_profile cp WHERE cp.entity_id = e.id)
 	`, packageID)
 	if err != nil {
 		return nil, err
@@ -224,7 +227,10 @@ func (s *Store) PublishRelease(ctx context.Context, meta domain.WriteMeta, packa
 	entRows.Close()
 
 	propRows, err := tx.Query(ctx, `
-		SELECT public_id, current_revision_no FROM property_definition WHERE package_id = $1
+		SELECT e.public_id, e.current_revision_no
+		FROM entity e
+		JOIN property_profile pp ON pp.entity_id = e.id
+		WHERE e.package_id = $1
 	`, packageID)
 	if err != nil {
 		return nil, err
@@ -490,11 +496,12 @@ func (s *Store) exportPropertyAtRevision(ctx context.Context, pid string, rev in
 	var dt string
 	var pkgCode *string
 	err := s.pool.QueryRow(ctx, `
-		SELECT pr.status, pr.datatype, pr.labels, pr.descriptions, pkg.code
-		FROM property_revision pr
-		JOIN property_definition p ON p.id = pr.property_id
-		LEFT JOIN package pkg ON pkg.id = p.package_id
-		WHERE p.public_id = $1 AND pr.revision_no = $2
+		SELECT er.status, pp.datatype, er.labels, er.descriptions, pkg.code
+		FROM entity_revision er
+		JOIN entity e ON e.id = er.entity_id
+		JOIN property_profile pp ON pp.entity_id = e.id
+		LEFT JOIN package pkg ON pkg.id = e.package_id
+		WHERE e.public_id = $1 AND er.revision_no = $2
 	`, pid, rev).Scan(&bp.Status, &dt, &labelsJSON, &descJSON, &pkgCode)
 	if err != nil {
 		return nil, err
@@ -522,7 +529,8 @@ func (s *Store) exportStatementAtRevision(ctx context.Context, sid string, rev i
 		FROM statement_revision sr
 		JOIN statement st ON st.id = sr.statement_id
 		JOIN entity e ON e.id = st.subject_id
-		JOIN property_definition p ON p.id = st.property_id
+		JOIN property_profile pp ON pp.entity_id = st.property_id
+		JOIN entity p ON p.id = pp.entity_id
 		LEFT JOIN package pkg ON pkg.id = st.package_id
 		WHERE st.public_id = $1 AND sr.revision_no = $2
 	`, sid, rev)

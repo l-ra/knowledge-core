@@ -42,7 +42,7 @@ func (e *Engine) CreateEntity(ctx context.Context, meta domain.WriteMeta, in dom
 }
 
 func (e *Engine) GetEntity(ctx context.Context, qid string) (*domain.Entity, error) {
-	if _, err := datatype.ParsePublicEntityID(qid); err != nil {
+	if _, _, err := datatype.ParsePublicGraphID(qid); err != nil {
 		return nil, fmt.Errorf("%w: %v", ErrInvalid, err)
 	}
 	if err := e.authorizeEntity(ctx, auth.OpDiscover, qid); err != nil {
@@ -56,7 +56,7 @@ func (e *Engine) GetEntity(ctx context.Context, qid string) (*domain.Entity, err
 }
 
 func (e *Engine) UpdateEntity(ctx context.Context, meta domain.WriteMeta, qid string, in domain.UpdateEntityInput) (*domain.WriteResult[domain.Entity], error) {
-	if _, err := datatype.ParsePublicEntityID(qid); err != nil {
+	if _, _, err := datatype.ParsePublicGraphID(qid); err != nil {
 		return nil, fmt.Errorf("%w: %v", ErrInvalid, err)
 	}
 	if err := e.authorizeEntity(ctx, auth.OpUpdate, qid); err != nil {
@@ -212,7 +212,7 @@ func (e *Engine) GetStatement(ctx context.Context, sid string) (*domain.Statemen
 }
 
 func (e *Engine) ListEntityStatements(ctx context.Context, qid string) ([]domain.Statement, error) {
-	if _, err := datatype.ParsePublicEntityID(qid); err != nil {
+	if _, _, err := datatype.ParsePublicGraphID(qid); err != nil {
 		return nil, fmt.Errorf("%w: %v", ErrInvalid, err)
 	}
 	list, err := e.store.ListStatementsBySubject(ctx, qid)
@@ -253,7 +253,7 @@ func (e *Engine) GetChangeSet(ctx context.Context, cid string) (*domain.ChangeSe
 }
 
 func (e *Engine) GetEntityHistory(ctx context.Context, qid string) ([]domain.EntityRevision, error) {
-	if _, err := datatype.ParsePublicEntityID(qid); err != nil {
+	if _, _, err := datatype.ParsePublicGraphID(qid); err != nil {
 		return nil, fmt.Errorf("%w: %v", ErrInvalid, err)
 	}
 	if err := e.authorizeEntity(ctx, auth.OpRead, qid); err != nil {

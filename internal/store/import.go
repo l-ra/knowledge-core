@@ -301,7 +301,7 @@ func (s *Store) entityRevisionMatches(ctx context.Context, tx pgx.Tx, publicID s
 
 func (s *Store) importProperty(ctx context.Context, tx pgx.Tx, bp domain.BundleProperty, cs *changeSetTx) error {
 	var propertyID uuid.UUID
-	err := tx.QueryRow(ctx, `SELECT id FROM property_definition WHERE public_id = $1`, bp.PublicID).Scan(&propertyID)
+	err := tx.QueryRow(ctx, `SELECT e.id FROM property_profile pp JOIN entity e ON e.id = pp.entity_id WHERE e.public_id = $1`, bp.PublicID).Scan(&propertyID)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return s.insertImportedProperty(ctx, tx, bp, cs)
 	}
@@ -337,28 +337,35 @@ func (s *Store) insertImportedProperty(ctx context.Context, tx pgx.Tx, bp domain
 	id := datatype.NewUUID()
 	now := time.Now().UTC()
 	_, err = tx.Exec(ctx, `
-		INSERT INTO property_definition (id, public_id, datatype, status, current_revision_no, package_id, created_at, updated_at)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$7)
-	`, id, bp.PublicID, string(bp.Datatype), string(bp.Status), bp.RevisionNo, pkgID, now)
+		INSERT INTO entity (id, public_id, status, current_revision_no, package_id, created_at, updated_at)
+		VALUES ($1,$2,$3,$4,$5,$6,$6)
+	`, id, bp.PublicID, string(bp.Status), bp.RevisionNo, pkgID, now)
+	if err != nil {
+		return err
+	}
+	_, err = tx.Exec(ctx, `
+		INSERT INTO property_profile (entity_id, datatype, constraints)
+		VALUES ($1,$2,'{}')
+	`, id, string(bp.Datatype))
 	if err != nil {
 		return err
 	}
 	for lang, text := range labels {
-		if _, err := tx.Exec(ctx, `INSERT INTO property_label (property_id, lang, text) VALUES ($1,$2,$3)`, id, lang, text); err != nil {
+		if _, err := tx.Exec(ctx, `INSERT INTO entity_label (entity_id, lang, text) VALUES ($1,$2,$3)`, id, lang, text); err != nil {
 			return err
 		}
 	}
 	for lang, text := range descs {
-		if _, err := tx.Exec(ctx, `INSERT INTO property_description (property_id, lang, text) VALUES ($1,$2,$3)`, id, lang, text); err != nil {
+		if _, err := tx.Exec(ctx, `INSERT INTO entity_description (entity_id, lang, text) VALUES ($1,$2,$3)`, id, lang, text); err != nil {
 			return err
 		}
 	}
 	labelsJSON, _ := labelsToJSON(labels)
 	descJSON, _ := labelsToJSON(descs)
 	_, err = tx.Exec(ctx, `
-		INSERT INTO property_revision (id, property_id, revision_no, status, datatype, labels, descriptions, change_set_id, actor, created_at)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
-	`, datatype.NewUUID(), id, bp.RevisionNo, string(bp.Status), string(bp.Datatype), labelsJSON, descJSON, cs.id, csActor(cs), now)
+		INSERT INTO entity_revision (id, entity_id, revision_no, status, labels, descriptions, change_set_id, actor, created_at)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+	`, datatype.NewUUID(), id, bp.RevisionNo, string(bp.Status), labelsJSON, descJSON, cs.id, csActor(cs), now)
 	if err != nil {
 		return err
 	}
@@ -369,10 +376,11 @@ func (s *Store) propertyRevisionMatches(ctx context.Context, tx pgx.Tx, publicID
 	var status, dt string
 	var labelsJSON, descJSON []byte
 	err := tx.QueryRow(ctx, `
-		SELECT pr.status, pr.datatype, pr.labels, pr.descriptions
-		FROM property_revision pr
-		JOIN property_definition p ON p.id = pr.property_id
-		WHERE p.public_id = $1 AND pr.revision_no = $2
+		SELECT er.status, pp.datatype, er.labels, er.descriptions
+		FROM entity_revision er
+		JOIN entity e ON e.id = er.entity_id
+		JOIN property_profile pp ON pp.entity_id = e.id
+		WHERE e.public_id = $1 AND er.revision_no = $2
 	`, publicID, rev).Scan(&status, &dt, &labelsJSON, &descJSON)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return false, nil
@@ -460,7 +468,7 @@ func (s *Store) insertImportedStatement(ctx context.Context, tx pgx.Tx, bs domai
 	}
 	var propertyID uuid.UUID
 	var dt string
-	err = tx.QueryRow(ctx, `SELECT id, datatype FROM property_definition WHERE public_id = $1`, bs.Property).Scan(&propertyID, &dt)
+	err = tx.QueryRow(ctx, `SELECT e.id, pp.datatype FROM property_profile pp JOIN entity e ON e.id = pp.entity_id WHERE e.public_id = $1`, bs.Property).Scan(&propertyID, &dt)
 	if err != nil {
 		return fmt.Errorf("property %q: %w", bs.Property, err)
 	}
@@ -558,7 +566,8 @@ func (s *Store) statementRevisionMatches(ctx context.Context, tx pgx.Tx, publicI
 		FROM statement_revision sr
 		JOIN statement st ON st.id = sr.statement_id
 		JOIN entity e ON e.id = st.subject_id
-		JOIN property_definition p ON p.id = st.property_id
+		JOIN property_profile pp ON pp.entity_id = st.property_id
+		JOIN entity p ON p.id = pp.entity_id
 		WHERE st.public_id = $1 AND sr.revision_no = $2
 	`, publicID, rev)
 	var status, subject, property string
