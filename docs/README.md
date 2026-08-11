@@ -7,7 +7,7 @@ Tato složka je zdroj pravdy pro vývoj: koncepty, uzavřená implementační ro
 | [ROADMAP.md](ROADMAP.md) | **Aktuální plán** — stav fází 0–8+, mezery, další kroky |
 | [ops/](ops/) | Provozní návody (post-install, oprávnění) |
 | [design/](design/) | Architektonický návrh v1 (vstupní specifikace) |
-| [concepts/](concepts/) | Stabilní vysvětlení klíčových konceptů |
+| [concepts/](concepts/) | Stabilní vysvětlení klíčových konceptů + [datový model / ER](concepts/data-model.md) |
 | [decisions/](decisions/) | ADR — konkrétní rozhodnutí (stack, §38, schema) |
 | [specs/](specs/) | Zadání pro vývoj po fázích (API, schema, acceptance) |
 
@@ -18,7 +18,9 @@ Tato složka je zdroj pravdy pro vývoj: koncepty, uzavřená implementační ro
 3. [design/knowledge_core_v1_technicky_navrh.md](design/knowledge_core_v1_technicky_navrh.md) — cíl a invarianty
 4. [decisions/0001-stack-and-open-questions.md](decisions/0001-stack-and-open-questions.md) — uzavřené volby
 5. [concepts/overview.md](concepts/overview.md) — model v kostce
-6. [specs/](specs/) — detailní zadání jednotlivých fází
+6. [concepts/data-model.md](concepts/data-model.md) — **fyzické schema + ER vazby**
+7. [decisions/0005-entity-profile-schema.md](decisions/0005-entity-profile-schema.md) — Entity + Profile
+8. [specs/](specs/) — detailní zadání jednotlivých fází
 
 ## Stav implementace
 

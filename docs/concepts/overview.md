@@ -1,11 +1,13 @@
 # Koncepty Knowledge Core
 
-Zkrácený model pro implementátory. Normativní detaily: [technický návrh](../design/knowledge_core_v1_technicky_navrh.md).
+Zkrácený model pro implementátory. Normativní detaily: [technický návrh](../design/knowledge_core_v1_technicky_navrh.md).  
+Fyzické PostgreSQL schema a ER vazby: [data-model.md](data-model.md).  
+Schema objekty: [ADR 0005 — Entity + Profile](../decisions/0005-entity-profile-schema.md).
 
 ## Čtyři vrstvy
 
-1. **Knowledge graph** — Entity, Statement, Qualifier, Reference (doménová data)
-2. **Model repository** — PropertyDefinition, Lens, Policy, Package, Release (modelová metadata)
+1. **Knowledge graph** — Entity (včetně P*/C*), Statement, Qualifier, Reference
+2. **Model / schema profiles** — `property_profile`, `class_profile`, Lens, Policy, Package, Release (privilegovaná metadata)
 3. **Software** — Go služba + případné registrované domain hooks (žádný user script v lens/policy)
 4. **Projections** — odvozené read modely; rebuildable; nejsou SoT
 
@@ -15,13 +17,16 @@ Canonical SoT = PostgreSQL datastore Knowledge Core.
 
 | Typ | Interní ID | Veřejný ID |
 |-----|------------|------------|
-| Entity | UUID | `Q<n>` |
-| Property | UUID | `P<n>` |
+| Entity | UUID | `Q<n>` / `P<n>` / `C<n>` (P = property profile, C = class profile) |
+| Property (schema view) | stejné UUID jako entita | `P<n>` |
+| Class (schema view) | stejné UUID jako entita | `C<n>` |
 | Statement | UUID | `S<n>` |
 | Reference | UUID | `R<n>` (v1) |
 | ChangeSet | UUID | — |
 
 Veřejné ID se **nikdy nerecyklují**. Label není identita.
+
+Typing entity: statement `instanceOf` → entita `C*` (class_profile). Property/class jsou entity; o nich lze dělat statementy. Schema kontrakt (datatype, constraints, subClassOf) žije v profile, ne v obyčejných statements.
 
 ## Statement
 
