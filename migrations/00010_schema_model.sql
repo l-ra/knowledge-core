@@ -2,39 +2,16 @@
 INSERT INTO id_counter (kind, last_value) VALUES ('class', 0)
 ON CONFLICT (kind) DO NOTHING;
 
-CREATE TABLE class_definition (
-    id                    UUID PRIMARY KEY,
-    public_id             TEXT NOT NULL UNIQUE,
-    status                TEXT NOT NULL CHECK (status IN ('active', 'deprecated', 'deleted')),
-    package_id            UUID REFERENCES package (id),
-    canonical_entity_id   UUID REFERENCES entity (id),
-    document              JSONB NOT NULL DEFAULT '{}',
-    created_at            TIMESTAMPTZ NOT NULL DEFAULT now(),
-    updated_at            TIMESTAMPTZ NOT NULL DEFAULT now()
+-- Schema profile: entity with public_id C* is a class when this row exists.
+CREATE TABLE class_profile (
+    entity_id  UUID PRIMARY KEY REFERENCES entity (id) ON DELETE CASCADE,
+    document   JSONB NOT NULL DEFAULT '{}'
 );
-
-CREATE INDEX class_definition_package_idx ON class_definition (package_id);
-
-CREATE TABLE class_label (
-    class_id UUID NOT NULL REFERENCES class_definition (id) ON DELETE CASCADE,
-    lang     TEXT NOT NULL,
-    text     TEXT NOT NULL CHECK (length(trim(text)) > 0),
-    PRIMARY KEY (class_id, lang)
-);
-
-CREATE TABLE class_description (
-    class_id UUID NOT NULL REFERENCES class_definition (id) ON DELETE CASCADE,
-    lang     TEXT NOT NULL,
-    text     TEXT NOT NULL,
-    PRIMARY KEY (class_id, lang)
-);
-
-ALTER TABLE property_definition ADD COLUMN IF NOT EXISTS constraints JSONB NOT NULL DEFAULT '{}';
 
 CREATE TABLE shape_profile (
     id         UUID PRIMARY KEY,
     code       TEXT NOT NULL UNIQUE,
-    class_id   UUID NOT NULL REFERENCES class_definition (id) ON DELETE CASCADE,
+    class_id   UUID NOT NULL REFERENCES class_profile (entity_id) ON DELETE CASCADE,
     document   JSONB NOT NULL DEFAULT '{}',
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
@@ -67,8 +44,5 @@ CREATE INDEX validation_report_entity_idx ON validation_report (entity_qid);
 DROP TABLE IF EXISTS validation_report;
 DROP TABLE IF EXISTS model_schema_config;
 DROP TABLE IF EXISTS shape_profile;
-ALTER TABLE property_definition DROP COLUMN IF EXISTS constraints;
-DROP TABLE IF EXISTS class_description;
-DROP TABLE IF EXISTS class_label;
-DROP TABLE IF EXISTS class_definition;
+DROP TABLE IF EXISTS class_profile;
 DELETE FROM id_counter WHERE kind = 'class';

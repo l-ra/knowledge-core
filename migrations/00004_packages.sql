@@ -16,11 +16,9 @@ CREATE TABLE package_dependency (
 );
 
 ALTER TABLE entity ADD COLUMN package_id UUID REFERENCES package (id);
-ALTER TABLE property_definition ADD COLUMN package_id UUID REFERENCES package (id);
 ALTER TABLE statement ADD COLUMN package_id UUID REFERENCES package (id);
 
 CREATE INDEX entity_package_idx ON entity (package_id);
-CREATE INDEX property_package_idx ON property_definition (package_id);
 CREATE INDEX statement_package_idx ON statement (package_id);
 
 CREATE TABLE release (
@@ -54,7 +52,6 @@ DROP TABLE IF EXISTS release_object;
 DROP TABLE IF EXISTS release_dependency;
 DROP TABLE IF EXISTS release;
 ALTER TABLE statement DROP COLUMN IF EXISTS package_id;
-ALTER TABLE property_definition DROP COLUMN IF EXISTS package_id;
 ALTER TABLE entity DROP COLUMN IF EXISTS package_id;
 DROP TABLE IF EXISTS package_dependency;
 DROP TABLE IF EXISTS package;

@@ -17,7 +17,7 @@ CREATE INDEX statement_reference_ref_idx ON statement_reference (reference_id);
 CREATE TABLE statement_qualifier (
     id          UUID PRIMARY KEY,
     statement_id UUID NOT NULL REFERENCES statement (id) ON DELETE CASCADE,
-    property_id UUID NOT NULL REFERENCES property_definition (id),
+    property_id UUID NOT NULL REFERENCES property_profile (entity_id),
     value_type  TEXT NOT NULL,
     value_bool         BOOLEAN,
     value_int64        BIGINT,
@@ -48,7 +48,7 @@ CREATE TABLE statement_revision_qualifier (
     id           UUID PRIMARY KEY,
     statement_id UUID NOT NULL REFERENCES statement (id) ON DELETE CASCADE,
     revision_no  INT NOT NULL CHECK (revision_no > 0),
-    property_id  UUID NOT NULL REFERENCES property_definition (id),
+    property_id  UUID NOT NULL REFERENCES property_profile (entity_id),
     value_type   TEXT NOT NULL,
     value_bool         BOOLEAN,
     value_int64        BIGINT,
