@@ -30,11 +30,10 @@ func (s *Server) listClasses(w http.ResponseWriter, r *http.Request) {
 }
 
 type createClassReq struct {
-	PackageCode       string            `json:"packageCode,omitempty"`
-	Labels            map[string]string `json:"labels"`
-	Descriptions      map[string]string `json:"descriptions,omitempty"`
-	SubClassOf        string            `json:"subClassOf,omitempty"`
-	CanonicalEntityID string            `json:"canonicalEntityId,omitempty"`
+	PackageCode  string            `json:"packageCode,omitempty"`
+	Labels       map[string]string `json:"labels"`
+	Descriptions map[string]string `json:"descriptions,omitempty"`
+	SubClassOf   string            `json:"subClassOf,omitempty"`
 }
 
 func (s *Server) createClass(w http.ResponseWriter, r *http.Request) {
@@ -51,7 +50,7 @@ func (s *Server) createClass(w http.ResponseWriter, r *http.Request) {
 	meta := writeMetaFromRequest(r, "createClass", hashBody(body))
 	res, err := s.engine.CreateClass(r.Context(), meta, domain.CreateClassInput{
 		PackageCode: req.PackageCode, Labels: req.Labels, Descriptions: req.Descriptions,
-		SubClassOf: req.SubClassOf, CanonicalEntityID: req.CanonicalEntityID,
+		SubClassOf: req.SubClassOf,
 	})
 	if err != nil {
 		writeEngineError(w, err)
@@ -212,9 +211,6 @@ func classDTO(c *domain.ClassDefinition) map[string]any {
 	}
 	if c.PackageCode != "" {
 		out["packageCode"] = c.PackageCode
-	}
-	if c.CanonicalEntityQID != "" {
-		out["canonicalEntityId"] = c.CanonicalEntityQID
 	}
 	return out
 }

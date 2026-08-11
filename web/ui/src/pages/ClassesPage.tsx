@@ -7,7 +7,6 @@ type ClassDef = {
   id: string;
   labels?: Record<string, string>;
   document?: { subClassOf?: string };
-  canonicalEntityId?: string;
 };
 
 export function ClassesPage() {
@@ -15,7 +14,6 @@ export function ClassesPage() {
   const [items, setItems] = useState<ClassDef[]>([]);
   const [label, setLabel] = useState("");
   const [subClassOf, setSubClassOf] = useState("");
-  const [canonicalEntityId, setCanonicalEntityId] = useState("");
   const [error, setError] = useState("");
 
   async function load() {
@@ -39,12 +37,10 @@ export function ClassesPage() {
         body: JSON.stringify({
           labels: { en: label },
           subClassOf: subClassOf || undefined,
-          canonicalEntityId: canonicalEntityId || undefined,
         }),
       });
       setLabel("");
       setSubClassOf("");
-      setCanonicalEntityId("");
       await load();
     } catch (err) {
       setError(err instanceof Error ? err.message : t("common.error"));
@@ -63,10 +59,6 @@ export function ClassesPage() {
           {t("classes.subClassOf")}
           <input value={subClassOf} onChange={(e) => setSubClassOf(e.target.value)} placeholder="C1" />
         </label>
-        <label className="field">
-          {t("classes.canonicalEntity")}
-          <input value={canonicalEntityId} onChange={(e) => setCanonicalEntityId(e.target.value)} placeholder="Q1" />
-        </label>
         <button className="primary">{t("classes.create")}</button>
       </form>
       {error && <p className="error">{error}</p>}
@@ -76,16 +68,16 @@ export function ClassesPage() {
             <th>ID</th>
             <th>Label</th>
             <th>{t("classes.subClassOf")}</th>
-            <th>{t("classes.canonicalEntity")}</th>
           </tr>
         </thead>
         <tbody>
           {items.map((c) => (
             <tr key={c.id}>
-              <td>{c.id}</td>
+              <td>
+                <Link to={`/entities/${c.id}`}>{c.id}</Link>
+              </td>
               <td>{c.labels?.en}</td>
               <td>{c.document?.subClassOf || "—"}</td>
-              <td>{c.canonicalEntityId || "—"}</td>
             </tr>
           ))}
         </tbody>

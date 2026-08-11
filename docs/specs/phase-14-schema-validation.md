@@ -4,7 +4,7 @@ Extends the knowledge model with classes, property constraints, and SHACL-like s
 
 ## Model
 
-- **ClassDefinition** (`C*`) — labels, optional `subClassOf`, optional `canonicalEntityId` linking to the entity used in `instanceOf` statements.
+- **ClassDefinition** (`C*`) — entity with `class_profile` (labels on entity, optional `subClassOf`). Typing uses `instanceOf → C*`.
 - **Property constraints** — JSON on `property_definition.constraints`: `domainClasses`, `rangeClasses`, `minCount`, `maxCount`, `severity`.
 - **ShapeProfile** — per-class required/allowed properties, optional `closed` flag.
 - **Schema config** — `instanceOfProperty` (property public id) configured via `PUT /v1/admin/schema-config`.

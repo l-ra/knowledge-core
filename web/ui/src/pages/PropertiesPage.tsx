@@ -106,7 +106,9 @@ export function PropertiesPage() {
         <tbody>
           {items.map((p) => (
             <tr key={p.id}>
-              <td>{p.id}</td>
+              <td>
+                <Link to={`/entities/${p.id}`}>{p.id}</Link>
+              </td>
               <td>{p.labels?.en}</td>
               <td>{p.datatype}</td>
               <td className="muted">{p.constraints ? JSON.stringify(p.constraints) : "—"}</td>
