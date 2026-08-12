@@ -64,6 +64,11 @@ func (s *Store) ImportReleaseBundle(ctx context.Context, meta domain.WriteMeta, 
 			return nil, err
 		}
 	}
+	for _, c := range bundle.Classes {
+		if err := s.importClass(ctx, tx, c, cs); err != nil {
+			return nil, err
+		}
+	}
 	for _, e := range bundle.Entities {
 		if err := s.importEntity(ctx, tx, e, cs); err != nil {
 			return nil, err
@@ -183,6 +188,8 @@ func parsePublicIDNumber(prefix, publicID string) (int64, error) {
 		return datatype.ParsePublicEntityID(publicID)
 	case "P":
 		return datatype.ParsePublicPropertyID(publicID)
+	case "C":
+		return datatype.ParsePublicClassID(publicID)
 	case "S":
 		return datatype.ParsePublicStatementID(publicID)
 	case "R":
@@ -197,20 +204,6 @@ func parsePublicIDNumber(prefix, publicID string) (int64, error) {
 	default:
 		return 0, fmt.Errorf("unknown public id prefix %q", prefix)
 	}
-}
-
-func (s *Store) resolvePackageIDRequired(ctx context.Context, tx pgx.Tx, code string) (uuid.UUID, error) {
-	if code == "" {
-		return uuid.Nil, fmt.Errorf("package code required for import")
-	}
-	id, err := s.resolvePackageID(ctx, tx, code)
-	if err != nil {
-		return uuid.Nil, err
-	}
-	if id == nil {
-		return uuid.Nil, fmt.Errorf("package %q not found", code)
-	}
-	return *id, nil
 }
 
 func (s *Store) importEntity(ctx context.Context, tx pgx.Tx, be domain.BundleEntity, cs *changeSetTx) error {
@@ -392,6 +385,108 @@ func (s *Store) propertyRevisionMatches(ctx context.Context, tx pgx.Tx, publicID
 	descs, _ := jsonToLabels(descJSON)
 	return status == string(bp.Status) && dt == string(bp.Datatype) &&
 		mapsEqual(labels, bp.Labels) && mapsEqual(descs, bp.Descriptions), nil
+}
+
+func (s *Store) importClass(ctx context.Context, tx pgx.Tx, bc domain.BundleClass, cs *changeSetTx) error {
+	var classID uuid.UUID
+	err := tx.QueryRow(ctx, `SELECT e.id FROM class_profile cp JOIN entity e ON e.id = cp.entity_id WHERE e.public_id = $1`, bc.PublicID).Scan(&classID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return s.insertImportedClass(ctx, tx, bc, cs)
+	}
+	if err != nil {
+		return err
+	}
+	ok, err := s.classRevisionMatches(ctx, tx, bc.PublicID, bc.RevisionNo, bc)
+	if err != nil {
+		return err
+	}
+	if !ok {
+		return fmt.Errorf("%w: class %s revision %d", ErrImportCollision, bc.PublicID, bc.RevisionNo)
+	}
+	return nil
+}
+
+func (s *Store) insertImportedClass(ctx context.Context, tx pgx.Tx, bc domain.BundleClass, cs *changeSetTx) error {
+	if err := s.reservePublicID(ctx, tx, "class", "C", bc.PublicID); err != nil {
+		return err
+	}
+	pkgID, err := s.resolvePackageIDRequired(ctx, tx, bc.PackageCode)
+	if err != nil {
+		return err
+	}
+	labels := bc.Labels
+	if labels == nil {
+		labels = map[string]string{}
+	}
+	descs := bc.Descriptions
+	if descs == nil {
+		descs = map[string]string{}
+	}
+	doc := domain.ClassDocument{SubClassOf: bc.SubClassOf}
+	docJSON, err := json.Marshal(doc)
+	if err != nil {
+		return err
+	}
+	id := datatype.NewUUID()
+	now := time.Now().UTC()
+	_, err = tx.Exec(ctx, `
+		INSERT INTO entity (id, public_id, status, current_revision_no, package_id, created_at, updated_at)
+		VALUES ($1,$2,$3,$4,$5,$6,$6)
+	`, id, bc.PublicID, string(bc.Status), bc.RevisionNo, pkgID, now)
+	if err != nil {
+		return err
+	}
+	_, err = tx.Exec(ctx, `
+		INSERT INTO class_profile (entity_id, document)
+		VALUES ($1,$2)
+	`, id, docJSON)
+	if err != nil {
+		return err
+	}
+	for lang, text := range labels {
+		if _, err := tx.Exec(ctx, `INSERT INTO entity_label (entity_id, lang, text) VALUES ($1,$2,$3)`, id, lang, text); err != nil {
+			return err
+		}
+	}
+	for lang, text := range descs {
+		if _, err := tx.Exec(ctx, `INSERT INTO entity_description (entity_id, lang, text) VALUES ($1,$2,$3)`, id, lang, text); err != nil {
+			return err
+		}
+	}
+	labelsJSON, _ := labelsToJSON(labels)
+	descJSON, _ := labelsToJSON(descs)
+	_, err = tx.Exec(ctx, `
+		INSERT INTO entity_revision (id, entity_id, revision_no, status, labels, descriptions, change_set_id, actor, created_at)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+	`, datatype.NewUUID(), id, bc.RevisionNo, string(bc.Status), labelsJSON, descJSON, cs.id, csActor(cs), now)
+	if err != nil {
+		return err
+	}
+	return cs.addItem(ctx, tx, "class", id, bc.PublicID, "import", docJSON)
+}
+
+func (s *Store) classRevisionMatches(ctx context.Context, tx pgx.Tx, publicID string, rev int, bc domain.BundleClass) (bool, error) {
+	var status string
+	var labelsJSON, descJSON, docJSON []byte
+	err := tx.QueryRow(ctx, `
+		SELECT er.status, er.labels, er.descriptions, cp.document
+		FROM entity_revision er
+		JOIN entity e ON e.id = er.entity_id
+		JOIN class_profile cp ON cp.entity_id = e.id
+		WHERE e.public_id = $1 AND er.revision_no = $2
+	`, publicID, rev).Scan(&status, &labelsJSON, &descJSON, &docJSON)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	labels, _ := jsonToLabels(labelsJSON)
+	descs, _ := jsonToLabels(descJSON)
+	var doc domain.ClassDocument
+	_ = json.Unmarshal(docJSON, &doc)
+	return status == string(bc.Status) && doc.SubClassOf == bc.SubClassOf &&
+		mapsEqual(labels, bc.Labels) && mapsEqual(descs, bc.Descriptions), nil
 }
 
 func (s *Store) importReference(ctx context.Context, tx pgx.Tx, br domain.BundleReference, cs *changeSetTx) error {

@@ -23,6 +23,7 @@ type StatementWriter interface {
 
 type LensStore interface {
 	GetLensByCode(ctx context.Context, code string) (*domain.LensDefinition, error)
+	GetEntityByPublicID(ctx context.Context, qid string) (*domain.Entity, error)
 	ResolveEntityByLensKey(ctx context.Context, doc domain.LensDocument, keyValue string) (string, error)
 	FindActiveStatementBySubjectProperty(ctx context.Context, qid, pid string) (*domain.Statement, error)
 	ListActiveStatementsBySubjectProperty(ctx context.Context, qid, pid string) ([]domain.Statement, error)
@@ -230,8 +231,12 @@ func (e *Engine) setField(ctx context.Context, meta domain.WriteMeta, qid string
 	}
 	existing, err := e.store.FindActiveStatementBySubjectProperty(ctx, qid, field.Property)
 	if errors.Is(err, pgx.ErrNoRows) {
+		pkg, err := e.packageForEntity(ctx, qid)
+		if err != nil {
+			return err
+		}
 		_, err = e.writer.CreateStatement(ctx, meta, domain.CreateStatementInput{
-			SubjectPublicID: qid, PropertyPublicID: field.Property, Value: val,
+			PackageCode: pkg, SubjectPublicID: qid, PropertyPublicID: field.Property, Value: val,
 		})
 		return err
 	}
@@ -284,10 +289,25 @@ func (e *Engine) addField(ctx context.Context, meta domain.WriteMeta, qid string
 			return nil
 		}
 	}
+	pkg, err := e.packageForEntity(ctx, qid)
+	if err != nil {
+		return err
+	}
 	_, err = e.writer.CreateStatement(ctx, meta, domain.CreateStatementInput{
-		SubjectPublicID: qid, PropertyPublicID: field.Property, Value: val,
+		PackageCode: pkg, SubjectPublicID: qid, PropertyPublicID: field.Property, Value: val,
 	})
 	return err
+}
+
+func (e *Engine) packageForEntity(ctx context.Context, qid string) (string, error) {
+	ent, err := e.store.GetEntityByPublicID(ctx, qid)
+	if err != nil {
+		return "", err
+	}
+	if ent.PackageCode == "" {
+		return "", fmt.Errorf("package code required")
+	}
+	return ent.PackageCode, nil
 }
 
 func (e *Engine) removeField(ctx context.Context, meta domain.WriteMeta, qid string, field domain.LensField, val datatype.Value) error {

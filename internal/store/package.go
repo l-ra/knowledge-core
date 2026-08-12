@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -33,6 +34,20 @@ func (s *Store) resolvePackageID(ctx context.Context, q rowQuerier, code string)
 	return &id, nil
 }
 
+func (s *Store) resolvePackageIDRequired(ctx context.Context, q rowQuerier, code string) (uuid.UUID, error) {
+	if strings.TrimSpace(code) == "" {
+		return uuid.Nil, fmt.Errorf("package code required")
+	}
+	id, err := s.resolvePackageID(ctx, q, code)
+	if err != nil {
+		return uuid.Nil, err
+	}
+	if id == nil {
+		return uuid.Nil, fmt.Errorf("package %q not found", code)
+	}
+	return *id, nil
+}
+
 func (s *Store) CreatePackage(ctx context.Context, meta domain.WriteMeta, in domain.CreatePackageInput) (*domain.WriteResult[domain.Package], error) {
 	if in.Code == "" {
 		return nil, fmt.Errorf("package code required")
@@ -57,10 +72,14 @@ func (s *Store) CreatePackage(ctx context.Context, meta domain.WriteMeta, in dom
 	id := datatype.NewUUID()
 	now := time.Now().UTC()
 	labelsJSON, _ := json.Marshal(labels)
+	iriBase, err := datatype.NormalizeIRIBase(in.IRIBase)
+	if err != nil {
+		return nil, err
+	}
 	_, err = tx.Exec(ctx, `
-		INSERT INTO package (id, code, lifecycle, labels, created_at, updated_at)
-		VALUES ($1,$2,$3,$4,$5,$5)
-	`, id, in.Code, string(in.Lifecycle), labelsJSON, now)
+		INSERT INTO package (id, code, lifecycle, labels, iri_base, created_at, updated_at)
+		VALUES ($1,$2,$3,$4,$5,$6,$6)
+	`, id, in.Code, string(in.Lifecycle), labelsJSON, iriBase, now)
 	if err != nil {
 		return nil, err
 	}
@@ -83,7 +102,7 @@ func (s *Store) CreatePackage(ctx context.Context, meta domain.WriteMeta, in dom
 	}
 
 	pkg := domain.Package{
-		ID: id, Code: in.Code, Lifecycle: in.Lifecycle,
+		ID: id, Code: in.Code, Lifecycle: in.Lifecycle, IRIBase: iriBase,
 		Labels: labels, Dependencies: in.Dependencies,
 		CreatedAt: now, UpdatedAt: now,
 	}
@@ -100,8 +119,8 @@ func (s *Store) GetPackageByCode(ctx context.Context, code string) (*domain.Pack
 	var pkg domain.Package
 	var labelsJSON []byte
 	err := s.pool.QueryRow(ctx, `
-		SELECT id, code, lifecycle, labels, created_at, updated_at FROM package WHERE code = $1
-	`, code).Scan(&pkg.ID, &pkg.Code, &pkg.Lifecycle, &labelsJSON, &pkg.CreatedAt, &pkg.UpdatedAt)
+		SELECT id, code, lifecycle, labels, COALESCE(iri_base,''), created_at, updated_at FROM package WHERE code = $1
+	`, code).Scan(&pkg.ID, &pkg.Code, &pkg.Lifecycle, &labelsJSON, &pkg.IRIBase, &pkg.CreatedAt, &pkg.UpdatedAt)
 	if err != nil {
 		return nil, err
 	}
@@ -122,6 +141,57 @@ func (s *Store) GetPackageByCode(ctx context.Context, code string) (*domain.Pack
 		pkg.Dependencies = append(pkg.Dependencies, d)
 	}
 	return &pkg, rows.Err()
+}
+
+func (s *Store) UpdatePackage(ctx context.Context, meta domain.WriteMeta, code string, in domain.UpdatePackageInput) (*domain.WriteResult[domain.Package], error) {
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback(ctx)
+
+	pkg, err := s.GetPackageByCode(ctx, code)
+	if err != nil {
+		return nil, err
+	}
+
+	now := time.Now().UTC()
+	if in.IRIBase != nil {
+		base, err := datatype.NormalizeIRIBase(*in.IRIBase)
+		if err != nil {
+			return nil, err
+		}
+		pkg.IRIBase = base
+	}
+	if in.Labels != nil {
+		if err := datatype.RequireLabelEN(in.Labels); err != nil {
+			return nil, err
+		}
+		pkg.Labels = in.Labels
+	}
+	labelsJSON, _ := json.Marshal(pkg.Labels)
+	_, err = tx.Exec(ctx, `
+		UPDATE package SET iri_base = $2, labels = $3, updated_at = $4 WHERE id = $1
+	`, pkg.ID, pkg.IRIBase, labelsJSON, now)
+	if err != nil {
+		return nil, err
+	}
+	pkg.UpdatedAt = now
+
+	cs, err := s.beginChangeSetTx(ctx, tx, meta)
+	if err != nil {
+		return nil, err
+	}
+	if err := cs.addItem(ctx, tx, "package", pkg.ID, pkg.Code, "update", map[string]any{"iriBase": pkg.IRIBase}); err != nil {
+		return nil, err
+	}
+	if err := s.finalizeChangeSet(ctx, tx, cs, *pkg); err != nil {
+		return nil, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return nil, err
+	}
+	return &domain.WriteResult[domain.Package]{Value: *pkg, ChangeSet: s.changeSetDomain(cs, meta)}, nil
 }
 
 func (s *Store) findMatchingRelease(ctx context.Context, tx pgx.Tx, depCode, rangeSpec string) (string, error) {
@@ -245,6 +315,26 @@ func (s *Store) PublishRelease(ctx context.Context, meta domain.WriteMeta, packa
 		objects = append(objects, domain.ReleaseObject{ObjectType: "property", ObjectPublicID: pid, RevisionNo: rev})
 	}
 	propRows.Close()
+
+	classRows, err := tx.Query(ctx, `
+		SELECT e.public_id, e.current_revision_no
+		FROM entity e
+		JOIN class_profile cp ON cp.entity_id = e.id
+		WHERE e.package_id = $1
+	`, packageID)
+	if err != nil {
+		return nil, err
+	}
+	for classRows.Next() {
+		var cid string
+		var rev int
+		if err := classRows.Scan(&cid, &rev); err != nil {
+			classRows.Close()
+			return nil, err
+		}
+		objects = append(objects, domain.ReleaseObject{ObjectType: "class", ObjectPublicID: cid, RevisionNo: rev})
+	}
+	classRows.Close()
 
 	stmtRows, err := tx.Query(ctx, `
 		SELECT public_id, current_revision_no FROM statement WHERE package_id = $1
@@ -431,6 +521,12 @@ func (s *Store) ExportReleaseBundle(ctx context.Context, packageCode, version st
 				return nil, err
 			}
 			bundle.Properties = append(bundle.Properties, *bp)
+		case "class":
+			bc, err := s.exportClassAtRevision(ctx, obj.ObjectPublicID, obj.RevisionNo)
+			if err != nil {
+				return nil, err
+			}
+			bundle.Classes = append(bundle.Classes, *bc)
 		case "statement":
 			bs, err := s.exportStatementAtRevision(ctx, obj.ObjectPublicID, obj.RevisionNo)
 			if err != nil {
@@ -515,6 +611,34 @@ func (s *Store) exportPropertyAtRevision(ctx context.Context, pid string, rev in
 	return &bp, nil
 }
 
+func (s *Store) exportClassAtRevision(ctx context.Context, cid string, rev int) (*domain.BundleClass, error) {
+	var bc domain.BundleClass
+	bc.PublicID = cid
+	bc.RevisionNo = rev
+	var labelsJSON, descJSON, docJSON []byte
+	var pkgCode *string
+	err := s.pool.QueryRow(ctx, `
+		SELECT er.status, er.labels, er.descriptions, pkg.code, cp.document
+		FROM entity_revision er
+		JOIN entity e ON e.id = er.entity_id
+		JOIN class_profile cp ON cp.entity_id = e.id
+		LEFT JOIN package pkg ON pkg.id = e.package_id
+		WHERE e.public_id = $1 AND er.revision_no = $2
+	`, cid, rev).Scan(&bc.Status, &labelsJSON, &descJSON, &pkgCode, &docJSON)
+	if err != nil {
+		return nil, err
+	}
+	bc.Labels, _ = jsonToLabels(labelsJSON)
+	bc.Descriptions, _ = jsonToLabels(descJSON)
+	if pkgCode != nil {
+		bc.PackageCode = *pkgCode
+	}
+	var doc domain.ClassDocument
+	_ = json.Unmarshal(docJSON, &doc)
+	bc.SubClassOf = doc.SubClassOf
+	return &bc, nil
+}
+
 func (s *Store) exportStatementAtRevision(ctx context.Context, sid string, rev int) (*domain.BundleStatement, error) {
 	var statementID uuid.UUID
 	err := s.pool.QueryRow(ctx, `SELECT id FROM statement WHERE public_id = $1`, sid).Scan(&statementID)
@@ -574,4 +698,136 @@ func (s *Store) MutateRelease(ctx context.Context, packageCode, version string) 
 		return err
 	}
 	return fmt.Errorf("%w: cannot modify release %s@%s", ErrReleaseImmutable, packageCode, version)
+}
+
+func (s *Store) ListReleases(ctx context.Context, packageCode string) ([]domain.Release, error) {
+	packageID, err := s.resolvePackageIDRequired(ctx, s.pool, packageCode)
+	if err != nil {
+		return nil, err
+	}
+	rows, err := s.pool.Query(ctx, `
+		SELECT id, version, published_at
+		FROM release
+		WHERE package_id = $1
+		ORDER BY published_at DESC, version DESC
+	`, packageID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var out []domain.Release
+	for rows.Next() {
+		var rel domain.Release
+		rel.PackageCode = packageCode
+		if err := rows.Scan(&rel.ID, &rel.Version, &rel.PublishedAt); err != nil {
+			return nil, err
+		}
+		out = append(out, rel)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	for i := range out {
+		depRows, err := s.pool.Query(ctx, `
+			SELECT dependency_code, dependency_version
+			FROM release_dependency WHERE release_id = $1
+			ORDER BY dependency_code
+		`, out[i].ID)
+		if err != nil {
+			return nil, err
+		}
+		for depRows.Next() {
+			var d domain.ReleaseDependency
+			if err := depRows.Scan(&d.DependencyCode, &d.DependencyVersion); err != nil {
+				depRows.Close()
+				return nil, err
+			}
+			out[i].Dependencies = append(out[i].Dependencies, d)
+		}
+		depRows.Close()
+		if err := depRows.Err(); err != nil {
+			return nil, err
+		}
+	}
+	return out, nil
+}
+
+func (s *Store) ListPackageObjects(ctx context.Context, packageCode string) ([]domain.PackageObject, error) {
+	packageID, err := s.resolvePackageIDRequired(ctx, s.pool, packageCode)
+	if err != nil {
+		return nil, err
+	}
+
+	rows, err := s.pool.Query(ctx, `
+		SELECT object_type, public_id, revision_no, entity_id FROM (
+			SELECT 'entity'::text AS object_type, e.public_id, e.current_revision_no AS revision_no, e.id AS entity_id
+			FROM entity e
+			WHERE e.package_id = $1
+			  AND NOT EXISTS (SELECT 1 FROM property_profile pp WHERE pp.entity_id = e.id)
+			  AND NOT EXISTS (SELECT 1 FROM class_profile cp WHERE cp.entity_id = e.id)
+			UNION ALL
+			SELECT 'property', e.public_id, e.current_revision_no, e.id
+			FROM entity e
+			JOIN property_profile pp ON pp.entity_id = e.id
+			WHERE e.package_id = $1
+			UNION ALL
+			SELECT 'class', e.public_id, e.current_revision_no, e.id
+			FROM entity e
+			JOIN class_profile cp ON cp.entity_id = e.id
+			WHERE e.package_id = $1
+			UNION ALL
+			SELECT 'statement', st.public_id, st.current_revision_no, NULL::uuid
+			FROM statement st
+			WHERE st.package_id = $1
+		) t
+		ORDER BY object_type, public_id
+	`, packageID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var out []domain.PackageObject
+	for rows.Next() {
+		var o domain.PackageObject
+		var entityID *uuid.UUID
+		if err := rows.Scan(&o.ObjectType, &o.PublicID, &o.RevisionNo, &entityID); err != nil {
+			return nil, err
+		}
+		if entityID != nil {
+			o.Labels, _ = s.loadLabels(ctx, `SELECT lang, text FROM entity_label WHERE entity_id = $1`, *entityID)
+		}
+		if o.Labels == nil {
+			o.Labels = map[string]string{}
+		}
+		out = append(out, o)
+	}
+	return out, rows.Err()
+}
+
+func (s *Store) ListObjectReleases(ctx context.Context, publicID string) ([]domain.ObjectRelease, error) {
+	rows, err := s.pool.Query(ctx, `
+		SELECT p.code, r.version, ro.revision_no
+		FROM release_object ro
+		JOIN release r ON r.id = ro.release_id
+		JOIN package p ON p.id = r.package_id
+		WHERE ro.object_public_id = $1
+		ORDER BY p.code, r.published_at DESC, r.version DESC
+	`, publicID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var out []domain.ObjectRelease
+	for rows.Next() {
+		var o domain.ObjectRelease
+		if err := rows.Scan(&o.PackageCode, &o.Version, &o.RevisionNo); err != nil {
+			return nil, err
+		}
+		out = append(out, o)
+	}
+	return out, rows.Err()
 }

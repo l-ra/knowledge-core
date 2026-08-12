@@ -18,6 +18,17 @@ func (e *Engine) CreatePackage(ctx context.Context, meta domain.WriteMeta, in do
 	return res, nil
 }
 
+func (e *Engine) UpdatePackage(ctx context.Context, meta domain.WriteMeta, code string, in domain.UpdatePackageInput) (*domain.WriteResult[domain.Package], error) {
+	if err := e.authorizePackage(ctx, auth.OpManage, code); err != nil {
+		return nil, err
+	}
+	res, err := e.store.UpdatePackage(ctx, meta, code, in)
+	if err != nil {
+		return nil, mapErr(err)
+	}
+	return res, nil
+}
+
 func (e *Engine) GetPackage(ctx context.Context, code string) (*domain.Package, error) {
 	if err := e.authorizePackage(ctx, auth.OpRead, code); err != nil {
 		return nil, err
@@ -67,6 +78,17 @@ func (e *Engine) ImportReleaseBundle(ctx context.Context, meta domain.WriteMeta,
 		return nil, err
 	}
 	res, err := e.store.ImportReleaseBundle(ctx, meta, bundle)
+	if err != nil {
+		return nil, mapErr(err)
+	}
+	return res, nil
+}
+
+func (e *Engine) ImportRDF(ctx context.Context, meta domain.WriteMeta, packageCode string, in domain.RDFImportInput) (*domain.RDFImportResult, error) {
+	if err := e.authorizePackage(ctx, auth.OpManage, packageCode); err != nil {
+		return nil, err
+	}
+	res, err := e.store.ImportRDF(ctx, meta, packageCode, in)
 	if err != nil {
 		return nil, mapErr(err)
 	}

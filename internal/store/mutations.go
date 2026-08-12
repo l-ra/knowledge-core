@@ -76,6 +76,15 @@ func (s *Store) UpdateEntity(ctx context.Context, meta domain.WriteMeta, publicI
 			}
 		}
 	}
+	if in.IRILocal != nil {
+		iriLocal, err := normalizeOptionalIRILocal(*in.IRILocal)
+		if err != nil {
+			return nil, err
+		}
+		if _, err := tx.Exec(ctx, `UPDATE entity SET iri_local = $2 WHERE id = $1`, entityID, iriLocal); err != nil {
+			return nil, err
+		}
+	}
 
 	now := time.Now().UTC()
 	_, err = tx.Exec(ctx, `UPDATE entity SET current_revision_no = $2, updated_at = $3 WHERE id = $1`, entityID, nextRev, now)
@@ -180,85 +189,6 @@ func (s *Store) ReviseStatement(ctx context.Context, meta domain.WriteMeta, publ
 	return &domain.WriteResult[domain.Statement]{Value: *st, ChangeSet: s.changeSetDomain(cs, meta)}, nil
 }
 
-func (s *Store) ApplyChangeSet(ctx context.Context, meta domain.WriteMeta, in domain.ApplyChangeSetInput) (*domain.WriteResult[domain.ChangeSet], error) {
-	tx, err := s.pool.Begin(ctx)
-	if err != nil {
-		return nil, err
-	}
-	defer tx.Rollback(ctx)
-
-	if hit, err := s.checkIdempotency(ctx, tx, meta); err != nil {
-		return nil, err
-	} else if hit != nil {
-		if err := tx.Commit(ctx); err != nil {
-			return nil, err
-		}
-		cs, err := s.GetChangeSetByPublicID(ctx, hit.publicID)
-		if err != nil {
-			return nil, err
-		}
-		return &domain.WriteResult[domain.ChangeSet]{Value: *cs, Replay: true, ResponseRaw: hit.responseBody}, nil
-	}
-
-	meta.OperationType = in.OperationType
-	if meta.OperationType == "" {
-		meta.OperationType = "batch"
-	}
-	cs, err := s.beginChangeSetTx(ctx, tx, meta)
-	if err != nil {
-		return nil, err
-	}
-
-	results := make([]map[string]any, 0, len(in.Operations))
-	for _, op := range in.Operations {
-		switch op.Op {
-		case "reviseStatement":
-			if op.Statement == "" {
-				return nil, fmt.Errorf("reviseStatement requires statement")
-			}
-			val := op.Value
-			stRes, err := s.reviseStatementInTx(ctx, tx, cs, meta, op.Statement, domain.ReviseStatementInput{
-				Value:            &val,
-				ExpectedRevision: op.ExpectedRevision,
-			})
-			if err != nil {
-				return nil, err
-			}
-			results = append(results, map[string]any{"op": op.Op, "statement": stRes.PublicID, "revisionNo": stRes.RevisionNo})
-		case "updateEntity":
-			if op.Entity == "" {
-				return nil, fmt.Errorf("updateEntity requires entity")
-			}
-			entRes, err := s.updateEntityInTx(ctx, tx, cs, meta, op.Entity, domain.UpdateEntityInput{
-				Labels: op.Labels, Descriptions: op.Descriptions, ExpectedRevision: op.ExpectedRevision,
-			})
-			if err != nil {
-				return nil, err
-			}
-			results = append(results, map[string]any{"op": op.Op, "entity": entRes.PublicID, "revisionNo": entRes.RevisionNo})
-		default:
-			return nil, fmt.Errorf("unsupported operation %q", op.Op)
-		}
-	}
-
-	response := map[string]any{
-		"changeSet": cs.publicID,
-		"results":   results,
-	}
-	responseBody, _ := json.Marshal(response)
-	domainCS := s.changeSetDomain(cs, meta)
-	domainCS.Items = cs.items
-	if err := s.finalizeChangeSet(ctx, tx, cs, response); err != nil {
-		return nil, err
-	}
-	if err := tx.Commit(ctx); err != nil {
-		return nil, err
-	}
-	return &domain.WriteResult[domain.ChangeSet]{
-		Value: *domainCS, ChangeSet: domainCS, ResponseRaw: responseBody,
-	}, nil
-}
-
 func (s *Store) reviseStatementInTx(ctx context.Context, tx pgx.Tx, cs *changeSetTx, meta domain.WriteMeta, publicID string, in domain.ReviseStatementInput) (*domain.Statement, error) {
 	var statementID uuid.UUID
 	var dtype string
@@ -332,6 +262,15 @@ func (s *Store) updateEntityInTx(ctx context.Context, tx pgx.Tx, cs *changeSetTx
 			}
 		}
 	}
+	if in.IRILocal != nil {
+		iriLocal, err := normalizeOptionalIRILocal(*in.IRILocal)
+		if err != nil {
+			return nil, err
+		}
+		if _, err := tx.Exec(ctx, `UPDATE entity SET iri_local = $2 WHERE id = $1`, entityID, iriLocal); err != nil {
+			return nil, err
+		}
+	}
 	now := time.Now().UTC()
 	_, err = tx.Exec(ctx, `UPDATE entity SET current_revision_no = $2, updated_at = $3 WHERE id = $1`, entityID, nextRev, now)
 	if err != nil {
@@ -359,18 +298,34 @@ func (s *Store) updateEntityInTx(ctx context.Context, tx pgx.Tx, cs *changeSetTx
 
 func (s *Store) loadEntityTx(ctx context.Context, tx pgx.Tx, qid string) (*domain.Entity, error) {
 	var e domain.Entity
+	var pkgCode *string
 	err := tx.QueryRow(ctx, `
-		SELECT id, public_id, status, current_revision_no, created_at, updated_at FROM entity WHERE public_id = $1
-	`, qid).Scan(&e.ID, &e.PublicID, &e.Status, &e.RevisionNo, &e.CreatedAt, &e.UpdatedAt)
+		SELECT e.id, e.public_id, e.status, e.current_revision_no, e.created_at, e.updated_at,
+			p.code, COALESCE(e.iri_local,'')
+		FROM entity e
+		LEFT JOIN package p ON p.id = e.package_id
+		WHERE e.public_id = $1
+	`, qid).Scan(&e.ID, &e.PublicID, &e.Status, &e.RevisionNo, &e.CreatedAt, &e.UpdatedAt, &pkgCode, &e.IRILocal)
 	if err != nil {
 		return nil, err
+	}
+	if pkgCode != nil {
+		e.PackageCode = *pkgCode
 	}
 	e.Labels, err = s.loadLabelsTx(ctx, tx, `SELECT lang, text FROM entity_label WHERE entity_id = $1`, e.ID)
 	if err != nil {
 		return nil, err
 	}
 	e.Descriptions, err = s.loadLabelsTx(ctx, tx, `SELECT lang, text FROM entity_description WHERE entity_id = $1`, e.ID)
-	return &e, err
+	if err != nil {
+		return nil, err
+	}
+	iri, err := s.resolveEntityIRITx(ctx, tx, qid)
+	if err != nil {
+		return nil, err
+	}
+	e.IRI = iri
+	return &e, nil
 }
 
 func (s *Store) getStatementTx(ctx context.Context, tx pgx.Tx, sid string) (*domain.Statement, error) {
@@ -406,10 +361,14 @@ func (s *Store) loadLabelsTx(ctx context.Context, tx pgx.Tx, q string, id uuid.U
 }
 
 func (s *Store) resolveAndEncodeValue(ctx context.Context, tx pgx.Tx, dtype datatype.Type, val datatype.Value) (datatype.Value, storedValue, error) {
-	if val.Type == "" {
+	if val.Type == "" && dtype != datatype.Any {
 		val.Type = dtype
 	}
-	if dtype == datatype.EntityReference && val.EntityID != nil {
+	effective := dtype
+	if dtype == datatype.Any {
+		effective = val.Type
+	}
+	if effective == datatype.EntityReference && val.EntityID != nil {
 		var refUUID uuid.UUID
 		err := tx.QueryRow(ctx, `SELECT id FROM entity WHERE public_id = $1 OR id::text = $1`, *val.EntityID).Scan(&refUUID)
 		if err != nil {
@@ -418,7 +377,7 @@ func (s *Store) resolveAndEncodeValue(ctx context.Context, tx pgx.Tx, dtype data
 		s := refUUID.String()
 		val.EntityID = &s
 	}
-	if dtype == datatype.Quantity && val.UnitEntityID != nil {
+	if effective == datatype.Quantity && val.UnitEntityID != nil {
 		var unitUUID uuid.UUID
 		err := tx.QueryRow(ctx, `SELECT id FROM entity WHERE public_id = $1 OR id::text = $1`, *val.UnitEntityID).Scan(&unitUUID)
 		if err != nil {

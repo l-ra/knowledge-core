@@ -13,6 +13,7 @@ export type AuthSession = {
   token?: string;
   subject?: string;
   roles?: string;
+  displayName?: string;
 };
 
 const SESSION_KEY = "kc.session";
@@ -147,6 +148,9 @@ export async function finishOidcLogin(cfg: UiConfig, code: string, state: string
   sessionStorage.removeItem("kc.pkce.verifier");
   sessionStorage.removeItem("kc.oidc.state");
   const session: AuthSession = { mode: "oidc", token };
+  const me = await apiFetch<{ id: string; displayName?: string }>("/v1/me", {}, session);
+  session.displayName = me.displayName || me.id;
+  session.subject = me.id;
   saveSession(session);
   return session;
 }

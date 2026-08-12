@@ -1,0 +1,373 @@
+import { FormEvent, useEffect, useState } from "react";
+import { Link, useParams } from "react-router-dom";
+import { useTranslation } from "react-i18next";
+import { apiFetch } from "../api";
+import { pickLabel } from "../labels";
+import { useChangeSetDraft } from "../changeset";
+
+type PkgDep = { dependsOnCode: string; versionRange: string };
+type Pkg = {
+  code: string;
+  lifecycle: string;
+  labels?: Record<string, string>;
+  iriBase?: string;
+  dependencies?: PkgDep[];
+  createdAt?: string;
+  updatedAt?: string;
+};
+type OwnedObject = {
+  objectType: string;
+  publicId: string;
+  revisionNo: number;
+  labels?: Record<string, string>;
+};
+type Release = {
+  package: string;
+  version: string;
+  publishedAt: string;
+  dependencies?: Array<{ dependencyCode: string; dependencyVersion: string }>;
+  objects?: Array<{ objectType: string; publicId: string; revisionNo: number }>;
+};
+
+type RDFImportAction = { kind: string; iri?: string; publicId?: string; detail?: string };
+type RDFImportResult = {
+  dryRun: boolean;
+  changeSetId?: string;
+  matched?: RDFImportAction[];
+  wouldCreate?: RDFImportAction[];
+  created?: RDFImportAction[];
+  skipped?: RDFImportAction[];
+  warnings?: string[];
+  errors?: string[];
+};
+
+export function PackageDetailPage() {
+  const { code = "" } = useParams();
+  const { t, i18n } = useTranslation();
+  const { lastCommittedId } = useChangeSetDraft();
+  const [pkg, setPkg] = useState<Pkg | null>(null);
+  const [objects, setObjects] = useState<OwnedObject[]>([]);
+  const [releases, setReleases] = useState<Release[]>([]);
+  const [version, setVersion] = useState("");
+  const [iriBase, setIriBase] = useState("");
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [info, setInfo] = useState("");
+  const [rdfPreview, setRdfPreview] = useState<RDFImportResult | null>(null);
+  const [rdfBusy, setRdfBusy] = useState(false);
+  const [rdfText, setRdfText] = useState("");
+
+  async function load() {
+    setError("");
+    try {
+      const [p, objs, rels] = await Promise.all([
+        apiFetch<Pkg>(`/v1/packages/${encodeURIComponent(code)}`),
+        apiFetch<{ items: OwnedObject[] }>(`/v1/packages/${encodeURIComponent(code)}/objects`),
+        apiFetch<{ items: Release[] }>(`/v1/packages/${encodeURIComponent(code)}/releases`),
+      ]);
+      setPkg(p);
+      setIriBase(p.iriBase || "");
+      setObjects(objs.items || []);
+      setReleases(rels.items || []);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : t("common.error"));
+    }
+  }
+
+  useEffect(() => {
+    void load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [code]);
+
+  async function saveIriBase(e: FormEvent) {
+    e.preventDefault();
+    setBusy(true);
+    setError("");
+    setInfo("");
+    try {
+      await apiFetch(`/v1/packages/${encodeURIComponent(code)}`, {
+        method: "PATCH",
+        body: JSON.stringify({ iriBase }),
+      });
+      setInfo(t("packages.iriBaseSaved"));
+      await load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : t("common.error"));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function publish(e: FormEvent) {
+    e.preventDefault();
+    setBusy(true);
+    setError("");
+    try {
+      await apiFetch(`/v1/packages/${encodeURIComponent(code)}/releases`, {
+        method: "POST",
+        body: JSON.stringify({ version }),
+      });
+      setVersion("");
+      await load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : t("common.error"));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function exportBundle(ver: string) {
+    setError("");
+    try {
+      const bundle = await apiFetch<unknown>(
+        `/v1/packages/${encodeURIComponent(code)}/releases/${encodeURIComponent(ver)}/bundle`,
+      );
+      const blob = new Blob([JSON.stringify(bundle, null, 2)], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `${code}-${ver}-bundle.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : t("common.error"));
+    }
+  }
+
+  async function runRDFImport(ntriples: string, dryRun: boolean) {
+    setError("");
+    setInfo("");
+    setRdfBusy(true);
+    try {
+      setRdfText(ntriples);
+      const res = await apiFetch<RDFImportResult>(`/v1/packages/${encodeURIComponent(code)}/rdf/import`, {
+        method: "POST",
+        body: JSON.stringify({ ntriples, dryRun }),
+      });
+      setRdfPreview(res);
+      if (!dryRun && !res.errors?.length) {
+        setInfo(t("packages.rdfImportOk", { id: res.changeSetId || "—" }));
+        setRdfText("");
+        await load();
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : t("common.error"));
+    } finally {
+      setRdfBusy(false);
+    }
+  }
+
+  async function onRDFFile(file: File | null) {
+    setRdfPreview(null);
+    if (!file) return;
+    const ntriples = await file.text();
+    await runRDFImport(ntriples, true);
+  }
+
+  if (!pkg && !error) return <p>{t("common.loading")}</p>;
+
+  return (
+    <div className="stack">
+      <nav className="breadcrumb muted">
+        <Link to="/model/packages">{t("nav.packages")}</Link>
+        <span>
+          {" / "}
+          <strong>{code}</strong>
+        </span>
+      </nav>
+
+      <header className="panel stack">
+        <h1>{pickLabel(pkg?.labels, i18n.language, code)}</h1>
+        <p className="muted">
+          {code}
+          {pkg?.lifecycle ? ` · ${pkg.lifecycle}` : ""}
+        </p>
+        {pkg?.iriBase && (
+          <p className="muted mono">
+            {t("packages.iriBase")}: {pkg.iriBase}
+          </p>
+        )}
+        <form className="row" onSubmit={saveIriBase}>
+          <label className="field" style={{ flex: 1 }}>
+            {t("packages.iriBase")}
+            <input
+              value={iriBase}
+              onChange={(e) => setIriBase(e.target.value)}
+              placeholder="https://example.org/id/"
+            />
+            <span className="muted">{t("packages.iriBaseHint")}</span>
+          </label>
+          <button className="primary" type="submit" disabled={busy}>
+            {t("packages.saveIriBase")}
+          </button>
+        </form>
+        {info && <p className="muted">{info}</p>}
+        {pkg?.dependencies && pkg.dependencies.length > 0 && (
+          <div>
+            <h3>{t("packages.dependencies")}</h3>
+            <ul>
+              {pkg.dependencies.map((d) => (
+                <li key={`${d.dependsOnCode}:${d.versionRange}`}>
+                  <Link to={`/model/packages/${encodeURIComponent(d.dependsOnCode)}`}>{d.dependsOnCode}</Link>
+                  <span className="muted"> {d.versionRange}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+        {lastCommittedId && (
+          <p className="muted">
+            {t("changeset.lastCommitted")}: <code>{lastCommittedId}</code>
+          </p>
+        )}
+      </header>
+
+      {error && <p className="error">{error}</p>}
+
+      <section className="panel stack">
+        <h2>{t("packages.rdfImport")}</h2>
+        <p className="muted">{t("packages.rdfImportHint")}</p>
+        <div className="row">
+          <label className="field">
+            {t("packages.rdfFile")}
+            <input
+              type="file"
+              accept=".nt,text/plain,application/n-triples"
+              disabled={rdfBusy}
+              onChange={(e) => void onRDFFile(e.target.files?.[0] || null)}
+            />
+          </label>
+          {rdfPreview && !rdfPreview.errors?.length && rdfText && (
+            <button
+              type="button"
+              className="primary"
+              disabled={rdfBusy}
+              onClick={() => void runRDFImport(rdfText, false)}
+            >
+              {t("packages.rdfImportCommit")}
+            </button>
+          )}
+        </div>
+        {rdfPreview && (
+          <div className="stack">
+            {rdfPreview.errors && rdfPreview.errors.length > 0 && (
+              <ul className="error">
+                {rdfPreview.errors.map((e) => (
+                  <li key={e}>{e}</li>
+                ))}
+              </ul>
+            )}
+            {rdfPreview.warnings && rdfPreview.warnings.length > 0 && (
+              <ul className="muted">
+                {rdfPreview.warnings.map((w) => (
+                  <li key={w}>{w}</li>
+                ))}
+              </ul>
+            )}
+            <p className="muted">
+              {t("packages.rdfImportSummary", {
+                matched: rdfPreview.matched?.length ?? 0,
+                create: (rdfPreview.wouldCreate || rdfPreview.created)?.length ?? 0,
+                skipped: rdfPreview.skipped?.length ?? 0,
+              })}
+            </p>
+            {(rdfPreview.wouldCreate || rdfPreview.created)?.slice(0, 40).map((a, i) => (
+              <div key={`${a.kind}-${a.iri || a.publicId || i}`} className="mono muted">
+                {a.kind}
+                {a.iri ? ` ${a.iri}` : ""}
+                {a.detail ? ` (${a.detail})` : ""}
+                {a.publicId ? ` → ${a.publicId}` : ""}
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
+
+      <section className="stack">
+        <h2>{t("packages.objects")}</h2>
+        <table className="table">
+          <thead>
+            <tr>
+              <th>{t("packages.objectType")}</th>
+              <th>ID</th>
+              <th>Label</th>
+              <th>Rev</th>
+            </tr>
+          </thead>
+          <tbody>
+            {objects.map((o) => (
+              <tr key={`${o.objectType}:${o.publicId}`}>
+                <td>{o.objectType}</td>
+                <td>
+                  {o.objectType === "statement" ? (
+                    o.publicId
+                  ) : (
+                    <Link to={`/entities/${o.publicId}`}>{o.publicId}</Link>
+                  )}
+                </td>
+                <td>{pickLabel(o.labels, i18n.language)}</td>
+                <td>{o.revisionNo}</td>
+              </tr>
+            ))}
+            {objects.length === 0 && (
+              <tr>
+                <td colSpan={4} className="muted">
+                  {t("packages.noObjects")}
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </section>
+
+      <section className="stack">
+        <h2>{t("packages.releases")}</h2>
+        <form className="panel row" onSubmit={publish}>
+          <label className="field">
+            {t("packages.version")}
+            <input
+              value={version}
+              onChange={(e) => setVersion(e.target.value)}
+              placeholder="1.0.0"
+              required
+            />
+          </label>
+          <button className="primary" type="submit" disabled={busy}>
+            {t("packages.publish")}
+          </button>
+        </form>
+        <table className="table">
+          <thead>
+            <tr>
+              <th>{t("packages.version")}</th>
+              <th>{t("packages.publishedAt")}</th>
+              <th>{t("packages.objects")}</th>
+              <th />
+            </tr>
+          </thead>
+          <tbody>
+            {releases.map((r) => (
+              <tr key={r.version}>
+                <td>{r.version}</td>
+                <td className="muted">{r.publishedAt}</td>
+                <td>{r.objects?.length ?? 0}</td>
+                <td>
+                  <button type="button" onClick={() => void exportBundle(r.version)}>
+                    {t("packages.exportBundle")}
+                  </button>
+                </td>
+              </tr>
+            ))}
+            {releases.length === 0 && (
+              <tr>
+                <td colSpan={4} className="muted">
+                  {t("packages.noReleases")}
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </section>
+    </div>
+  );
+}

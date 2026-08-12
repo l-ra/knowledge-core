@@ -51,6 +51,10 @@ func New(eng *engine.Engine, st *store.Store, authn Authenticator, cfg config.Co
 	r.Route("/v1", func(r chi.Router) {
 		r.Use(authMiddleware(sw))
 		r.Get("/me", s.me)
+		r.Get("/me/changeset-draft", s.getChangeSetDraft)
+		r.Put("/me/changeset-draft", s.putChangeSetDraft)
+		r.Delete("/me/changeset-draft", s.deleteChangeSetDraft)
+		r.Post("/me/changeset-draft/commit", s.commitChangeSetDraft)
 
 		r.Get("/admin/auth", s.getAdminAuth)
 		r.Put("/admin/auth", s.putAdminAuth)
@@ -62,6 +66,7 @@ func New(eng *engine.Engine, st *store.Store, authn Authenticator, cfg config.Co
 		r.Get("/entities/{qid}/statements", s.listEntityStatements)
 		r.Get("/entities/{qid}", s.getEntity)
 		r.Patch("/entities/{qid}", s.updateEntity)
+		r.Put("/entities/{qid}/iri-aliases", s.putEntityIRIAliases)
 
 		r.Get("/properties", s.listProperties)
 		r.Post("/properties", s.createProperty)
@@ -70,11 +75,17 @@ func New(eng *engine.Engine, st *store.Store, authn Authenticator, cfg config.Co
 		r.Get("/packages", s.listPackages)
 		r.Post("/packages", s.createPackage)
 		r.Get("/packages/{code}", s.getPackage)
+		r.Patch("/packages/{code}", s.updatePackage)
+		r.Post("/packages/{code}/rdf/import", s.importPackageRDF)
+		r.Get("/packages/{code}/objects", s.listPackageObjects)
+		r.Get("/packages/{code}/releases", s.listPackageReleases)
 		r.Post("/packages/{code}/releases", s.publishRelease)
 		r.Get("/packages/{code}/releases/{version}", s.getRelease)
 		r.Get("/packages/{code}/releases/{version}/bundle", s.exportReleaseBundle)
 		r.Post("/packages/{code}/releases/{version}/mutate", s.mutateRelease)
 		r.Post("/releases/import", s.importRelease)
+
+		r.Get("/objects/{id}/releases", s.listObjectReleases)
 
 		r.Post("/references", s.createReference)
 		r.Get("/references/{rid}", s.getReference)
@@ -188,6 +199,7 @@ type createEntityReq struct {
 	PackageCode  string            `json:"packageCode,omitempty"`
 	Labels       map[string]string `json:"labels"`
 	Descriptions map[string]string `json:"descriptions"`
+	IRILocal     string            `json:"iriLocal,omitempty"`
 }
 
 func (s *Server) createEntity(w http.ResponseWriter, r *http.Request) {
@@ -203,7 +215,7 @@ func (s *Server) createEntity(w http.ResponseWriter, r *http.Request) {
 	}
 	meta := writeMetaFromRequest(r, "createEntity", hashBody(body))
 	res, err := s.engine.CreateEntity(r.Context(), meta, domain.CreateEntityInput{
-		PackageCode: req.PackageCode, Labels: req.Labels, Descriptions: req.Descriptions,
+		PackageCode: req.PackageCode, Labels: req.Labels, Descriptions: req.Descriptions, IRILocal: req.IRILocal,
 	})
 	if err != nil {
 		writeEngineError(w, err)
@@ -228,6 +240,7 @@ func (s *Server) getEntity(w http.ResponseWriter, r *http.Request) {
 type updateEntityReq struct {
 	Labels           map[string]string `json:"labels"`
 	Descriptions     map[string]string `json:"descriptions"`
+	IRILocal         *string           `json:"iriLocal"`
 	ExpectedRevision int               `json:"expectedRevision"`
 }
 
@@ -244,7 +257,7 @@ func (s *Server) updateEntity(w http.ResponseWriter, r *http.Request) {
 	}
 	meta := writeMetaFromRequest(r, "updateEntity", hashBody(body))
 	res, err := s.engine.UpdateEntity(r.Context(), meta, chi.URLParam(r, "qid"), domain.UpdateEntityInput{
-		Labels: req.Labels, Descriptions: req.Descriptions, ExpectedRevision: req.ExpectedRevision,
+		Labels: req.Labels, Descriptions: req.Descriptions, IRILocal: req.IRILocal, ExpectedRevision: req.ExpectedRevision,
 	})
 	if err != nil {
 		writeEngineError(w, err)
@@ -255,6 +268,36 @@ func (s *Server) updateEntity(w http.ResponseWriter, r *http.Request) {
 		status = http.StatusOK
 	}
 	writeJSON(w, status, writeResponse(entityDTO(&res.Value), res.ChangeSet))
+}
+
+type putEntityIRIAliasesReq struct {
+	Aliases []struct {
+		IRI  string `json:"iri"`
+		Kind string `json:"kind"`
+	} `json:"aliases"`
+}
+
+func (s *Server) putEntityIRIAliases(w http.ResponseWriter, r *http.Request) {
+	body, err := readBody(r)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid body")
+		return
+	}
+	var req putEntityIRIAliasesReq
+	if err := json.Unmarshal(body, &req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid JSON")
+		return
+	}
+	aliases := make([]domain.EntityIRIAlias, 0, len(req.Aliases))
+	for _, a := range req.Aliases {
+		aliases = append(aliases, domain.EntityIRIAlias{IRI: a.IRI, Kind: a.Kind})
+	}
+	ent, err := s.engine.SetEntityIRIAliases(r.Context(), chi.URLParam(r, "qid"), aliases)
+	if err != nil {
+		writeEngineError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, entityDTO(ent))
 }
 
 func (s *Server) getEntityHistory(w http.ResponseWriter, r *http.Request) {
@@ -276,6 +319,7 @@ type createPropertyReq struct {
 	Labels       map[string]string          `json:"labels"`
 	Descriptions map[string]string          `json:"descriptions"`
 	Constraints  domain.PropertyConstraints `json:"constraints,omitempty"`
+	IRILocal     string                     `json:"iriLocal,omitempty"`
 }
 
 func (s *Server) createProperty(w http.ResponseWriter, r *http.Request) {
@@ -297,7 +341,7 @@ func (s *Server) createProperty(w http.ResponseWriter, r *http.Request) {
 	meta := writeMetaFromRequest(r, "createProperty", hashBody(body))
 	res, err := s.engine.CreateProperty(r.Context(), meta, domain.CreatePropertyInput{
 		PackageCode: req.PackageCode, Datatype: dt, Labels: req.Labels,
-		Descriptions: req.Descriptions, Constraints: req.Constraints,
+		Descriptions: req.Descriptions, Constraints: req.Constraints, IRILocal: req.IRILocal,
 	})
 	if err != nil {
 		writeEngineError(w, err)
@@ -525,9 +569,10 @@ func (s *Server) getChangeSet(w http.ResponseWriter, r *http.Request) {
 }
 
 type createPackageReq struct {
-	Code         string                    `json:"code"`
-	Lifecycle    string                    `json:"lifecycle"`
-	Labels       map[string]string         `json:"labels"`
+	Code         string                     `json:"code"`
+	Lifecycle    string                     `json:"lifecycle"`
+	IRIBase      string                     `json:"iriBase,omitempty"`
+	Labels       map[string]string          `json:"labels"`
 	Dependencies []domain.PackageDependency `json:"dependencies,omitempty"`
 }
 
@@ -548,13 +593,75 @@ func (s *Server) createPackage(w http.ResponseWriter, r *http.Request) {
 	}
 	meta := writeMetaFromRequest(r, "createPackage", hashBody(body))
 	res, err := s.engine.CreatePackage(r.Context(), meta, domain.CreatePackageInput{
-		Code: req.Code, Lifecycle: lc, Labels: req.Labels, Dependencies: req.Dependencies,
+		Code: req.Code, Lifecycle: lc, IRIBase: req.IRIBase, Labels: req.Labels, Dependencies: req.Dependencies,
 	})
 	if err != nil {
 		writeEngineError(w, err)
 		return
 	}
 	writeJSON(w, http.StatusCreated, writeResponse(packageDTO(&res.Value), res.ChangeSet))
+}
+
+type updatePackageReq struct {
+	IRIBase *string           `json:"iriBase"`
+	Labels  map[string]string `json:"labels"`
+}
+
+func (s *Server) updatePackage(w http.ResponseWriter, r *http.Request) {
+	body, err := readBody(r)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid body")
+		return
+	}
+	var req updatePackageReq
+	if err := json.Unmarshal(body, &req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid JSON")
+		return
+	}
+	meta := writeMetaFromRequest(r, "updatePackage", hashBody(body))
+	res, err := s.engine.UpdatePackage(r.Context(), meta, chi.URLParam(r, "code"), domain.UpdatePackageInput{
+		IRIBase: req.IRIBase, Labels: req.Labels,
+	})
+	if err != nil {
+		writeEngineError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, writeResponse(packageDTO(&res.Value), res.ChangeSet))
+}
+
+type importPackageRDFReq struct {
+	NTriples string `json:"ntriples"`
+	DryRun   bool   `json:"dryRun"`
+}
+
+func (s *Server) importPackageRDF(w http.ResponseWriter, r *http.Request) {
+	body, err := readBody(r)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid body")
+		return
+	}
+	var req importPackageRDFReq
+	if err := json.Unmarshal(body, &req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid JSON")
+		return
+	}
+	if strings.TrimSpace(req.NTriples) == "" {
+		writeError(w, http.StatusBadRequest, "ntriples required")
+		return
+	}
+	meta := writeMetaFromRequest(r, "importRDF", hashBody(body))
+	res, err := s.engine.ImportRDF(r.Context(), meta, chi.URLParam(r, "code"), domain.RDFImportInput{
+		NTriples: req.NTriples, DryRun: req.DryRun,
+	})
+	if err != nil {
+		writeEngineError(w, err)
+		return
+	}
+	status := http.StatusOK
+	if !req.DryRun && res.ChangeSetID != "" {
+		status = http.StatusCreated
+	}
+	writeJSON(w, status, res)
 }
 
 func (s *Server) getPackage(w http.ResponseWriter, r *http.Request) {
@@ -648,12 +755,14 @@ func packageDTO(p *domain.Package) map[string]any {
 	for _, d := range p.Dependencies {
 		deps = append(deps, map[string]string{"dependsOnCode": d.DependsOnCode, "versionRange": d.VersionRange})
 	}
-	return map[string]any{
+	out := map[string]any{
 		"code": p.Code, "lifecycle": p.Lifecycle, "labels": p.Labels,
+		"iriBase": p.IRIBase,
 		"dependencies": deps,
 		"createdAt": p.CreatedAt.UTC().Format(time.RFC3339Nano),
 		"updatedAt": p.UpdatedAt.UTC().Format(time.RFC3339Nano),
 	}
+	return out
 }
 
 func releaseDTO(rel *domain.Release) map[string]any {
@@ -684,13 +793,41 @@ func writeResponse(data map[string]any, cs *domain.ChangeSet, validation ...*dom
 }
 
 func entityDTO(e *domain.Entity) map[string]any {
-	return map[string]any{
+	kind := string(e.Kind)
+	if kind == "" {
+		kind = string(domain.EntityKindEntity)
+	}
+	out := map[string]any{
 		"id": e.PublicID, "canonicalId": e.ID.String(), "status": e.Status,
-		"revisionNo": e.RevisionNo,
+		"kind": kind, "revisionNo": e.RevisionNo,
 		"labels": e.Labels, "descriptions": e.Descriptions,
 		"createdAt": e.CreatedAt.UTC().Format(time.RFC3339Nano),
 		"updatedAt": e.UpdatedAt.UTC().Format(time.RFC3339Nano),
 	}
+	if e.PackageCode != "" {
+		out["packageCode"] = e.PackageCode
+	}
+	out["iriLocal"] = e.IRILocal
+	if e.IRI != "" {
+		out["iri"] = e.IRI
+	}
+	aliases := make([]map[string]string, 0, len(e.IRIAliases))
+	for _, a := range e.IRIAliases {
+		aliases = append(aliases, map[string]string{"iri": a.IRI, "kind": a.Kind})
+	}
+	out["iriAliases"] = aliases
+	if e.PropertyProfile != nil {
+		out["propertyProfile"] = map[string]any{
+			"datatype":    e.PropertyProfile.Datatype,
+			"constraints": e.PropertyProfile.Constraints,
+		}
+	}
+	if e.ClassProfile != nil {
+		out["classProfile"] = map[string]any{
+			"subClassOf": e.ClassProfile.SubClassOf,
+		}
+	}
+	return out
 }
 
 func propertyDTO(p *domain.Property) map[string]any {

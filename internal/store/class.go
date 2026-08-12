@@ -48,7 +48,7 @@ func (s *Store) CreateClass(ctx context.Context, meta domain.WriteMeta, in domai
 	if err != nil {
 		return nil, err
 	}
-	pkgID, err := s.resolvePackageID(ctx, tx, in.PackageCode)
+	pkgID, err := s.resolvePackageIDRequired(ctx, tx, in.PackageCode)
 	if err != nil {
 		return nil, err
 	}
@@ -73,11 +73,15 @@ func (s *Store) CreateClass(ctx context.Context, meta domain.WriteMeta, in domai
 	}
 	doc := domain.ClassDocument{SubClassOf: in.SubClassOf}
 	docJSON, _ := json.Marshal(doc)
+	iriLocal, err := normalizeOptionalIRILocal(in.IRILocal)
+	if err != nil {
+		return nil, err
+	}
 	now := time.Now().UTC()
 	_, err = tx.Exec(ctx, `
-		INSERT INTO entity (id, public_id, status, current_revision_no, package_id, created_at, updated_at)
-		VALUES ($1,$2,'active',1,$3,$4,$4)
-	`, id, publicID, pkgID, now)
+		INSERT INTO entity (id, public_id, status, current_revision_no, package_id, iri_local, created_at, updated_at)
+		VALUES ($1,$2,'active',1,$3,$4,$5,$5)
+	`, id, publicID, pkgID, iriLocal, now)
 	if err != nil {
 		return nil, err
 	}

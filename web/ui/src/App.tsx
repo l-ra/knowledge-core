@@ -1,18 +1,19 @@
 import { Navigate, Route, Routes } from "react-router-dom";
 import { useAuth } from "./auth";
 import { Layout } from "./Layout";
+import { PackageProvider } from "./package";
+import { ChangeSetDraftProvider } from "./changeset";
 import { LoginPage } from "./pages/LoginPage";
 import { OidcCallbackPage } from "./pages/OidcCallbackPage";
 import { SearchPage } from "./pages/SearchPage";
 import { EntitiesPage } from "./pages/EntitiesPage";
 import { EntityPage } from "./pages/EntityPage";
 import { EntityHistoryPage } from "./pages/EntityHistoryPage";
-import { PropertiesPage } from "./pages/PropertiesPage";
 import { PackagesPage } from "./pages/PackagesPage";
+import { PackageDetailPage } from "./pages/PackageDetailPage";
 import { LensesPage } from "./pages/LensesPage";
 import { PoliciesPage } from "./pages/PoliciesPage";
 import { OpsPage } from "./pages/OpsPage";
-import { ClassesPage } from "./pages/ClassesPage";
 import { ShapesPage } from "./pages/ShapesPage";
 import { SchemaConfigPage } from "./pages/SchemaConfigPage";
 import { ValidationPage } from "./pages/ValidationPage";
@@ -34,20 +35,25 @@ export function App() {
         path="/"
         element={
           <RequireAuth>
-            <Layout />
+            <PackageProvider>
+              <ChangeSetDraftProvider>
+                <Layout />
+              </ChangeSetDraftProvider>
+            </PackageProvider>
           </RequireAuth>
         }
       >
-        <Route index element={<Navigate to="/search" replace />} />
+        <Route index element={<Navigate to="/entities" replace />} />
         <Route path="search" element={<SearchPage />} />
         <Route path="entities" element={<EntitiesPage />} />
         <Route path="entities/:qid/validation" element={<ValidationPage />} />
         <Route path="entities/:qid/history" element={<EntityHistoryPage />} />
         <Route path="entities/:qid" element={<EntityPage />} />
-        <Route path="model/properties" element={<PropertiesPage />} />
-        <Route path="model/classes" element={<ClassesPage />} />
+        <Route path="model/properties" element={<Navigate to="/entities?kind=property" replace />} />
+        <Route path="model/classes" element={<Navigate to="/entities?kind=class" replace />} />
         <Route path="model/shapes" element={<ShapesPage />} />
         <Route path="model/packages" element={<PackagesPage />} />
+        <Route path="model/packages/:code" element={<PackageDetailPage />} />
         <Route path="model/lenses" element={<LensesPage />} />
         <Route path="model/policies" element={<PoliciesPage />} />
         <Route path="admin/auth" element={<AuthPage />} />

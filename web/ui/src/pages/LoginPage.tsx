@@ -22,12 +22,12 @@ export function LoginPage() {
     try {
       if (cfg!.authMode === "bootstrap") {
         const session = { mode: "bootstrap" as const, token: password };
-        await apiFetch("/v1/me", {}, session);
-        setSession(session);
+        const me = await apiFetch<{ id: string; displayName?: string }>("/v1/me", {}, session);
+        setSession({ ...session, subject: me.id, displayName: me.displayName || me.id });
       } else if (cfg!.authMode === "dev") {
         const session = { mode: "dev" as const, subject, roles };
-        await apiFetch("/v1/me", {}, session);
-        setSession(session);
+        const me = await apiFetch<{ id: string; displayName?: string }>("/v1/me", {}, session);
+        setSession({ ...session, displayName: me.displayName || me.id || subject });
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : t("login.error"));

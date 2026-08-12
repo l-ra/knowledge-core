@@ -2,6 +2,7 @@ package apihttp
 
 import (
 	"net/http"
+	"strings"
 )
 
 func (s *Server) uiConfig(w http.ResponseWriter, r *http.Request) {
@@ -23,9 +24,17 @@ func (s *Server) me(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusUnauthorized, "unauthenticated")
 		return
 	}
+	display := sub.ID
+	for _, key := range []string{"preferred_username", "name", "email"} {
+		if v := strings.TrimSpace(sub.Attributes[key]); v != "" {
+			display = v
+			break
+		}
+	}
 	writeJSON(w, http.StatusOK, map[string]any{
-		"id":         sub.ID,
-		"roles":      sub.Roles,
-		"attributes": sub.Attributes,
+		"id":          sub.ID,
+		"displayName": display,
+		"roles":       sub.Roles,
+		"attributes":  sub.Attributes,
 	})
 }

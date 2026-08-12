@@ -11,31 +11,52 @@ import (
 
 func (s *Store) GetSchemaConfig(ctx context.Context) (*domain.ModelSchemaConfig, error) {
 	var instanceOf string
+	var modelPropsJSON []byte
 	var updatedAt time.Time
 	err := s.pool.QueryRow(ctx, `
-		SELECT instance_of_property, updated_at FROM model_schema_config WHERE id = 1
-	`).Scan(&instanceOf, &updatedAt)
+		SELECT instance_of_property, model_properties, updated_at FROM model_schema_config WHERE id = 1
+	`).Scan(&instanceOf, &modelPropsJSON, &updatedAt)
 	if err != nil {
 		return nil, err
 	}
-	return &domain.ModelSchemaConfig{
+	var modelProps []string
+	if len(modelPropsJSON) > 0 {
+		_ = json.Unmarshal(modelPropsJSON, &modelProps)
+	}
+	cfg := &domain.ModelSchemaConfig{
 		InstanceOfProperty: instanceOf,
+		ModelProperties:    modelProps,
 		UpdatedAt:          updatedAt.UTC().Format(time.RFC3339Nano),
-	}, nil
+	}
+	cfg.ModelProperties = cfg.EffectiveModelProperties()
+	return cfg, nil
 }
 
 func (s *Store) UpdateSchemaConfig(ctx context.Context, cfg domain.ModelSchemaConfig) (*domain.ModelSchemaConfig, error) {
 	now := time.Now().UTC()
-	_, err := s.pool.Exec(ctx, `
-		UPDATE model_schema_config SET instance_of_property = $1, updated_at = $2 WHERE id = 1
-	`, cfg.InstanceOfProperty, now)
+	modelProps := cfg.ModelProperties
+	if modelProps == nil {
+		modelProps = []string{}
+	}
+	modelPropsJSON, err := json.Marshal(modelProps)
 	if err != nil {
 		return nil, err
 	}
-	return &domain.ModelSchemaConfig{
+	_, err = s.pool.Exec(ctx, `
+		UPDATE model_schema_config
+		SET instance_of_property = $1, model_properties = $2, updated_at = $3
+		WHERE id = 1
+	`, cfg.InstanceOfProperty, modelPropsJSON, now)
+	if err != nil {
+		return nil, err
+	}
+	out := &domain.ModelSchemaConfig{
 		InstanceOfProperty: cfg.InstanceOfProperty,
+		ModelProperties:    modelProps,
 		UpdatedAt:          now.Format(time.RFC3339Nano),
-	}, nil
+	}
+	out.ModelProperties = out.EffectiveModelProperties()
+	return out, nil
 }
 
 func (s *Store) CreateValidationReport(ctx context.Context, actor string, scope, entityQID string, result domain.ValidationResult) (*domain.ValidationReport, error) {

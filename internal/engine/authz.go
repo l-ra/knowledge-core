@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/l-ra/knowledge-core/internal/auth"
 	"github.com/l-ra/knowledge-core/internal/domain"
@@ -96,9 +97,37 @@ func (e *Engine) authorizePackage(ctx context.Context, op auth.Operation, code s
 func (e *Engine) authorizeChangeSet(ctx context.Context, in domain.ApplyChangeSetInput) error {
 	for _, op := range in.Operations {
 		switch op.Op {
-		case "reviseStatement":
+		case "createEntity", "createProperty", "createClass":
+			if _, ok := auth.SubjectFromContext(ctx); !ok {
+				return ErrForbidden
+			}
+			if err := e.authorizeGlobal(ctx, auth.OpCreate); err != nil {
+				return err
+			}
+		case "createStatement":
+			if op.Subject == "" || op.Property == "" {
+				return fmt.Errorf("%w: createStatement requires subject and property", ErrInvalid)
+			}
+			subj := op.Subject
+			if strings.HasPrefix(subj, "$") {
+				continue
+			}
+			if err := e.authorizeEntity(ctx, auth.OpDiscover, subj); err != nil {
+				return err
+			}
+			prop := op.Property
+			if strings.HasPrefix(prop, "$") {
+				continue
+			}
+			if err := e.authorizeStatementProperty(ctx, auth.OpUpdate, subj, prop); err != nil {
+				return err
+			}
+		case "reviseStatement", "deprecateStatement":
 			if op.Statement == "" {
 				return fmt.Errorf("%w: missing statement", ErrInvalid)
+			}
+			if strings.HasPrefix(op.Statement, "$") {
+				continue
 			}
 			st, err := e.store.GetStatementByPublicID(ctx, op.Statement)
 			if err != nil {
@@ -113,6 +142,9 @@ func (e *Engine) authorizeChangeSet(ctx context.Context, in domain.ApplyChangeSe
 		case "updateEntity":
 			if op.Entity == "" {
 				return fmt.Errorf("%w: missing entity", ErrInvalid)
+			}
+			if strings.HasPrefix(op.Entity, "$") {
+				continue
 			}
 			if err := e.authorizeEntity(ctx, auth.OpUpdate, op.Entity); err != nil {
 				return err

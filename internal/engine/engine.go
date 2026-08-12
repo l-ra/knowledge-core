@@ -69,6 +69,23 @@ func (e *Engine) UpdateEntity(ctx context.Context, meta domain.WriteMeta, qid st
 	return res, nil
 }
 
+func (e *Engine) SetEntityIRIAliases(ctx context.Context, qid string, aliases []domain.EntityIRIAlias) (*domain.Entity, error) {
+	if _, _, err := datatype.ParsePublicGraphID(qid); err != nil {
+		return nil, fmt.Errorf("%w: %v", ErrInvalid, err)
+	}
+	if err := e.authorizeEntity(ctx, auth.OpUpdate, qid); err != nil {
+		return nil, err
+	}
+	if err := e.store.SetEntityIRIAliases(ctx, qid, aliases); err != nil {
+		return nil, mapErr(err)
+	}
+	ent, err := e.store.GetEntityByPublicID(ctx, qid)
+	if err != nil {
+		return nil, mapErr(err)
+	}
+	return ent, nil
+}
+
 func (e *Engine) CreateProperty(ctx context.Context, meta domain.WriteMeta, in domain.CreatePropertyInput) (*domain.WriteResult[domain.Property], error) {
 	if err := e.authorizeGlobal(ctx, auth.OpCreate); err != nil {
 		return nil, err
@@ -355,6 +372,8 @@ func mapErr(err error) error {
 	if strings.Contains(msg, "label.en") ||
 		strings.Contains(msg, "unknown datatype") ||
 		strings.Contains(msg, "requires") ||
+		strings.Contains(msg, "required") ||
+		strings.Contains(msg, "package") ||
 		strings.Contains(msg, "invalid") ||
 		strings.Contains(msg, "subject:") ||
 		strings.Contains(msg, "property:") ||

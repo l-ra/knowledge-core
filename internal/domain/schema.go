@@ -1,5 +1,7 @@
 package domain
 
+import "strings"
+
 type ValidationSeverity string
 
 const (
@@ -57,6 +59,7 @@ type CreateClassInput struct {
 	Descriptions      map[string]string
 	SubClassOf        string
 	CanonicalEntityID string
+	IRILocal          string
 }
 
 type ShapeDocument struct {
@@ -83,8 +86,31 @@ type CreateShapeInput struct {
 }
 
 type ModelSchemaConfig struct {
-	InstanceOfProperty string `json:"instanceOfProperty"`
-	UpdatedAt          string `json:"updatedAt,omitempty"`
+	InstanceOfProperty string   `json:"instanceOfProperty"`
+	ModelProperties    []string `json:"modelProperties"`
+	UpdatedAt          string   `json:"updatedAt,omitempty"`
+}
+
+// EffectiveModelProperties returns configured model PIDs plus instanceOf when set.
+func (c ModelSchemaConfig) EffectiveModelProperties() []string {
+	seen := map[string]struct{}{}
+	var out []string
+	add := func(pid string) {
+		pid = strings.TrimSpace(pid)
+		if pid == "" {
+			return
+		}
+		if _, ok := seen[pid]; ok {
+			return
+		}
+		seen[pid] = struct{}{}
+		out = append(out, pid)
+	}
+	for _, pid := range c.ModelProperties {
+		add(pid)
+	}
+	add(c.InstanceOfProperty)
+	return out
 }
 
 type ValidationFinding struct {

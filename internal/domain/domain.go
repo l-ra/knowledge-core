@@ -32,13 +32,42 @@ const (
 	StatementDeleted    StatementStatus = "deleted"
 )
 
+type EntityKind string
+
+const (
+	EntityKindEntity   EntityKind = "entity"
+	EntityKindProperty EntityKind = "property"
+	EntityKindClass    EntityKind = "class"
+)
+
+type PropertyProfileInfo struct {
+	Datatype    datatype.Type
+	Constraints PropertyConstraints
+}
+
+type ClassProfileInfo struct {
+	SubClassOf string
+}
+
+type EntityIRIAlias struct {
+	IRI  string
+	Kind string // sameAs | imported | canonical_export
+}
+
 type Entity struct {
 	ID           uuid.UUID
 	PublicID     string
 	Status       EntityStatus
+	Kind         EntityKind
+	PackageCode  string
+	IRILocal     string
+	IRI          string // computed canonical export IRI
+	IRIAliases   []EntityIRIAlias
 	Labels       map[string]string
 	Descriptions map[string]string
 	RevisionNo   int
+	PropertyProfile *PropertyProfileInfo
+	ClassProfile    *ClassProfileInfo
 	CreatedAt    time.Time
 	UpdatedAt    time.Time
 }
@@ -154,11 +183,13 @@ type CreateEntityInput struct {
 	PackageCode  string
 	Labels       map[string]string
 	Descriptions map[string]string
+	IRILocal     string
 }
 
 type UpdateEntityInput struct {
 	Labels           map[string]string
 	Descriptions     map[string]string
+	IRILocal         *string // nil = leave unchanged; pointer to "" clears
 	ExpectedRevision int
 }
 
@@ -168,6 +199,7 @@ type CreatePropertyInput struct {
 	Labels       map[string]string
 	Descriptions map[string]string
 	Constraints  PropertyConstraints
+	IRILocal     string
 }
 
 type CreateStatementInput struct {
@@ -198,19 +230,51 @@ type CreateReferenceInput struct {
 }
 
 type ChangeOperation struct {
-	Op               string          `json:"op"`
-	Statement        string          `json:"statement,omitempty"`
-	Entity           string          `json:"entity,omitempty"`
-	Value            datatype.Value  `json:"value,omitempty"`
-	Labels           map[string]string `json:"labels,omitempty"`
-	Descriptions     map[string]string `json:"descriptions,omitempty"`
-	ExpectedRevision int             `json:"expectedRevision,omitempty"`
+	Op               string              `json:"op"`
+	ClientKey        string              `json:"clientKey,omitempty"`
+	PackageCode      string              `json:"packageCode,omitempty"`
+	Statement        string              `json:"statement,omitempty"`
+	Entity           string              `json:"entity,omitempty"`
+	Subject          string              `json:"subject,omitempty"`
+	Property         string              `json:"property,omitempty"`
+	Datatype         string              `json:"datatype,omitempty"`
+	Constraints      *PropertyConstraints `json:"constraints,omitempty"`
+	SubClassOf       string              `json:"subClassOf,omitempty"`
+	Value            datatype.Value      `json:"value,omitempty"`
+	Qualifiers       []QualifierInput    `json:"qualifiers,omitempty"`
+	ReferenceIDs     []string            `json:"referenceIds,omitempty"`
+	ValidFrom        *time.Time          `json:"validFrom,omitempty"`
+	ValidTo          *time.Time          `json:"validTo,omitempty"`
+	Labels           map[string]string   `json:"labels,omitempty"`
+	Descriptions     map[string]string   `json:"descriptions,omitempty"`
+	IRILocal         string              `json:"iriLocal,omitempty"`
+	ExpectedRevision int                 `json:"expectedRevision,omitempty"`
 }
 
 type ApplyChangeSetInput struct {
 	OperationType string
 	Comment       string
 	Operations    []ChangeOperation
+}
+
+// ChangeSetDraft is a per-user working document (not a committed ChangeSet).
+type ChangeSetDraft struct {
+	Open         bool              `json:"open"`
+	Title        string            `json:"title,omitempty"`
+	PackageCode  string            `json:"packageCode,omitempty"`
+	Operations   []ChangeOperation `json:"operations"`
+	UpdatedAt    string            `json:"updatedAt,omitempty"`
+	CreatedAt    string            `json:"createdAt,omitempty"`
+}
+
+type BundleClass struct {
+	PublicID     string            `json:"id"`
+	PackageCode  string            `json:"packageCode,omitempty"`
+	RevisionNo   int               `json:"revisionNo"`
+	Status       PropertyStatus    `json:"status"`
+	Labels       map[string]string `json:"labels"`
+	Descriptions map[string]string `json:"descriptions"`
+	SubClassOf   string            `json:"subClassOf,omitempty"`
 }
 
 type PackageLifecycle string
@@ -224,6 +288,7 @@ type Package struct {
 	ID           uuid.UUID
 	Code         string
 	Lifecycle    PackageLifecycle
+	IRIBase      string
 	Labels       map[string]string
 	Dependencies []PackageDependency
 	CreatedAt    time.Time
@@ -255,11 +320,27 @@ type ReleaseObject struct {
 	RevisionNo     int
 }
 
+// PackageObject is a current object owned by a package (for listing).
+type PackageObject struct {
+	ObjectType string
+	PublicID   string
+	RevisionNo int
+	Labels     map[string]string
+}
+
+// ObjectRelease locates a release that pins a given public object.
+type ObjectRelease struct {
+	PackageCode string
+	Version     string
+	RevisionNo  int
+}
+
 type Bundle struct {
 	Manifest   BundleManifest    `json:"manifest"`
 	Releases   []BundleManifest  `json:"releases,omitempty"`
 	Entities   []BundleEntity    `json:"entities,omitempty"`
 	Properties []BundleProperty  `json:"properties,omitempty"`
+	Classes    []BundleClass     `json:"classes,omitempty"`
 	Statements []BundleStatement `json:"statements,omitempty"`
 	References []BundleReference `json:"references,omitempty"`
 }
@@ -312,10 +393,39 @@ type BundleReference struct {
 type CreatePackageInput struct {
 	Code         string
 	Lifecycle    PackageLifecycle
+	IRIBase      string
 	Labels       map[string]string
 	Dependencies []PackageDependency
 }
 
+type UpdatePackageInput struct {
+	IRIBase *string // nil = leave unchanged
+	Labels  map[string]string
+}
+
 type PublishReleaseInput struct {
 	Version string
+}
+
+type RDFImportInput struct {
+	NTriples string
+	DryRun   bool
+}
+
+type RDFImportAction struct {
+	Kind     string `json:"kind"`
+	IRI      string `json:"iri,omitempty"`
+	PublicID string `json:"publicId,omitempty"`
+	Detail   string `json:"detail,omitempty"`
+}
+
+type RDFImportResult struct {
+	DryRun      bool              `json:"dryRun"`
+	ChangeSetID string            `json:"changeSetId,omitempty"`
+	Matched     []RDFImportAction `json:"matched,omitempty"`
+	WouldCreate []RDFImportAction `json:"wouldCreate,omitempty"`
+	Created     []RDFImportAction `json:"created,omitempty"`
+	Skipped     []RDFImportAction `json:"skipped,omitempty"`
+	Warnings    []string          `json:"warnings,omitempty"`
+	Errors      []string          `json:"errors,omitempty"`
 }

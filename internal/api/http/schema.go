@@ -34,6 +34,7 @@ type createClassReq struct {
 	Labels       map[string]string `json:"labels"`
 	Descriptions map[string]string `json:"descriptions,omitempty"`
 	SubClassOf   string            `json:"subClassOf,omitempty"`
+	IRILocal     string            `json:"iriLocal,omitempty"`
 }
 
 func (s *Server) createClass(w http.ResponseWriter, r *http.Request) {
@@ -50,7 +51,7 @@ func (s *Server) createClass(w http.ResponseWriter, r *http.Request) {
 	meta := writeMetaFromRequest(r, "createClass", hashBody(body))
 	res, err := s.engine.CreateClass(r.Context(), meta, domain.CreateClassInput{
 		PackageCode: req.PackageCode, Labels: req.Labels, Descriptions: req.Descriptions,
-		SubClassOf: req.SubClassOf,
+		SubClassOf: req.SubClassOf, IRILocal: req.IRILocal,
 	})
 	if err != nil {
 		writeEngineError(w, err)
@@ -131,7 +132,8 @@ func (s *Server) getSchemaConfig(w http.ResponseWriter, r *http.Request) {
 }
 
 type updateSchemaConfigReq struct {
-	InstanceOfProperty string `json:"instanceOfProperty"`
+	InstanceOfProperty string   `json:"instanceOfProperty"`
+	ModelProperties    []string `json:"modelProperties"`
 }
 
 func (s *Server) putSchemaConfig(w http.ResponseWriter, r *http.Request) {
@@ -147,6 +149,7 @@ func (s *Server) putSchemaConfig(w http.ResponseWriter, r *http.Request) {
 	}
 	cfg, err := s.engine.UpdateSchemaConfig(r.Context(), domain.ModelSchemaConfig{
 		InstanceOfProperty: req.InstanceOfProperty,
+		ModelProperties:    req.ModelProperties,
 	})
 	if err != nil {
 		writeEngineError(w, err)
@@ -226,6 +229,7 @@ func shapeDTO(sh *domain.ShapeProfile) map[string]any {
 func schemaConfigDTO(cfg *domain.ModelSchemaConfig) map[string]any {
 	return map[string]any{
 		"instanceOfProperty": cfg.InstanceOfProperty,
+		"modelProperties":    cfg.ModelProperties,
 		"updatedAt":          cfg.UpdatedAt,
 	}
 }

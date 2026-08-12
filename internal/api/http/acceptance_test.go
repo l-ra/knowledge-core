@@ -46,6 +46,7 @@ func setupTestHandler(t *testing.T) http.Handler {
 	_, _ = pool.Exec(ctx, `
 		TRUNCATE change_set_item, change_set,
 			outbox_event, projection_search, projection_rdf,
+			entity_iri_alias,
 			release_object, release_dependency, release,
 			package_dependency, package,
 			lens_definition, validation_report, shape_profile,
@@ -55,9 +56,9 @@ func setupTestHandler(t *testing.T) http.Handler {
 			statement_revision, entity_revision,
 			statement_current, statement,
 			entity_label, entity_description,
-			entity, auth_runtime RESTART IDENTITY CASCADE;
+			entity, auth_runtime, user_changeset_draft RESTART IDENTITY CASCADE;
 		UPDATE id_counter SET last_value = 0;
-		UPDATE model_schema_config SET instance_of_property = '', updated_at = now() WHERE id = 1;
+		UPDATE model_schema_config SET instance_of_property = '', model_properties = '[]'::jsonb, updated_at = now() WHERE id = 1;
 	`)
 	_, _ = pool.Exec(ctx, `DELETE FROM auth_policy WHERE name <> 'bootstrap-admin'`)
 
@@ -69,7 +70,11 @@ func setupTestHandler(t *testing.T) http.Handler {
 	}
 	testAuthEng = authEng
 	cfg := config.Config{AuthMode: "dev", BootstrapAdminSubject: "test-admin"}
-	return apihttp.New(engine.New(st, authEng), st, apihttp.NewAuthenticator(cfg), cfg)
+	h := apihttp.New(engine.New(st, authEng), st, apihttp.NewAuthenticator(cfg), cfg)
+
+	// Default package required for all writes.
+	createPkg(t, h, "test", nil)
+	return h
 }
 
 func adminHeaders() map[string]string {
@@ -260,6 +265,7 @@ func TestAcceptanceNestedLensAndMany(t *testing.T) {
 	pName := createProperty(t, h, "name")
 	pTag := createProperty(t, h, "tag")
 	pOwnerRes := doJSON(t, h, http.MethodPost, "/v1/properties", map[string]any{
+		"packageCode": "test",
 		"datatype": "EntityReference",
 		"labels":   map[string]string{"en": "ownerRef"},
 	}, nil)
@@ -276,6 +282,7 @@ func TestAcceptanceNestedLensAndMany(t *testing.T) {
 	_ = createStatement(t, h, app, pCode, "APP-1")
 	_ = createStatement(t, h, app, pName, "CRM")
 	ownerStmt := doJSON(t, h, http.MethodPost, "/v1/statements", map[string]any{
+		"packageCode": "test",
 		"subject":  app,
 		"property": pOwner,
 		"value":    map[string]any{"type": "EntityReference", "entityId": owner},
@@ -368,6 +375,7 @@ func TestAcceptanceA1A2A14(t *testing.T) {
 	h := setupTestHandler(t)
 
 	res := doJSON(t, h, http.MethodPost, "/v1/entities", map[string]any{
+		"packageCode": "test",
 		"labels": map[string]string{"cs": "Zákazník"},
 	}, nil)
 	if res.StatusCode != http.StatusBadRequest {
@@ -375,6 +383,7 @@ func TestAcceptanceA1A2A14(t *testing.T) {
 	}
 
 	ent := doJSON(t, h, http.MethodPost, "/v1/entities", map[string]any{
+		"packageCode": "test",
 		"labels": map[string]string{"en": "Customer"},
 	}, nil)
 	if ent.StatusCode != http.StatusCreated {
@@ -383,6 +392,7 @@ func TestAcceptanceA1A2A14(t *testing.T) {
 	qid := parseDataID(t, ent.Body)
 
 	prop := doJSON(t, h, http.MethodPost, "/v1/properties", map[string]any{
+		"packageCode": "test",
 		"datatype": "String",
 		"labels":   map[string]string{"en": "Code"},
 	}, nil)
@@ -392,6 +402,7 @@ func TestAcceptanceA1A2A14(t *testing.T) {
 	pid := parseDataID(t, prop.Body)
 
 	stmt := doJSON(t, h, http.MethodPost, "/v1/statements", map[string]any{
+		"packageCode": "test",
 		"subject":  qid,
 		"property": pid,
 		"value":    map[string]any{"type": "String", "string": "CRM-01"},
@@ -510,6 +521,7 @@ func TestAcceptanceA10(t *testing.T) {
 	rid := parseDataID(t, ref.Body)
 
 	stmt := doJSON(t, h, http.MethodPost, "/v1/statements", map[string]any{
+		"packageCode": "test",
 		"subject":  qid,
 		"property": ownerProp,
 		"value":    map[string]any{"type": "String", "string": "owner-1"},
@@ -1037,6 +1049,155 @@ func TestAcceptanceRDFProjection(t *testing.T) {
 	}
 }
 
+func TestAcceptanceIRIMapping(t *testing.T) {
+	h := setupTestHandler(t)
+
+	createPkg(t, h, "onto", nil)
+	patch := doJSON(t, h, http.MethodPatch, "/v1/packages/onto", map[string]any{
+		"iriBase": "https://example.org/id",
+	}, nil)
+	if patch.StatusCode != http.StatusOK {
+		t.Fatalf("patch package: %d %s", patch.StatusCode, patch.Body)
+	}
+	var pkgWrap struct {
+		Data struct {
+			IRIBase string `json:"iriBase"`
+		} `json:"data"`
+	}
+	_ = json.Unmarshal([]byte(patch.Body), &pkgWrap)
+	if pkgWrap.Data.IRIBase != "https://example.org/id/" {
+		t.Fatalf("expected normalized iriBase, got %q", pkgWrap.Data.IRIBase)
+	}
+
+	entRes := doJSON(t, h, http.MethodPost, "/v1/entities", map[string]any{
+		"packageCode": "onto",
+		"labels":      map[string]string{"en": "Alice"},
+		"iriLocal":    "person/alice",
+	}, nil)
+	if entRes.StatusCode != http.StatusCreated {
+		t.Fatalf("create entity: %d %s", entRes.StatusCode, entRes.Body)
+	}
+	qid := parseDataID(t, entRes.Body)
+
+	get := doJSON(t, h, http.MethodGet, "/v1/entities/"+qid, nil, nil)
+	if get.StatusCode != http.StatusOK {
+		t.Fatalf("get entity: %d %s", get.StatusCode, get.Body)
+	}
+	var ent struct {
+		IRI      string `json:"iri"`
+		IRILocal string `json:"iriLocal"`
+	}
+	_ = json.Unmarshal([]byte(get.Body), &ent)
+	wantIRI := "https://example.org/id/person/alice"
+	if ent.IRI != wantIRI || ent.IRILocal != "person/alice" {
+		t.Fatalf("entity iri=%q local=%q want %q", ent.IRI, ent.IRILocal, wantIRI)
+	}
+
+	alias := doJSON(t, h, http.MethodPut, "/v1/entities/"+qid+"/iri-aliases", map[string]any{
+		"aliases": []map[string]string{{"iri": "https://www.wikidata.org/entity/Q42", "kind": "sameAs"}},
+	}, nil)
+	if alias.StatusCode != http.StatusOK {
+		t.Fatalf("put aliases: %d %s", alias.StatusCode, alias.Body)
+	}
+
+	_ = doJSON(t, h, http.MethodPost, "/v1/projections/outbox/process", nil, nil)
+	export := doJSON(t, h, http.MethodGet, "/v1/projections/rdf", nil, nil)
+	if export.StatusCode != http.StatusOK {
+		t.Fatalf("rdf export: %d %s", export.StatusCode, export.Body)
+	}
+	if !strings.Contains(export.Body, wantIRI) {
+		t.Fatalf("rdf missing canonical iri %q: %s", wantIRI, export.Body)
+	}
+	if !strings.Contains(export.Body, "https://www.wikidata.org/entity/Q42") {
+		t.Fatalf("rdf missing sameAs: %s", export.Body)
+	}
+	if !strings.Contains(export.Body, "owl#sameAs") && !strings.Contains(export.Body, "2002/07/owl#sameAs") {
+		t.Fatalf("rdf missing owl:sameAs predicate: %s", export.Body)
+	}
+}
+
+func TestAcceptanceRDFImport(t *testing.T) {
+	h := setupTestHandler(t)
+
+	createPkg(t, h, "onto", nil)
+	patch := doJSON(t, h, http.MethodPatch, "/v1/packages/onto", map[string]any{
+		"iriBase": "https://example.org/id/",
+	}, nil)
+	if patch.StatusCode != http.StatusOK {
+		t.Fatalf("patch: %d %s", patch.StatusCode, patch.Body)
+	}
+
+	nt := `
+<https://example.org/id/person/alice> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://example.org/id/class/Person> .
+<https://example.org/id/person/alice> <http://www.w3.org/2000/01/rdf-schema#label> "Alice"@en .
+<https://example.org/id/class/Person> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/2000/01/rdf-schema#Class> .
+<https://example.org/id/class/Person> <http://www.w3.org/2000/01/rdf-schema#label> "Person"@en .
+<https://example.org/id/prop/age> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/1999/02/22-rdf-syntax-ns#Property> .
+<https://example.org/id/prop/age> <http://www.w3.org/2000/01/rdf-schema#label> "age"@en .
+<https://example.org/id/prop/age> <http://www.w3.org/2000/01/rdf-schema#range> <http://www.w3.org/2001/XMLSchema#integer> .
+<https://example.org/id/person/alice> <https://example.org/id/prop/age> "42"^^<http://www.w3.org/2001/XMLSchema#integer> .
+`
+	dry := doJSON(t, h, http.MethodPost, "/v1/packages/onto/rdf/import", map[string]any{
+		"ntriples": nt, "dryRun": true,
+	}, nil)
+	if dry.StatusCode != http.StatusOK {
+		t.Fatalf("dry-run: %d %s", dry.StatusCode, dry.Body)
+	}
+	var dryRes struct {
+		DryRun      bool `json:"dryRun"`
+		WouldCreate []any `json:"wouldCreate"`
+		Errors      []string `json:"errors"`
+	}
+	_ = json.Unmarshal([]byte(dry.Body), &dryRes)
+	if !dryRes.DryRun || len(dryRes.Errors) > 0 || len(dryRes.WouldCreate) == 0 {
+		t.Fatalf("unexpected dry-run: %s", dry.Body)
+	}
+
+	commit := doJSON(t, h, http.MethodPost, "/v1/packages/onto/rdf/import", map[string]any{
+		"ntriples": nt, "dryRun": false,
+	}, nil)
+	if commit.StatusCode != http.StatusCreated && commit.StatusCode != http.StatusOK {
+		t.Fatalf("commit: %d %s", commit.StatusCode, commit.Body)
+	}
+	var commitRes struct {
+		ChangeSetID string `json:"changeSetId"`
+		Created     []struct {
+			Kind     string `json:"kind"`
+			PublicID string `json:"publicId"`
+			Detail   string `json:"detail"`
+		} `json:"created"`
+	}
+	_ = json.Unmarshal([]byte(commit.Body), &commitRes)
+	if commitRes.ChangeSetID == "" {
+		t.Fatalf("missing changeset: %s", commit.Body)
+	}
+
+	// second import should match / skip duplicates
+	again := doJSON(t, h, http.MethodPost, "/v1/packages/onto/rdf/import", map[string]any{
+		"ntriples": nt, "dryRun": false,
+	}, nil)
+	if again.StatusCode != http.StatusCreated && again.StatusCode != http.StatusOK {
+		t.Fatalf("reimport: %d %s", again.StatusCode, again.Body)
+	}
+	var againRes struct {
+		Matched []any `json:"matched"`
+		Created []any `json:"created"`
+	}
+	_ = json.Unmarshal([]byte(again.Body), &againRes)
+	if len(againRes.Matched) == 0 {
+		t.Fatalf("expected matches on reimport: %s", again.Body)
+	}
+
+	// property datatype from range
+	propList := doJSON(t, h, http.MethodGet, "/v1/properties?limit=50", nil, nil)
+	if propList.StatusCode != http.StatusOK {
+		t.Fatalf("list properties: %d %s", propList.StatusCode, propList.Body)
+	}
+	if !strings.Contains(propList.Body, "Integer") {
+		t.Fatalf("expected Integer property from range: %s", propList.Body)
+	}
+}
+
 func truncateTestDB(t *testing.T) {
 	t.Helper()
 	dsn := os.Getenv("KC_DATABASE_URL")
@@ -1052,6 +1213,7 @@ func truncateTestDB(t *testing.T) {
 	_, err = pool.Exec(ctx, `
 		TRUNCATE change_set_item, change_set,
 			outbox_event, projection_search, projection_rdf,
+			entity_iri_alias,
 			release_object, release_dependency, release,
 			package_dependency, package,
 			lens_definition, validation_report, shape_profile,
@@ -1129,37 +1291,17 @@ func createStatementWithPkg(t *testing.T, h http.Handler, pkg, qid, pid, val str
 
 func createEntity(t *testing.T, h http.Handler, label string) string {
 	t.Helper()
-	res := doJSON(t, h, http.MethodPost, "/v1/entities", map[string]any{
-		"labels": map[string]string{"en": label},
-	}, nil)
-	if res.StatusCode != http.StatusCreated {
-		t.Fatalf("create entity: %d %s", res.StatusCode, res.Body)
-	}
-	return parseDataID(t, res.Body)
+	return createEntityWithPkg(t, h, "test", label)
 }
 
 func createProperty(t *testing.T, h http.Handler, label string) string {
 	t.Helper()
-	res := doJSON(t, h, http.MethodPost, "/v1/properties", map[string]any{
-		"datatype": "String",
-		"labels":   map[string]string{"en": label},
-	}, nil)
-	if res.StatusCode != http.StatusCreated {
-		t.Fatalf("create property: %d %s", res.StatusCode, res.Body)
-	}
-	return parseDataID(t, res.Body)
+	return createPropertyWithPkg(t, h, "test", label)
 }
 
 func createStatement(t *testing.T, h http.Handler, qid, pid, val string) string {
 	t.Helper()
-	res := doJSON(t, h, http.MethodPost, "/v1/statements", map[string]any{
-		"subject": qid, "property": pid,
-		"value": map[string]any{"type": "String", "string": val},
-	}, nil)
-	if res.StatusCode != http.StatusCreated {
-		t.Fatalf("create statement: %d %s", res.StatusCode, res.Body)
-	}
-	return parseDataID(t, res.Body)
+	return createStatementWithPkg(t, h, "test", qid, pid, val)
 }
 
 func parseDataID(t *testing.T, body string) string {
@@ -1237,6 +1379,7 @@ func TestAcceptanceSchemaValidationRelaxed(t *testing.T) {
 	h := setupTestHandler(t)
 
 	ent := doJSON(t, h, http.MethodPost, "/v1/entities", map[string]any{
+		"packageCode": "test",
 		"labels": map[string]string{"en": "Person"},
 	}, adminHeaders())
 	if ent.StatusCode != http.StatusCreated {
@@ -1245,12 +1388,14 @@ func TestAcceptanceSchemaValidationRelaxed(t *testing.T) {
 	qid := parseDataID(t, ent.Body)
 
 	typeProp := doJSON(t, h, http.MethodPost, "/v1/properties", map[string]any{
+		"packageCode": "test",
 		"datatype": "EntityReference",
 		"labels":   map[string]string{"en": "instance of"},
 	}, adminHeaders())
 	pidType := parseDataID(t, typeProp.Body)
 
 	nameProp := doJSON(t, h, http.MethodPost, "/v1/properties", map[string]any{
+		"packageCode": "test",
 		"datatype": "String",
 		"labels":   map[string]string{"en": "name"},
 		"constraints": map[string]any{
@@ -1261,6 +1406,7 @@ func TestAcceptanceSchemaValidationRelaxed(t *testing.T) {
 	pidName := parseDataID(t, nameProp.Body)
 
 	class := doJSON(t, h, http.MethodPost, "/v1/classes", map[string]any{
+		"packageCode": "test",
 		"labels": map[string]string{"en": "Person"},
 	}, adminHeaders())
 	if class.StatusCode != http.StatusCreated {
@@ -1282,6 +1428,7 @@ func TestAcceptanceSchemaValidationRelaxed(t *testing.T) {
 	}, adminHeaders())
 
 	doJSON(t, h, http.MethodPost, "/v1/statements", map[string]any{
+		"packageCode": "test",
 		"subject":  qid,
 		"property": pidType,
 		"value":    map[string]any{"type": "EntityReference", "entityId": classID},
@@ -1292,6 +1439,7 @@ func TestAcceptanceSchemaValidationRelaxed(t *testing.T) {
 	// Add name statement - should pass. Add second name to test cardinality if we set maxCount.
 
 	st := doJSON(t, h, http.MethodPost, "/v1/statements", map[string]any{
+		"packageCode": "test",
 		"subject":  qid,
 		"property": pidName,
 		"value":    map[string]any{"type": "String", "string": "Alice"},
@@ -1315,6 +1463,7 @@ func TestAcceptanceSchemaValidationRelaxed(t *testing.T) {
 	}
 
 	strict := doJSON(t, h, http.MethodPost, "/v1/statements", map[string]any{
+		"packageCode": "test",
 		"subject":  qid,
 		"property": pidName,
 		"value":    map[string]any{"type": "String", "string": "Bob"},
@@ -1333,6 +1482,7 @@ func TestAcceptanceEntityProfile(t *testing.T) {
 	h := setupTestHandler(t)
 
 	prop := doJSON(t, h, http.MethodPost, "/v1/properties", map[string]any{
+		"packageCode": "test",
 		"datatype": "String",
 		"labels":   map[string]string{"en": "note"},
 	}, adminHeaders())
@@ -1347,11 +1497,13 @@ func TestAcceptanceEntityProfile(t *testing.T) {
 	}
 
 	class := doJSON(t, h, http.MethodPost, "/v1/classes", map[string]any{
+		"packageCode": "test",
 		"labels": map[string]string{"en": "Thing"},
 	}, adminHeaders())
 	cid := parseDataID(t, class.Body)
 
 	st := doJSON(t, h, http.MethodPost, "/v1/statements", map[string]any{
+		"packageCode": "test",
 		"subject":  pid,
 		"property": pid,
 		"value":    map[string]any{"type": "String", "string": "meta about property"},
@@ -1361,10 +1513,12 @@ func TestAcceptanceEntityProfile(t *testing.T) {
 	}
 
 	qEnt := doJSON(t, h, http.MethodPost, "/v1/entities", map[string]any{
+		"packageCode": "test",
 		"labels": map[string]string{"en": "ordinary"},
 	}, adminHeaders())
 	qid := parseDataID(t, qEnt.Body)
 	bad := doJSON(t, h, http.MethodPost, "/v1/statements", map[string]any{
+		"packageCode": "test",
 		"subject":  qid,
 		"property": qid,
 		"value":    map[string]any{"type": "String", "string": "no"},
@@ -1385,4 +1539,96 @@ func mergeHeaders(base, extra map[string]string) map[string]string {
 		out[k] = v
 	}
 	return out
+}
+
+func TestAcceptanceClassInReleaseAndDraft(t *testing.T) {
+	h := setupTestHandler(t)
+
+	class := doJSON(t, h, http.MethodPost, "/v1/classes", map[string]any{
+		"packageCode": "test",
+		"labels":      map[string]string{"en": "Person"},
+	}, adminHeaders())
+	if class.StatusCode != http.StatusCreated {
+		t.Fatalf("create class: %d %s", class.StatusCode, class.Body)
+	}
+	cid := parseDataID(t, class.Body)
+
+	pub := doJSON(t, h, http.MethodPost, "/v1/packages/test/releases", map[string]any{"version": "1.0.0"}, adminHeaders())
+	if pub.StatusCode != http.StatusCreated {
+		t.Fatalf("publish: %d %s", pub.StatusCode, pub.Body)
+	}
+	var rel struct {
+		Data struct {
+			Objects []struct {
+				ObjectType string `json:"objectType"`
+				PublicID   string `json:"publicId"`
+			} `json:"objects"`
+		} `json:"data"`
+	}
+	_ = json.Unmarshal([]byte(pub.Body), &rel)
+	foundClass := false
+	for _, o := range rel.Data.Objects {
+		if o.ObjectType == "class" && o.PublicID == cid {
+			foundClass = true
+		}
+	}
+	if !foundClass {
+		t.Fatalf("expected class %s in release objects, got %+v", cid, rel.Data.Objects)
+	}
+
+	bundle := doJSON(t, h, http.MethodGet, "/v1/packages/test/releases/1.0.0/bundle", nil, adminHeaders())
+	if bundle.StatusCode != http.StatusOK {
+		t.Fatalf("bundle: %d %s", bundle.StatusCode, bundle.Body)
+	}
+	var b struct {
+		Classes []struct {
+			ID string `json:"id"`
+		} `json:"classes"`
+	}
+	_ = json.Unmarshal([]byte(bundle.Body), &b)
+	if len(b.Classes) != 1 || b.Classes[0].ID != cid {
+		t.Fatalf("bundle classes: %+v", b.Classes)
+	}
+
+	// Draft workflow
+	put := doJSON(t, h, http.MethodPut, "/v1/me/changeset-draft", map[string]any{
+		"open": true, "title": "batch", "packageCode": "test",
+		"operations": []map[string]any{
+			{"op": "createEntity", "clientKey": "$e1", "packageCode": "test", "labels": map[string]string{"en": "Drafted"}},
+		},
+	}, adminHeaders())
+	if put.StatusCode != http.StatusOK {
+		t.Fatalf("put draft: %d %s", put.StatusCode, put.Body)
+	}
+	get := doJSON(t, h, http.MethodGet, "/v1/me/changeset-draft", nil, adminHeaders())
+	if get.StatusCode != http.StatusOK {
+		t.Fatalf("get draft: %d %s", get.StatusCode, get.Body)
+	}
+	var draft struct {
+		Open       bool  `json:"open"`
+		Operations []any `json:"operations"`
+	}
+	_ = json.Unmarshal([]byte(get.Body), &draft)
+	if !draft.Open || len(draft.Operations) != 1 {
+		t.Fatalf("draft state: %+v", draft)
+	}
+	commit := doJSON(t, h, http.MethodPost, "/v1/me/changeset-draft/commit", map[string]any{}, adminHeaders())
+	if commit.StatusCode != http.StatusOK {
+		t.Fatalf("commit draft: %d %s", commit.StatusCode, commit.Body)
+	}
+	get2 := doJSON(t, h, http.MethodGet, "/v1/me/changeset-draft", nil, adminHeaders())
+	_ = json.Unmarshal([]byte(get2.Body), &draft)
+	if draft.Open {
+		t.Fatal("draft should be closed after commit")
+	}
+	ents := doJSON(t, h, http.MethodGet, "/v1/entities?q=Drafted", nil, adminHeaders())
+	var list struct {
+		Items []struct {
+			ID string `json:"id"`
+		} `json:"items"`
+	}
+	_ = json.Unmarshal([]byte(ents.Body), &list)
+	if len(list.Items) == 0 {
+		t.Fatal("expected drafted entity after commit")
+	}
 }

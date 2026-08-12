@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"time"
 
@@ -78,15 +79,19 @@ func (s *Store) CreateEntity(ctx context.Context, meta domain.WriteMeta, in doma
 	if err != nil {
 		return nil, err
 	}
-	pkgID, err := s.resolvePackageID(ctx, tx, in.PackageCode)
+	pkgID, err := s.resolvePackageIDRequired(ctx, tx, in.PackageCode)
+	if err != nil {
+		return nil, err
+	}
+	iriLocal, err := normalizeOptionalIRILocal(in.IRILocal)
 	if err != nil {
 		return nil, err
 	}
 	now := time.Now().UTC()
 	_, err = tx.Exec(ctx, `
-		INSERT INTO entity (id, public_id, status, current_revision_no, package_id, created_at, updated_at)
-		VALUES ($1, $2, 'active', 1, $3, $4, $4)
-	`, id, publicID, pkgID, now)
+		INSERT INTO entity (id, public_id, status, current_revision_no, package_id, iri_local, created_at, updated_at)
+		VALUES ($1, $2, 'active', 1, $3, $4, $5, $5)
+	`, id, publicID, pkgID, iriLocal, now)
 	if err != nil {
 		return nil, err
 	}
@@ -120,8 +125,13 @@ func (s *Store) CreateEntity(ctx context.Context, meta domain.WriteMeta, in doma
 
 	ent := domain.Entity{
 		ID: id, PublicID: publicID, Status: domain.EntityActive,
+		Kind: domain.EntityKindEntity, PackageCode: in.PackageCode,
+		IRILocal: iriLocal,
 		Labels: labels, Descriptions: descs, RevisionNo: 1,
 		CreatedAt: now, UpdatedAt: now,
+	}
+	if err := s.fillEntityIRI(ctx, &ent); err != nil {
+		return nil, err
 	}
 	if err := s.finalizeChangeSet(ctx, tx, cs, ent); err != nil {
 		return nil, err
@@ -134,11 +144,18 @@ func (s *Store) CreateEntity(ctx context.Context, meta domain.WriteMeta, in doma
 
 func (s *Store) GetEntityByPublicID(ctx context.Context, qid string) (*domain.Entity, error) {
 	var e domain.Entity
+	var pkgCode *string
 	err := s.pool.QueryRow(ctx, `
-		SELECT id, public_id, status, current_revision_no, created_at, updated_at FROM entity WHERE public_id = $1
-	`, qid).Scan(&e.ID, &e.PublicID, &e.Status, &e.RevisionNo, &e.CreatedAt, &e.UpdatedAt)
+		SELECT e.id, e.public_id, e.status, e.current_revision_no, e.created_at, e.updated_at, p.code, COALESCE(e.iri_local,'')
+		FROM entity e
+		LEFT JOIN package p ON p.id = e.package_id
+		WHERE e.public_id = $1
+	`, qid).Scan(&e.ID, &e.PublicID, &e.Status, &e.RevisionNo, &e.CreatedAt, &e.UpdatedAt, &pkgCode, &e.IRILocal)
 	if err != nil {
 		return nil, err
+	}
+	if pkgCode != nil {
+		e.PackageCode = *pkgCode
 	}
 	e.Labels, err = s.loadLabels(ctx, `SELECT lang, text FROM entity_label WHERE entity_id = $1`, e.ID)
 	if err != nil {
@@ -148,7 +165,45 @@ func (s *Store) GetEntityByPublicID(ctx context.Context, qid string) (*domain.En
 	if err != nil {
 		return nil, err
 	}
+	if err := s.attachEntityProfiles(ctx, &e); err != nil {
+		return nil, err
+	}
+	if err := s.fillEntityIRI(ctx, &e); err != nil {
+		return nil, err
+	}
 	return &e, nil
+}
+
+func (s *Store) attachEntityProfiles(ctx context.Context, e *domain.Entity) error {
+	e.Kind = domain.EntityKindEntity
+	var dt string
+	var constraintsJSON []byte
+	err := s.pool.QueryRow(ctx, `
+		SELECT datatype, constraints FROM property_profile WHERE entity_id = $1
+	`, e.ID).Scan(&dt, &constraintsJSON)
+	if err == nil {
+		e.Kind = domain.EntityKindProperty
+		info := &domain.PropertyProfileInfo{Datatype: datatype.Type(dt)}
+		if len(constraintsJSON) > 0 {
+			_ = json.Unmarshal(constraintsJSON, &info.Constraints)
+		}
+		e.PropertyProfile = info
+	} else if !errors.Is(err, pgx.ErrNoRows) {
+		return err
+	}
+	var docJSON []byte
+	err = s.pool.QueryRow(ctx, `SELECT document FROM class_profile WHERE entity_id = $1`, e.ID).Scan(&docJSON)
+	if err == nil {
+		e.Kind = domain.EntityKindClass
+		info := &domain.ClassProfileInfo{}
+		var doc domain.ClassDocument
+		_ = json.Unmarshal(docJSON, &doc)
+		info.SubClassOf = doc.SubClassOf
+		e.ClassProfile = info
+	} else if !errors.Is(err, pgx.ErrNoRows) {
+		return err
+	}
+	return nil
 }
 
 func (s *Store) CreateProperty(ctx context.Context, meta domain.WriteMeta, in domain.CreatePropertyInput) (*domain.WriteResult[domain.Property], error) {
@@ -191,16 +246,20 @@ func (s *Store) CreateProperty(ctx context.Context, meta domain.WriteMeta, in do
 	if err != nil {
 		return nil, err
 	}
-	pkgID, err := s.resolvePackageID(ctx, tx, in.PackageCode)
+	pkgID, err := s.resolvePackageIDRequired(ctx, tx, in.PackageCode)
+	if err != nil {
+		return nil, err
+	}
+	iriLocal, err := normalizeOptionalIRILocal(in.IRILocal)
 	if err != nil {
 		return nil, err
 	}
 	now := time.Now().UTC()
 	constraintsJSON, _ := json.Marshal(in.Constraints)
 	_, err = tx.Exec(ctx, `
-		INSERT INTO entity (id, public_id, status, current_revision_no, package_id, created_at, updated_at)
-		VALUES ($1,$2,'active',1,$3,$4,$4)
-	`, id, publicID, pkgID, now)
+		INSERT INTO entity (id, public_id, status, current_revision_no, package_id, iri_local, created_at, updated_at)
+		VALUES ($1,$2,'active',1,$3,$4,$5,$5)
+	`, id, publicID, pkgID, iriLocal, now)
 	if err != nil {
 		return nil, err
 	}
@@ -298,8 +357,12 @@ func encodeValue(dt datatype.Type, v datatype.Value) (storedValue, error) {
 	if err := datatype.Validate(dt, v); err != nil {
 		return storedValue{}, err
 	}
-	out := storedValue{Type: string(dt)}
-	switch dt {
+	concrete := dt
+	if dt == datatype.Any {
+		concrete = v.Type
+	}
+	out := storedValue{Type: string(concrete)}
+	switch concrete {
 	case datatype.EntityReference:
 		id, err := uuid.Parse(*v.EntityID)
 		if err != nil {
@@ -504,7 +567,7 @@ func (s *Store) CreateStatement(ctx context.Context, meta domain.WriteMeta, in d
 	if err != nil {
 		return nil, err
 	}
-	pkgID, err := s.resolvePackageID(ctx, tx, in.PackageCode)
+	pkgID, err := s.resolvePackageIDRequired(ctx, tx, in.PackageCode)
 	if err != nil {
 		return nil, err
 	}

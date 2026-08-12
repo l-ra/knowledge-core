@@ -29,12 +29,22 @@ const (
 	ExternalIdentifier Type = "ExternalIdentifier"
 	Quantity           Type = "Quantity"
 	Interval           Type = "Interval"
+	// Any accepts any concrete value type (value.type must not be Any).
+	Any Type = "Any"
 )
 
 var allTypes = map[Type]struct{}{
 	EntityReference: {}, String: {}, LocalizedString: {}, Boolean: {},
 	Integer: {}, Decimal: {}, Date: {}, DateTime: {}, URI: {},
-	ExternalIdentifier: {}, Quantity: {}, Interval: {},
+	ExternalIdentifier: {}, Quantity: {}, Interval: {}, Any: {},
+}
+
+func IsConcreteType(t Type) bool {
+	if t == "" || t == Any {
+		return false
+	}
+	_, ok := allTypes[t]
+	return ok
 }
 
 func ParseType(s string) (Type, error) {
@@ -76,12 +86,22 @@ var (
 
 // Validate checks structural rules for a value of the given property datatype.
 func Validate(expected Type, v Value) error {
+	if expected == Any {
+		if !IsConcreteType(v.Type) {
+			return fmt.Errorf("Any requires a concrete value type")
+		}
+		return validateConcrete(v.Type, v)
+	}
 	if v.Type == "" {
 		v.Type = expected
 	}
 	if v.Type != expected {
 		return fmt.Errorf("value type %q does not match property datatype %q", v.Type, expected)
 	}
+	return validateConcrete(expected, v)
+}
+
+func validateConcrete(expected Type, v Value) error {
 	switch expected {
 	case EntityReference:
 		if v.EntityID == nil || strings.TrimSpace(*v.EntityID) == "" {

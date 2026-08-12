@@ -9,9 +9,11 @@ import (
 
 func (s *Server) listEntities(w http.ResponseWriter, r *http.Request) {
 	opt := store.ListOptions{
-		Query:  r.URL.Query().Get("q"),
-		Cursor: r.URL.Query().Get("cursor"),
-		Limit:  50,
+		Query:       r.URL.Query().Get("q"),
+		Cursor:      r.URL.Query().Get("cursor"),
+		Kind:        r.URL.Query().Get("kind"),
+		PackageCode: r.URL.Query().Get("package"),
+		Limit:       50,
 	}
 	if v := r.URL.Query().Get("limit"); v != "" {
 		if n, err := strconv.Atoi(v); err == nil && n > 0 {

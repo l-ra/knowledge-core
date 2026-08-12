@@ -13,9 +13,11 @@ import (
 )
 
 type ListOptions struct {
-	Limit  int
-	Cursor string
-	Query  string
+	Limit       int
+	Cursor      string
+	Query       string
+	Kind        string // "", "entity", "property", "class"
+	PackageCode string
 }
 
 func (s *Store) ListEntities(ctx context.Context, opt ListOptions) ([]domain.Entity, string, error) {
@@ -28,6 +30,19 @@ func (s *Store) ListEntities(ctx context.Context, opt ListOptions) ([]domain.Ent
 	q := strings.TrimSpace(opt.Query)
 	args := []any{}
 	where := `e.status <> 'deleted'`
+	switch strings.ToLower(strings.TrimSpace(opt.Kind)) {
+	case "entity", "q":
+		where += ` AND NOT EXISTS (SELECT 1 FROM property_profile pp WHERE pp.entity_id = e.id)
+			AND NOT EXISTS (SELECT 1 FROM class_profile cp WHERE cp.entity_id = e.id)`
+	case "property", "p":
+		where += ` AND EXISTS (SELECT 1 FROM property_profile pp WHERE pp.entity_id = e.id)`
+	case "class", "c":
+		where += ` AND EXISTS (SELECT 1 FROM class_profile cp WHERE cp.entity_id = e.id)`
+	}
+	if pkg := strings.TrimSpace(opt.PackageCode); pkg != "" {
+		args = append(args, pkg)
+		where += ` AND EXISTS (SELECT 1 FROM package p WHERE p.id = e.package_id AND p.code = $` + strconv.Itoa(len(args)) + `)`
+	}
 	if opt.Cursor != "" {
 		args = append(args, opt.Cursor)
 		where += ` AND e.public_id > $` + strconv.Itoa(len(args))
@@ -47,8 +62,12 @@ func (s *Store) ListEntities(ctx context.Context, opt ListOptions) ([]domain.Ent
 	limitArg := `$` + strconv.Itoa(len(args))
 
 	rows, err := s.pool.Query(ctx, `
-		SELECT e.id, e.public_id, e.status, e.current_revision_no, e.created_at, e.updated_at
+		SELECT e.id, e.public_id, e.status, e.current_revision_no, e.created_at, e.updated_at,
+			p.code, COALESCE(e.iri_local,''), COALESCE(p.iri_base,''),
+			EXISTS(SELECT 1 FROM property_profile pp WHERE pp.entity_id = e.id),
+			EXISTS(SELECT 1 FROM class_profile cp WHERE cp.entity_id = e.id)
 		FROM entity e
+		LEFT JOIN package p ON p.id = e.package_id
 		WHERE `+where+`
 		ORDER BY e.public_id
 		LIMIT `+limitArg+`
@@ -63,12 +82,25 @@ func (s *Store) ListEntities(ctx context.Context, opt ListOptions) ([]domain.Ent
 		var e domain.Entity
 		var id uuid.UUID
 		var created, updated time.Time
-		if err := rows.Scan(&id, &e.PublicID, &e.Status, &e.RevisionNo, &created, &updated); err != nil {
+		var pkgCode *string
+		var iriBase string
+		var isProp, isClass bool
+		if err := rows.Scan(&id, &e.PublicID, &e.Status, &e.RevisionNo, &created, &updated, &pkgCode, &e.IRILocal, &iriBase, &isProp, &isClass); err != nil {
 			return nil, "", err
 		}
 		e.ID = id
 		e.CreatedAt = created
 		e.UpdatedAt = updated
+		if pkgCode != nil {
+			e.PackageCode = *pkgCode
+		}
+		e.IRI = datatype.ResolveIRI(iriBase, e.IRILocal, e.PublicID, fallbackNSForPublicID(e.PublicID))
+		e.Kind = domain.EntityKindEntity
+		if isProp {
+			e.Kind = domain.EntityKindProperty
+		} else if isClass {
+			e.Kind = domain.EntityKindClass
+		}
 		labels, _ := s.loadLabels(ctx, `SELECT lang, text FROM entity_label WHERE entity_id = $1`, id)
 		descs, _ := s.loadLabels(ctx, `SELECT lang, text FROM entity_description WHERE entity_id = $1`, id)
 		e.Labels = labels
@@ -191,7 +223,7 @@ func (s *Store) ListLenses(ctx context.Context) ([]domain.LensDefinition, error)
 
 func (s *Store) ListPackages(ctx context.Context) ([]domain.Package, error) {
 	rows, err := s.pool.Query(ctx, `
-		SELECT id, code, lifecycle, labels, created_at, updated_at
+		SELECT id, code, lifecycle, labels, COALESCE(iri_base,''), created_at, updated_at
 		FROM package ORDER BY code
 	`)
 	if err != nil {
@@ -202,7 +234,7 @@ func (s *Store) ListPackages(ctx context.Context) ([]domain.Package, error) {
 	for rows.Next() {
 		var p domain.Package
 		var labelsJSON []byte
-		if err := rows.Scan(&p.ID, &p.Code, &p.Lifecycle, &labelsJSON, &p.CreatedAt, &p.UpdatedAt); err != nil {
+		if err := rows.Scan(&p.ID, &p.Code, &p.Lifecycle, &labelsJSON, &p.IRIBase, &p.CreatedAt, &p.UpdatedAt); err != nil {
 			return nil, err
 		}
 		_ = json.Unmarshal(labelsJSON, &p.Labels)

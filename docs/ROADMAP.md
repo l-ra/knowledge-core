@@ -166,10 +166,38 @@ Detail: [specs/phase-13-web-ui.md](specs/phase-13-web-ui.md)
 
 ---
 
+## Fáze 16 — Package UI + ChangeSet draft (hotovo)
+
+- [x] Classes v package release publish/export/import
+- [x] Per-user ChangeSet draft (`/v1/me/changeset-draft`) + commit; default = 1 edit = 1 ChangeSet
+- [x] UI: package detail, releases, export/import, package filter, cross-package warning, release badges
+- Detail: [specs/phase-16-package-changeset-ui.md](specs/phase-16-package-changeset-ui.md)
+
+---
+
+## Fáze 17 — IRI mapping / RDF export (hotovo)
+
+- [x] `package.iri_base` + `entity.iri_local` + `entity_iri_alias`
+- [x] RDF projection používá kanonické IRI; owl:sameAs z aliasů
+- [x] UI: package IRI base, entity iriLocal, sameAs editor
+- Detail: [specs/phase-17-iri-rdf.md](specs/phase-17-iri-rdf.md)
+
+---
+
+## Fáze 18 — RDF N-Triples import (hotovo)
+
+- [x] Datatype `Any` + inference z `rdfs:range` / pozorovaných hodnot
+- [x] `POST /v1/packages/{code}/rdf/import` (dryRun + commit → ChangeSet)
+- [x] UI na package detail
+- Detail: [specs/phase-18-rdf-import.md](specs/phase-18-rdf-import.md)
+
+---
+
 ## Doporučené pořadí další práce
 
 ```text
-UI v1.1: lens domain editor, OIDC groups→roles, bundle wizard
+UI v1.1: lens domain editor, OIDC groups→roles, release diff API
+Turtle import; auto-rebuild RDF při změně package.iri_base
 ```
 
 ---

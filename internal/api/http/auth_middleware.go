@@ -45,6 +45,7 @@ func (a *OIDCAuthenticator) Authenticate(r *http.Request) (auth.Subject, error) 
 	var claims struct {
 		Sub               string   `json:"sub"`
 		Email             string   `json:"email"`
+		Name              string   `json:"name"`
 		PreferredUsername string   `json:"preferred_username"`
 		Roles             []string `json:"roles"`
 	}
@@ -65,7 +66,17 @@ func (a *OIDCAuthenticator) Authenticate(r *http.Request) (auth.Subject, error) 
 	if subjectID == a.BootstrapAdmin && !contains(roles, "admin") {
 		roles = append(roles, "admin")
 	}
-	return auth.Subject{ID: subjectID, Roles: roles, Attributes: map[string]string{}}, nil
+	attrs := map[string]string{}
+	if claims.PreferredUsername != "" {
+		attrs["preferred_username"] = claims.PreferredUsername
+	}
+	if claims.Name != "" {
+		attrs["name"] = claims.Name
+	}
+	if claims.Email != "" {
+		attrs["email"] = claims.Email
+	}
+	return auth.Subject{ID: subjectID, Roles: roles, Attributes: attrs}, nil
 }
 
 func (a *OIDCAuthenticator) verifierFor(ctx context.Context) (*oidc.IDTokenVerifier, error) {

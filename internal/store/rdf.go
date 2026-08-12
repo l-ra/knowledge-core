@@ -14,16 +14,15 @@ import (
 )
 
 const (
-	rdfNSEntity   = "https://knowledge-core.local/entity/"
-	rdfNSProperty = "https://knowledge-core.local/property/"
-	rdfNSStmt     = "https://knowledge-core.local/statement/"
-	rdfPredicateLabel = "http://www.w3.org/2000/01/rdf-schema#label"
-	rdfPredicateType  = "http://www.w3.org/1999/02/22-rdf-syntax-ns#type"
+	rdfNSStmt            = "https://knowledge-core.local/statement/"
+	rdfPredicateLabel    = "http://www.w3.org/2000/01/rdf-schema#label"
+	rdfPredicateType     = "http://www.w3.org/1999/02/22-rdf-syntax-ns#type"
 	rdfPredicateSubClass = "http://www.w3.org/2000/01/rdf-schema#subClassOf"
-	rdfTypeEntity     = "https://knowledge-core.local/ontology/Entity"
-	rdfTypeStatement  = "https://knowledge-core.local/ontology/Statement"
-	rdfTypeProperty   = "http://www.w3.org/1999/02/22-rdf-syntax-ns#Property"
-	rdfTypeClass      = "http://www.w3.org/2000/01/rdf-schema#Class"
+	rdfPredicateSameAs   = "http://www.w3.org/2002/07/owl#sameAs"
+	rdfTypeEntity        = "https://knowledge-core.local/ontology/Entity"
+	rdfTypeStatement     = "https://knowledge-core.local/ontology/Statement"
+	rdfTypeProperty      = "http://www.w3.org/1999/02/22-rdf-syntax-ns#Property"
+	rdfTypeClass         = "http://www.w3.org/2000/01/rdf-schema#Class"
 )
 
 func (s *Store) ApplyOutboxToRDFProjection(ctx context.Context, ev domain.OutboxEvent) error {
@@ -52,7 +51,10 @@ func (s *Store) projectEntityRDF(ctx context.Context, qid string) error {
 	if err != nil {
 		return err
 	}
-	subj := rdfNSEntity + qid
+	subj, err := s.resolveEntityIRI(ctx, qid)
+	if err != nil {
+		return err
+	}
 	now := time.Now().UTC()
 	if err := s.insertRDFTriple(ctx, "entity", qid, subj, rdfPredicateType, "<"+rdfTypeEntity+">", now); err != nil {
 		return err
@@ -74,9 +76,24 @@ func (s *Store) projectEntityRDF(ctx context.Context, qid string) error {
 			var doc domain.ClassDocument
 			_ = json.Unmarshal(docJSON, &doc)
 			if doc.SubClassOf != "" {
-				if err := s.insertRDFTriple(ctx, "entity", qid, subj, rdfPredicateSubClass, "<"+rdfNSEntity+doc.SubClassOf+">", now); err != nil {
+				parentIRI, err := s.resolveEntityIRI(ctx, doc.SubClassOf)
+				if err != nil {
 					return err
 				}
+				if err := s.insertRDFTriple(ctx, "entity", qid, subj, rdfPredicateSubClass, "<"+parentIRI+">", now); err != nil {
+					return err
+				}
+			}
+		}
+	}
+	aliases, err := s.loadEntityIRIAliases(ctx, entityID)
+	if err != nil {
+		return err
+	}
+	for _, a := range aliases {
+		if a.Kind == "sameAs" || a.Kind == "imported" {
+			if err := s.insertRDFTriple(ctx, "entity", qid, subj, rdfPredicateSameAs, "<"+a.IRI+">", now); err != nil {
+				return err
 			}
 		}
 	}
@@ -115,8 +132,14 @@ func (s *Store) projectStatementRDF(ctx context.Context, sid string) error {
 		return err
 	}
 	now := time.Now().UTC()
-	subj := rdfNSEntity + subject
-	pred := rdfNSProperty + property
+	subj, err := s.resolveEntityIRI(ctx, subject)
+	if err != nil {
+		return err
+	}
+	pred, err := s.resolveEntityIRI(ctx, property)
+	if err != nil {
+		return err
+	}
 	if err := s.insertRDFTriple(ctx, "statement", sid, subj, pred, obj, now); err != nil {
 		return err
 	}
@@ -151,7 +174,11 @@ func formatRDFObject(ctx context.Context, s *Store, valueType string, text *stri
 			if err := s.pool.QueryRow(ctx, `SELECT public_id FROM entity WHERE id = $1`, *entityID).Scan(&qid); err != nil {
 				return "", err
 			}
-			return "<" + rdfNSEntity + qid + ">", nil
+			iri, err := s.resolveEntityIRI(ctx, qid)
+			if err != nil {
+				return "", err
+			}
+			return "<" + iri + ">", nil
 		}
 	}
 	return `""`, nil
@@ -243,7 +270,10 @@ func (s *Store) projectEntityRDFTx(ctx context.Context, tx pgx.Tx, qid string) e
 	if err != nil {
 		return err
 	}
-	subj := rdfNSEntity + qid
+	subj, err := s.resolveEntityIRITx(ctx, tx, qid)
+	if err != nil {
+		return err
+	}
 	now := time.Now().UTC()
 	if err := insertRDFTripleTx(ctx, tx, "entity", qid, subj, rdfPredicateType, "<"+rdfTypeEntity+">", now); err != nil {
 		return err
@@ -265,11 +295,36 @@ func (s *Store) projectEntityRDFTx(ctx context.Context, tx pgx.Tx, qid string) e
 			var doc domain.ClassDocument
 			_ = json.Unmarshal(docJSON, &doc)
 			if doc.SubClassOf != "" {
-				if err := insertRDFTripleTx(ctx, tx, "entity", qid, subj, rdfPredicateSubClass, "<"+rdfNSEntity+doc.SubClassOf+">", now); err != nil {
+				parentIRI, err := s.resolveEntityIRITx(ctx, tx, doc.SubClassOf)
+				if err != nil {
+					return err
+				}
+				if err := insertRDFTripleTx(ctx, tx, "entity", qid, subj, rdfPredicateSubClass, "<"+parentIRI+">", now); err != nil {
 					return err
 				}
 			}
 		}
+	}
+	aliasRows, err := tx.Query(ctx, `SELECT iri, kind FROM entity_iri_alias WHERE entity_id = $1`, entityID)
+	if err != nil {
+		return err
+	}
+	for aliasRows.Next() {
+		var iri, kind string
+		if err := aliasRows.Scan(&iri, &kind); err != nil {
+			aliasRows.Close()
+			return err
+		}
+		if kind == "sameAs" || kind == "imported" {
+			if err := insertRDFTripleTx(ctx, tx, "entity", qid, subj, rdfPredicateSameAs, "<"+iri+">", now); err != nil {
+				aliasRows.Close()
+				return err
+			}
+		}
+	}
+	aliasRows.Close()
+	if err := aliasRows.Err(); err != nil {
+		return err
 	}
 	if en, ok := labels["en"]; ok && en != "" {
 		return insertRDFTripleTx(ctx, tx, "entity", qid, subj, rdfPredicateLabel, quoteLiteral(en), now)
@@ -297,18 +352,26 @@ func (s *Store) projectStatementRDFTx(ctx context.Context, tx pgx.Tx, sid string
 	if err := row.Scan(&subject, &property, &valueType, &valueText, &valueBool, &valueInt, &numeric, &date, &valueEntity); err != nil {
 		return err
 	}
-	obj, err := formatRDFObjectTx(ctx, tx, valueType, valueText, valueBool, valueInt, numeric, date, valueEntity)
+	obj, err := formatRDFObjectTx(ctx, tx, s, valueType, valueText, valueBool, valueInt, numeric, date, valueEntity)
 	if err != nil {
 		return err
 	}
 	now := time.Now().UTC()
-	if err := insertRDFTripleTx(ctx, tx, "statement", sid, rdfNSEntity+subject, rdfNSProperty+property, obj, now); err != nil {
+	subj, err := s.resolveEntityIRITx(ctx, tx, subject)
+	if err != nil {
+		return err
+	}
+	pred, err := s.resolveEntityIRITx(ctx, tx, property)
+	if err != nil {
+		return err
+	}
+	if err := insertRDFTripleTx(ctx, tx, "statement", sid, subj, pred, obj, now); err != nil {
 		return err
 	}
 	return insertRDFTripleTx(ctx, tx, "statement", sid, rdfNSStmt+sid, rdfPredicateType, "<"+rdfTypeStatement+">", now)
 }
 
-func formatRDFObjectTx(ctx context.Context, tx pgx.Tx, valueType string, text *string, b *bool, i *int64, numeric, date *string, entityID *uuid.UUID) (string, error) {
+func formatRDFObjectTx(ctx context.Context, tx pgx.Tx, s *Store, valueType string, text *string, b *bool, i *int64, numeric, date *string, entityID *uuid.UUID) (string, error) {
 	switch valueType {
 	case "String", "URI":
 		if text != nil {
@@ -336,7 +399,11 @@ func formatRDFObjectTx(ctx context.Context, tx pgx.Tx, valueType string, text *s
 			if err := tx.QueryRow(ctx, `SELECT public_id FROM entity WHERE id = $1`, *entityID).Scan(&qid); err != nil {
 				return "", err
 			}
-			return "<" + rdfNSEntity + qid + ">", nil
+			iri, err := s.resolveEntityIRITx(ctx, tx, qid)
+			if err != nil {
+				return "", err
+			}
+			return "<" + iri + ">", nil
 		}
 	}
 	return `""`, nil
