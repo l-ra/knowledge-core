@@ -84,6 +84,9 @@ func New(eng *engine.Engine, st *store.Store, authn Authenticator, cfg config.Co
 		r.Get("/packages/{code}/releases/{version}/bundle", s.exportReleaseBundle)
 		r.Post("/packages/{code}/releases/{version}/mutate", s.mutateRelease)
 		r.Post("/releases/import", s.importRelease)
+		r.Post("/rdf/analyze", s.analyzeRDF)
+		r.Post("/rdf/prefixes", s.parseRDFPrefixes)
+		r.Post("/rdf/import", s.importRDFGlobal)
 
 		r.Get("/objects/{id}/releases", s.listObjectReleases)
 
@@ -659,6 +662,87 @@ func (s *Server) importPackageRDF(w http.ResponseWriter, r *http.Request) {
 	}
 	status := http.StatusOK
 	if !req.DryRun && res.ChangeSetID != "" {
+		status = http.StatusCreated
+	}
+	writeJSON(w, status, res)
+}
+
+func (s *Server) analyzeRDF(w http.ResponseWriter, r *http.Request) {
+	body, err := readBody(r)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid body")
+		return
+	}
+	var req struct {
+		NTriples       string `json:"ntriples"`
+		TurtlePrefixes string `json:"turtlePrefixes"`
+	}
+	if err := json.Unmarshal(body, &req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid JSON")
+		return
+	}
+	if strings.TrimSpace(req.NTriples) == "" && strings.TrimSpace(req.TurtlePrefixes) == "" {
+		writeError(w, http.StatusBadRequest, "ntriples or turtlePrefixes required")
+		return
+	}
+	res, err := s.engine.AnalyzeRDF(r.Context(), req.NTriples, req.TurtlePrefixes)
+	if err != nil {
+		writeEngineError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, res)
+}
+
+func (s *Server) parseRDFPrefixes(w http.ResponseWriter, r *http.Request) {
+	body, err := readBody(r)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid body")
+		return
+	}
+	var req struct {
+		TurtlePrefixes string `json:"turtlePrefixes"`
+	}
+	if err := json.Unmarshal(body, &req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid JSON")
+		return
+	}
+	if strings.TrimSpace(req.TurtlePrefixes) == "" {
+		writeError(w, http.StatusBadRequest, "turtlePrefixes required")
+		return
+	}
+	res, err := s.engine.ParseTurtlePrefixes(r.Context(), req.TurtlePrefixes)
+	if err != nil {
+		writeEngineError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, res)
+}
+
+func (s *Server) importRDFGlobal(w http.ResponseWriter, r *http.Request) {
+	body, err := readBody(r)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid body")
+		return
+	}
+	var req struct {
+		NTriples    string                       `json:"ntriples"`
+		DryRun      bool                         `json:"dryRun"`
+		Assignments []domain.RDFGlobalAssignment `json:"assignments"`
+	}
+	if err := json.Unmarshal(body, &req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid JSON")
+		return
+	}
+	meta := writeMetaFromRequest(r, "importRDFGlobal", hashBody(body))
+	res, err := s.engine.ImportRDFGlobal(r.Context(), meta, domain.RDFGlobalImportInput{
+		NTriples: req.NTriples, DryRun: req.DryRun, Assignments: req.Assignments,
+	})
+	if err != nil {
+		writeEngineError(w, err)
+		return
+	}
+	status := http.StatusOK
+	if !req.DryRun {
 		status = http.StatusCreated
 	}
 	writeJSON(w, status, res)

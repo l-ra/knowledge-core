@@ -27,3 +27,11 @@
 | 13 | Built-in web UI `/ui` | **done** (MVP) |
 
 Rozhodnutí zůstávají v [decisions/](../decisions/).
+
+## Reference (průřezové)
+
+| Dokument | Obsah |
+|----------|-------|
+| [rdf-well-known-vocab.md](rdf-well-known-vocab.md) | RDF/RDFS/OWL/XSD mapování import ↔ export; co není package kandidát |
+| [phase-17-iri-rdf.md](phase-17-iri-rdf.md) | IRI base / local / aliases |
+| [phase-18-rdf-import.md](phase-18-rdf-import.md) | Globální N-Triples import |

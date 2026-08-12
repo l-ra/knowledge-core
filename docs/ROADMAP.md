@@ -187,9 +187,11 @@ Detail: [specs/phase-13-web-ui.md](specs/phase-13-web-ui.md)
 ## Fáze 18 — RDF N-Triples import (hotovo)
 
 - [x] Datatype `Any` + inference z `rdfs:range` / pozorovaných hodnot
-- [x] `POST /v1/packages/{code}/rdf/import` (dryRun + commit → ChangeSet)
-- [x] UI na package detail
+- [x] Globální `POST /v1/rdf/analyze` + `POST /v1/rdf/import` (prefix → create/update packages → per-package import)
+- [x] Ruční úprava prefixů + extrakce Turtle `@prefix` (`POST /v1/rdf/prefixes`)
+- [x] UI na packages list (ne v kontextu jednoho package)
 - Detail: [specs/phase-18-rdf-import.md](specs/phase-18-rdf-import.md)
+- Well-known vocab: [specs/rdf-well-known-vocab.md](specs/rdf-well-known-vocab.md)
 
 ---
 

@@ -13,6 +13,8 @@ Stabilní SoT identity (`Q*`/`P*`/`C*`) + konfigurovatelné kanonické exportní
 - Kanonické IRI = `iri_base + coalesce(iriLocal, public_id)`; bez base fallback na `https://knowledge-core.local/{entity|property}/`
 - `entity_iri_alias` — externí IRIs (`sameAs` / `imported` / `canonical_export`); v RDF jako `owl:sameAs`
 
+Well-known RDF/RDFS/OWL mapování (import ↔ export): [rdf-well-known-vocab.md](rdf-well-known-vocab.md).
+
 ## API / UI
 
 - Package create/PATCH: `iriBase`

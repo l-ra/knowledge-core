@@ -429,3 +429,75 @@ type RDFImportResult struct {
 	Warnings    []string          `json:"warnings,omitempty"`
 	Errors      []string          `json:"errors,omitempty"`
 }
+
+// RDFAnalyze / global import
+
+type RDFPrefixCandidate struct {
+	IRIBase         string   `json:"iriBase"`
+	SuggestedCode   string   `json:"suggestedCode"`
+	IRICount        int      `json:"iriCount"`
+	TripleCount     int      `json:"tripleCount"`
+	SampleIRIs      []string `json:"sampleIris,omitempty"`
+	// create | update | use
+	SuggestedAction string `json:"suggestedAction"`
+	ExistingCode    string `json:"existingPackageCode,omitempty"`
+	ExistingIRIBase string `json:"existingIriBase,omitempty"`
+	// detected | turtle | manual
+	Source string `json:"source,omitempty"`
+	// Turtle short name when from @prefix
+	TurtlePrefix string `json:"turtlePrefix,omitempty"`
+}
+
+type RDFTurtlePrefix struct {
+	Prefix        string `json:"prefix,omitempty"`
+	IRIBase       string `json:"iriBase"`
+	SuggestedCode string `json:"suggestedCode"`
+}
+
+type RDFTurtlePrefixResult struct {
+	Prefixes []RDFTurtlePrefix `json:"prefixes"`
+	Warnings []string          `json:"warnings,omitempty"`
+	Errors   []string          `json:"errors,omitempty"`
+}
+
+type RDFAnalyzeResult struct {
+	Candidates []RDFPrefixCandidate `json:"candidates"`
+	Warnings   []string             `json:"warnings,omitempty"`
+	Errors     []string             `json:"errors,omitempty"`
+	Packages   []PackageBrief       `json:"packages,omitempty"` // existing packages for UI mapping
+}
+
+type PackageBrief struct {
+	Code    string `json:"code"`
+	IRIBase string `json:"iriBase,omitempty"`
+	Label   string `json:"label,omitempty"`
+}
+
+type RDFGlobalAssignment struct {
+	IRIBase     string `json:"iriBase"`
+	PackageCode string `json:"packageCode"`
+	Create      bool   `json:"create"`      // create package if missing
+	SetIRIBase  bool   `json:"setIriBase"`  // set/update package.iri_base
+	Label       string `json:"label,omitempty"`
+}
+
+type RDFGlobalImportInput struct {
+	NTriples    string
+	DryRun      bool
+	Assignments []RDFGlobalAssignment
+}
+
+type RDFGlobalPackageResult struct {
+	IRIBase     string          `json:"iriBase"`
+	PackageCode string          `json:"packageCode"`
+	Action      string          `json:"action"` // create | update | use | skip
+	Import      *RDFImportResult `json:"import,omitempty"`
+	Error       string          `json:"error,omitempty"`
+}
+
+type RDFGlobalImportResult struct {
+	DryRun   bool                     `json:"dryRun"`
+	Packages []RDFGlobalPackageResult `json:"packages"`
+	Warnings []string                 `json:"warnings,omitempty"`
+	Errors   []string                 `json:"errors,omitempty"`
+}

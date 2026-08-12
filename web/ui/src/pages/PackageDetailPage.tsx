@@ -29,18 +29,6 @@ type Release = {
   objects?: Array<{ objectType: string; publicId: string; revisionNo: number }>;
 };
 
-type RDFImportAction = { kind: string; iri?: string; publicId?: string; detail?: string };
-type RDFImportResult = {
-  dryRun: boolean;
-  changeSetId?: string;
-  matched?: RDFImportAction[];
-  wouldCreate?: RDFImportAction[];
-  created?: RDFImportAction[];
-  skipped?: RDFImportAction[];
-  warnings?: string[];
-  errors?: string[];
-};
-
 export function PackageDetailPage() {
   const { code = "" } = useParams();
   const { t, i18n } = useTranslation();
@@ -53,9 +41,6 @@ export function PackageDetailPage() {
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [info, setInfo] = useState("");
-  const [rdfPreview, setRdfPreview] = useState<RDFImportResult | null>(null);
-  const [rdfBusy, setRdfBusy] = useState(false);
-  const [rdfText, setRdfText] = useState("");
 
   async function load() {
     setError("");
@@ -134,36 +119,6 @@ export function PackageDetailPage() {
     }
   }
 
-  async function runRDFImport(ntriples: string, dryRun: boolean) {
-    setError("");
-    setInfo("");
-    setRdfBusy(true);
-    try {
-      setRdfText(ntriples);
-      const res = await apiFetch<RDFImportResult>(`/v1/packages/${encodeURIComponent(code)}/rdf/import`, {
-        method: "POST",
-        body: JSON.stringify({ ntriples, dryRun }),
-      });
-      setRdfPreview(res);
-      if (!dryRun && !res.errors?.length) {
-        setInfo(t("packages.rdfImportOk", { id: res.changeSetId || "—" }));
-        setRdfText("");
-        await load();
-      }
-    } catch (err) {
-      setError(err instanceof Error ? err.message : t("common.error"));
-    } finally {
-      setRdfBusy(false);
-    }
-  }
-
-  async function onRDFFile(file: File | null) {
-    setRdfPreview(null);
-    if (!file) return;
-    const ntriples = await file.text();
-    await runRDFImport(ntriples, true);
-  }
-
   if (!pkg && !error) return <p>{t("common.loading")}</p>;
 
   return (
@@ -223,65 +178,6 @@ export function PackageDetailPage() {
       </header>
 
       {error && <p className="error">{error}</p>}
-
-      <section className="panel stack">
-        <h2>{t("packages.rdfImport")}</h2>
-        <p className="muted">{t("packages.rdfImportHint")}</p>
-        <div className="row">
-          <label className="field">
-            {t("packages.rdfFile")}
-            <input
-              type="file"
-              accept=".nt,text/plain,application/n-triples"
-              disabled={rdfBusy}
-              onChange={(e) => void onRDFFile(e.target.files?.[0] || null)}
-            />
-          </label>
-          {rdfPreview && !rdfPreview.errors?.length && rdfText && (
-            <button
-              type="button"
-              className="primary"
-              disabled={rdfBusy}
-              onClick={() => void runRDFImport(rdfText, false)}
-            >
-              {t("packages.rdfImportCommit")}
-            </button>
-          )}
-        </div>
-        {rdfPreview && (
-          <div className="stack">
-            {rdfPreview.errors && rdfPreview.errors.length > 0 && (
-              <ul className="error">
-                {rdfPreview.errors.map((e) => (
-                  <li key={e}>{e}</li>
-                ))}
-              </ul>
-            )}
-            {rdfPreview.warnings && rdfPreview.warnings.length > 0 && (
-              <ul className="muted">
-                {rdfPreview.warnings.map((w) => (
-                  <li key={w}>{w}</li>
-                ))}
-              </ul>
-            )}
-            <p className="muted">
-              {t("packages.rdfImportSummary", {
-                matched: rdfPreview.matched?.length ?? 0,
-                create: (rdfPreview.wouldCreate || rdfPreview.created)?.length ?? 0,
-                skipped: rdfPreview.skipped?.length ?? 0,
-              })}
-            </p>
-            {(rdfPreview.wouldCreate || rdfPreview.created)?.slice(0, 40).map((a, i) => (
-              <div key={`${a.kind}-${a.iri || a.publicId || i}`} className="mono muted">
-                {a.kind}
-                {a.iri ? ` ${a.iri}` : ""}
-                {a.detail ? ` (${a.detail})` : ""}
-                {a.publicId ? ` → ${a.publicId}` : ""}
-              </div>
-            ))}
-          </div>
-        )}
-      </section>
 
       <section className="stack">
         <h2>{t("packages.objects")}</h2>

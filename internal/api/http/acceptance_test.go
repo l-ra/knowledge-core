@@ -1119,14 +1119,6 @@ func TestAcceptanceIRIMapping(t *testing.T) {
 func TestAcceptanceRDFImport(t *testing.T) {
 	h := setupTestHandler(t)
 
-	createPkg(t, h, "onto", nil)
-	patch := doJSON(t, h, http.MethodPatch, "/v1/packages/onto", map[string]any{
-		"iriBase": "https://example.org/id/",
-	}, nil)
-	if patch.StatusCode != http.StatusOK {
-		t.Fatalf("patch: %d %s", patch.StatusCode, patch.Body)
-	}
-
 	nt := `
 <https://example.org/id/person/alice> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://example.org/id/class/Person> .
 <https://example.org/id/person/alice> <http://www.w3.org/2000/01/rdf-schema#label> "Alice"@en .
@@ -1137,58 +1129,120 @@ func TestAcceptanceRDFImport(t *testing.T) {
 <https://example.org/id/prop/age> <http://www.w3.org/2000/01/rdf-schema#range> <http://www.w3.org/2001/XMLSchema#integer> .
 <https://example.org/id/person/alice> <https://example.org/id/prop/age> "42"^^<http://www.w3.org/2001/XMLSchema#integer> .
 `
-	dry := doJSON(t, h, http.MethodPost, "/v1/packages/onto/rdf/import", map[string]any{
-		"ntriples": nt, "dryRun": true,
+	prefixes := doJSON(t, h, http.MethodPost, "/v1/rdf/prefixes", map[string]any{
+		"turtlePrefixes": "@prefix ex: <https://example.org/id/> .\n@prefix person: <https://example.org/id/person/> .",
+	}, nil)
+	if prefixes.StatusCode != http.StatusOK {
+		t.Fatalf("prefixes: %d %s", prefixes.StatusCode, prefixes.Body)
+	}
+	if !strings.Contains(prefixes.Body, "https://example.org/id/") || !strings.Contains(prefixes.Body, `"prefix":"ex"`) {
+		t.Fatalf("prefixes body: %s", prefixes.Body)
+	}
+
+	analyze := doJSON(t, h, http.MethodPost, "/v1/rdf/analyze", map[string]any{
+		"ntriples": nt,
+		"turtlePrefixes": `@prefix ex: <https://example.org/id/> .
+@prefix person: <https://example.org/id/person/> .`,
+	}, nil)
+	if analyze.StatusCode != http.StatusOK {
+		t.Fatalf("analyze: %d %s", analyze.StatusCode, analyze.Body)
+	}
+	var an struct {
+		Candidates []struct {
+			IRIBase         string `json:"iriBase"`
+			SuggestedCode   string `json:"suggestedCode"`
+			SuggestedAction string `json:"suggestedAction"`
+			TripleCount     int    `json:"tripleCount"`
+		} `json:"candidates"`
+		Errors []string `json:"errors"`
+	}
+	_ = json.Unmarshal([]byte(analyze.Body), &an)
+	if len(an.Errors) > 0 || len(an.Candidates) == 0 {
+		t.Fatalf("unexpected analyze: %s", analyze.Body)
+	}
+	cand := an.Candidates[0]
+	for _, c := range an.Candidates {
+		if c.IRIBase == "https://example.org/id/" {
+			cand = c
+			break
+		}
+	}
+	if cand.IRIBase == "" {
+		t.Fatalf("no candidates: %s", analyze.Body)
+	}
+	if cand.SuggestedAction != "create" {
+		t.Fatalf("expected create action, got %q in %s", cand.SuggestedAction, analyze.Body)
+	}
+
+	dry := doJSON(t, h, http.MethodPost, "/v1/rdf/import", map[string]any{
+		"ntriples": nt,
+		"dryRun":   true,
+		"assignments": []map[string]any{{
+			"iriBase": cand.IRIBase, "packageCode": cand.SuggestedCode,
+			"create": true, "setIriBase": true,
+		}},
 	}, nil)
 	if dry.StatusCode != http.StatusOK {
 		t.Fatalf("dry-run: %d %s", dry.StatusCode, dry.Body)
 	}
 	var dryRes struct {
-		DryRun      bool `json:"dryRun"`
-		WouldCreate []any `json:"wouldCreate"`
-		Errors      []string `json:"errors"`
+		DryRun   bool `json:"dryRun"`
+		Packages []struct {
+			Action string `json:"action"`
+			Import *struct {
+				WouldCreate []any `json:"wouldCreate"`
+			} `json:"import"`
+		} `json:"packages"`
+		Errors []string `json:"errors"`
 	}
 	_ = json.Unmarshal([]byte(dry.Body), &dryRes)
-	if !dryRes.DryRun || len(dryRes.Errors) > 0 || len(dryRes.WouldCreate) == 0 {
+	if !dryRes.DryRun || len(dryRes.Errors) > 0 || len(dryRes.Packages) == 0 {
 		t.Fatalf("unexpected dry-run: %s", dry.Body)
 	}
+	if dryRes.Packages[0].Action != "create" || dryRes.Packages[0].Import == nil || len(dryRes.Packages[0].Import.WouldCreate) == 0 {
+		t.Fatalf("dry-run missing create plan: %s", dry.Body)
+	}
 
-	commit := doJSON(t, h, http.MethodPost, "/v1/packages/onto/rdf/import", map[string]any{
-		"ntriples": nt, "dryRun": false,
+	commit := doJSON(t, h, http.MethodPost, "/v1/rdf/import", map[string]any{
+		"ntriples": nt,
+		"dryRun":   false,
+		"assignments": []map[string]any{{
+			"iriBase": cand.IRIBase, "packageCode": cand.SuggestedCode,
+			"create": true, "setIriBase": true, "label": "Example ontology",
+		}},
 	}, nil)
 	if commit.StatusCode != http.StatusCreated && commit.StatusCode != http.StatusOK {
 		t.Fatalf("commit: %d %s", commit.StatusCode, commit.Body)
 	}
-	var commitRes struct {
-		ChangeSetID string `json:"changeSetId"`
-		Created     []struct {
-			Kind     string `json:"kind"`
-			PublicID string `json:"publicId"`
-			Detail   string `json:"detail"`
-		} `json:"created"`
-	}
-	_ = json.Unmarshal([]byte(commit.Body), &commitRes)
-	if commitRes.ChangeSetID == "" {
-		t.Fatalf("missing changeset: %s", commit.Body)
+
+	pkg := doJSON(t, h, http.MethodGet, "/v1/packages/"+cand.SuggestedCode, nil, nil)
+	if pkg.StatusCode != http.StatusOK || !strings.Contains(pkg.Body, cand.IRIBase) {
+		t.Fatalf("package missing/iriBase: %d %s", pkg.StatusCode, pkg.Body)
 	}
 
-	// second import should match / skip duplicates
-	again := doJSON(t, h, http.MethodPost, "/v1/packages/onto/rdf/import", map[string]any{
-		"ntriples": nt, "dryRun": false,
+	again := doJSON(t, h, http.MethodPost, "/v1/rdf/import", map[string]any{
+		"ntriples": nt,
+		"dryRun":   false,
+		"assignments": []map[string]any{{
+			"iriBase": cand.IRIBase, "packageCode": cand.SuggestedCode,
+			"create": false, "setIriBase": false,
+		}},
 	}, nil)
 	if again.StatusCode != http.StatusCreated && again.StatusCode != http.StatusOK {
 		t.Fatalf("reimport: %d %s", again.StatusCode, again.Body)
 	}
 	var againRes struct {
-		Matched []any `json:"matched"`
-		Created []any `json:"created"`
+		Packages []struct {
+			Import *struct {
+				Matched []any `json:"matched"`
+			} `json:"import"`
+		} `json:"packages"`
 	}
 	_ = json.Unmarshal([]byte(again.Body), &againRes)
-	if len(againRes.Matched) == 0 {
+	if len(againRes.Packages) == 0 || againRes.Packages[0].Import == nil || len(againRes.Packages[0].Import.Matched) == 0 {
 		t.Fatalf("expected matches on reimport: %s", again.Body)
 	}
 
-	// property datatype from range
 	propList := doJSON(t, h, http.MethodGet, "/v1/properties?limit=50", nil, nil)
 	if propList.StatusCode != http.StatusOK {
 		t.Fatalf("list properties: %d %s", propList.StatusCode, propList.Body)

@@ -345,7 +345,7 @@ func (s *Store) buildRDFImportPlan(ctx context.Context, pkg *domain.Package, tri
 		}
 	}
 	for iri := range usedAsType {
-		if isWellKnownVocabIRI(iri) {
+		if rdf.IsWellKnownVocabIRI(iri) {
 			continue
 		}
 		if kinds[iri] == rdf.KindEntity && len(nodes[iri].types) == 0 {
@@ -384,7 +384,7 @@ func (s *Store) buildRDFImportPlan(ctx context.Context, pkg *domain.Package, tri
 		if _, ok := plan.resolved[iri]; ok {
 			continue
 		}
-		if isWellKnownVocabIRI(iri) {
+		if rdf.IsWellKnownVocabIRI(iri) {
 			continue
 		}
 		switch kind {
@@ -460,22 +460,6 @@ func resolvePlanned(m map[string]string, iri string) string {
 		return pub
 	}
 	return ""
-}
-
-func isWellKnownVocabIRI(iri string) bool {
-	prefixes := []string{
-		"http://www.w3.org/1999/02/22-rdf-syntax-ns#",
-		"http://www.w3.org/2000/01/rdf-schema#",
-		"http://www.w3.org/2002/07/owl#",
-		"http://www.w3.org/2001/XMLSchema#",
-		"https://knowledge-core.local/ontology/",
-	}
-	for _, p := range prefixes {
-		if strings.HasPrefix(iri, p) {
-			return true
-		}
-	}
-	return false
 }
 
 func (s *Store) resolveIRIToPublicID(ctx context.Context, pkg *domain.Package, iri string) (string, error) {
