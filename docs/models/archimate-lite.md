@@ -488,10 +488,12 @@ Důležité je také nevynucovat jednu úroveň pro celý model. Systém může 
 
 ArchiMate Lite je **doménový package nad jádrem**, ne součást knowledge-core. Jádro se nemění.
 
-- Metamodel (C*/P*/shapes): package `archimate-lite`, katalog [`models/archimate-lite/catalog.json`](../../models/archimate-lite/catalog.json), nahrání [`models/archimate-lite/load.py`](../../models/archimate-lite/load.py)
+- Metamodel i tool-policy: package `archimate-lite`. Seed v gitu: [`models/archimate-lite/catalog.json`](../../models/archimate-lite/catalog.json), nahrání [`models/archimate-lite/load.py`](../../models/archimate-lite/load.py)
+- Po loadu čte tool **jen KC** (třídy, P*, tvary, anotace `archiLayer`/`overlay`/`exchangeType` na `C*`, instance `AllowedRelationship` / `StringEnum` / `ExchangeSpec`)
 - Prvek, vazba i view = entita `Q*` s `instanceOf` na třídu z package
 - Vazba je **vlastní entita** (`relSource` / `relTarget`), ne predikát mezi dvěma prvky
 - `relSource` / `relTarget` mají `rangeClasses` = `ArchiMateElement` (KC expanduje `instanceOf` cíle)
+- Lite matici a enumy **nevynucuje** jádro; tool je čte z dat package
 - Tvary `aml-*` patří do package `archimate-lite` a jdou do release bundle
 - Stabilní jména slovníku = `iriLocal` (ne `C*`/`P*` dané databáze)
 - Incoming vazby, graph neighborhood a lookup podle IRI jsou generické `/v1` endpointy (fáze 19)

@@ -3,15 +3,15 @@
 Tento dokument je kontrakt pro **samostatný nástroj** (export/import Open Exchange, validační CLI, editor), který pracuje **jen přes HTTP API knowledge-core**. Jádro KC neobsahuje ArchiMate typy; generické mezery P0–P2 jsou ve [fázi 19](../specs/phase-19-graph-api.md).
 
 Rozsah modelování (L0–L4): [archimate-lite.md](archimate-lite.md).  
-Datový katalog: [`models/archimate-lite/catalog.json`](../../models/archimate-lite/catalog.json).  
-Nahrání metamodelu: [`models/archimate-lite/load.py`](../../models/archimate-lite/load.py).
+Datový katalog (seed v gitu): [`models/archimate-lite/catalog.json`](../../models/archimate-lite/catalog.json).  
+Nahrání do KC: [`models/archimate-lite/load.py`](../../models/archimate-lite/load.py). Po nahrání je **zdroj pravdy pro tool package `archimate-lite` v KC**, ne JSON v gitu.
 
 ## Hranice
 
 | Vrstva | Kde | ArchiMate? |
 |--------|-----|------------|
 | knowledge-core | `internal/`, migrace, `/v1/*` | Ne. Obecný graf (Q/P/C, statement, package, shape, lens). |
-| Package `archimate-lite` | data v KC | Ano. Třídy, vlastnosti, tvary. |
+| Package `archimate-lite` | data v KC | Ano. Třídy, vlastnosti, tvary, anotace tříd, lite matice, enumy, exchange poznámky. |
 | Instance packages | data v KC | Ano. Konkrétní systémy, sdílené služby, views. |
 | Exchange XML nástroj | mimo KC | Ano. Čte/zapisuje `/v1`, emituje ArchiMate XML. |
 
@@ -39,7 +39,7 @@ export KC_TOKEN='<bootstrap-or-oidc>'
 python3 models/archimate-lite/load.py
 ```
 
-Loader je idempotentní (`iriLocal` v package, `code` u shapes). Existující properties znovu zapíše constraints (`PATCH`, včetně `rangeClasses`). Tvary vytváří s `packageCode=archimate-lite`.
+Loader je idempotentní (`iriLocal` v package, `code` u shapes, `upsert` u policy statementů). Existující properties znovu zapíše constraints (`PATCH`, včetně `rangeClasses`). Tvary vytváří s `packageCode=archimate-lite`. Druhá vrstva catalogu (matice, enumy, exchange, `layer`/`overlay`/`exchangeType`) se uloží jako data v tomtéž package.
 
 Po nahrání:
 
@@ -47,7 +47,8 @@ Po nahrání:
 2. `GET /v1/entities?package=archimate-lite&iriLocal=ApplicationComponent` — resoluce slovníku
 3. `GET /v1/classes/{cid}` / `GET /v1/properties/{pid}` — obsahují `iriLocal`, `iri`, `packageCode`
 4. `GET /v1/admin/schema-config` — `instanceOfProperty` musí být neprázdné. Loader ho nastaví, jen pokud bylo prázdné (`iriLocal=instanceOf` v tomto package).
-5. `GET /v1/shapes?package=archimate-lite` — `aml-element`, `aml-relationship`, `aml-view-connection`
+5. `GET /v1/shapes?package=archimate-lite` — `aml-element`, `aml-relationship`, `aml-view-connection`, `aml-allowed-relationship`, `aml-string-enum`
+6. Policy data viz [níže](#policy-data-v-kc) (`AllowedRelationship`, `StringEnum`, `exchange-spec`)
 
 `instanceOf` **není** ArchiMate predikát. Je to globální typing KC. Nástroj ho vždy čte ze schema-config, nikdy ho nehardcoduje.
 
@@ -69,7 +70,64 @@ Stránkování: `nextCursor` → `?cursor=`.
 `GET /v1/classes/{cid}` vrací `iriLocal`, `iri`, `packageCode`, `effectiveClasses` (self + předci).  
 `GET /v1/properties/{pid}` vrací `iriLocal`, `iri`, `packageCode`.
 
-Tvary patří do package (a do release bundle, `objectType: "shape"`). Kódy: `aml-element`, `aml-relationship`, `aml-view-connection`. `document.requiredProperties` jsou `P*` dané instalace.
+Tvary patří do package (a do release bundle, `objectType: "shape"`). Kódy: `aml-element`, `aml-relationship`, `aml-view-connection`, `aml-allowed-relationship`, `aml-string-enum`. `document.requiredProperties` jsou `P*` dané instalace.
+
+## Policy data v KC
+
+KC matici a enumy **nevynucuje**. Tool si je načte z package a implementuje vlastní kontroly / XML mapování.
+
+Nejdřív resolvuj `C*` / `P*` podle `iriLocal` (ne hardcoduj public id).
+
+### Anotace tříd (`C*`)
+
+Statementy na třídě prvku nebo vazby:
+
+| `iriLocal` property | Význam |
+|---------------------|--------|
+| `archiLayer` | `business` / `application` / `technology` / … |
+| `overlay` | např. `risk-and-security` u `Risk` |
+| `exchangeType` | Open Exchange `xsi:type`; chybí u `DeployedOn` |
+
+```text
+GET /v1/entities?package=archimate-lite&iriLocal=ApplicationComponent
+GET /v1/entities/{cid}/statements?property={P-archiLayer}
+```
+
+### Lite matice vazeb
+
+Instance třídy `AllowedRelationship` (`iriLocal` tvaru `allowed/{type}/{source}/{target}`):
+
+| property | hodnota |
+|----------|---------|
+| `allowedRelType` | `C*` podtřídy `ArchiMateRelationship` |
+| `allowedSourceClass` | `C*` podtřídy `ArchiMateElement` |
+| `allowedTargetClass` | `C*` podtřídy `ArchiMateElement` |
+
+```text
+GET /v1/entities?package=archimate-lite&instanceOf={C-AllowedRelationship}
+GET /v1/entities/{qid}/statements
+```
+
+### Enumy
+
+Instance `StringEnum` (`iriLocal` `enum/{propertyIriLocal}`):
+
+- `enumeratesProperty` → `P*`
+- `allowedValue` — n× String
+
+```text
+GET /v1/entities?package=archimate-lite&iriLocal=enum/modelingDepth
+```
+
+### Exchange poznámky
+
+Jedna entita `iriLocal=exchange-spec` (`instanceOf` `ExchangeSpec`): `catalogVersion`, `exchangeFormat`, `exchangeElementXsiType`, `exchangeRelationshipXsiType`, `exchangeDeployedOn`, `exchangeRisk`, `exchangeViews`, `exchangeIdentifier`.
+
+```text
+GET /v1/entities?package=archimate-lite&iriLocal=exchange-spec
+```
+
+`catalog.json` v gitu je jen seed pro `load.py` a code review. Runtime tool **nečte** JSON z disku, pokud má přístup k nahranému package (včetně release bundle).
 
 ## Konvence instancí
 
@@ -196,7 +254,7 @@ Q:c1   relSource → Q:crm
 Q:c1   relTarget → Q:fe
 ```
 
-`rangeClasses` na `relSource`/`relTarget` **nastavte** na `ArchiMateElement` (loader to dělá z catalog `range`). Validace range v KC bere `instanceOf` cílového `Q*` a expanduje `subClassOf`. Lite matici (`allowedRelationships` v catalog.json — konkrétní páry typů) vynucuje nástroj, ne jádro.
+`rangeClasses` na `relSource`/`relTarget` **nastavte** na `ArchiMateElement` (loader to dělá z catalog `range`). Validace range v KC bere `instanceOf` cílového `Q*` a expanduje `subClassOf`. Lite matici vynucuje tool nad instancemi `AllowedRelationship` v KC.
 
 `PATCH /v1/properties/{pid}` `{ "constraints": { ... } }` upraví constraints po vytvoření.
 
@@ -262,7 +320,7 @@ KC `relaxed`: zápis projde, findings v odpovědi / `GET .../validation`.
 Shape `aml-relationship` vyžaduje `relSource`+`relTarget` (error).  
 Shape `aml-element` varuje bez `modelingDepth`.  
 Range `ArchiMateElement` na koncích vazby = jádro.  
-Lite matice a „Flow jen mezi komponentami“ = logika nástroje nad `catalog.json` → `allowedRelationships`.
+Lite matice a „Flow jen mezi komponentami“ = logika nástroje nad instancemi `AllowedRelationship` (seed v catalog `allowedRelationships`). Enumy = instance `StringEnum`.
 
 ## Co nástroj nesmí dělat
 

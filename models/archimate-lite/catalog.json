@@ -1,5 +1,5 @@
 {
-  "version": "1.0.0",
+  "version": "1.1.0",
   "package": {
     "code": "archimate-lite",
     "lifecycle": "continuous",
@@ -23,6 +23,11 @@
     }
   },
   "classes": [
+    { "iriLocal": "ArchiMateLiteMeta", "labels": { "en": "ArchiMate Lite catalog meta" }, "descriptions": { "en": "Not an ArchiMate concept. Root for tool policy data stored in this package (allowed pairs, enums, exchange notes)." } },
+    { "iriLocal": "AllowedRelationship", "parent": "ArchiMateLiteMeta", "labels": { "en": "Allowed relationship" }, "descriptions": { "en": "Lite matrix row: relationship class + source class + target class. Enforced by tools, not by KC." } },
+    { "iriLocal": "StringEnum", "parent": "ArchiMateLiteMeta", "labels": { "en": "String enumeration" }, "descriptions": { "en": "Allowed string values for a property. Enforced by tools, not by KC." } },
+    { "iriLocal": "ExchangeSpec", "parent": "ArchiMateLiteMeta", "labels": { "en": "Exchange spec" }, "descriptions": { "en": "Open Exchange mapping notes for tools. Single instance iriLocal=exchange-spec." } },
+
     { "iriLocal": "ArchiMateConcept", "labels": { "en": "ArchiMate concept" } },
     { "iriLocal": "ArchiMateElement", "parent": "ArchiMateConcept", "labels": { "en": "ArchiMate element" } },
     { "iriLocal": "ArchiMateRelationship", "parent": "ArchiMateConcept", "labels": { "en": "ArchiMate relationship" } },
@@ -150,7 +155,27 @@
     { "iriLocal": "relationshipRef", "datatype": "EntityReference", "domain": ["ViewConnection"], "range": ["ArchiMateRelationship"], "minCount": 1, "maxCount": 1, "severity": "error", "labels": { "en": "Relationship reference" } },
     { "iriLocal": "sourceNode", "datatype": "EntityReference", "domain": ["ViewConnection"], "range": ["ViewNode"], "minCount": 1, "maxCount": 1, "severity": "error", "labels": { "en": "Source view node" } },
     { "iriLocal": "targetNode", "datatype": "EntityReference", "domain": ["ViewConnection"], "range": ["ViewNode"], "minCount": 1, "maxCount": 1, "severity": "error", "labels": { "en": "Target view node" } },
-    { "iriLocal": "bendpoints", "datatype": "String", "domain": ["ViewConnection"], "labels": { "en": "Bendpoints JSON" } }
+    { "iriLocal": "bendpoints", "datatype": "String", "domain": ["ViewConnection"], "labels": { "en": "Bendpoints JSON" } },
+
+    { "iriLocal": "archiLayer", "datatype": "String", "maxCount": 1, "labels": { "en": "ArchiMate layer" }, "descriptions": { "en": "Annotation on a class entity (C*): business | application | technology | physical | composite | motivation | implementation." } },
+    { "iriLocal": "overlay", "datatype": "String", "maxCount": 1, "labels": { "en": "Overlay" }, "descriptions": { "en": "Annotation on a class entity (C*), e.g. risk-and-security." } },
+    { "iriLocal": "exchangeType", "datatype": "String", "maxCount": 1, "labels": { "en": "Exchange xsi:type" }, "descriptions": { "en": "Annotation on a relationship class (C*). Absent means not a standard Open Exchange relationship type (e.g. DeployedOn)." } },
+
+    { "iriLocal": "allowedRelType", "datatype": "EntityReference", "domain": ["AllowedRelationship"], "range": ["ArchiMateRelationship"], "minCount": 1, "maxCount": 1, "severity": "error", "labels": { "en": "Allowed relationship type" } },
+    { "iriLocal": "allowedSourceClass", "datatype": "EntityReference", "domain": ["AllowedRelationship"], "range": ["ArchiMateElement"], "minCount": 1, "maxCount": 1, "severity": "error", "labels": { "en": "Allowed source class" } },
+    { "iriLocal": "allowedTargetClass", "datatype": "EntityReference", "domain": ["AllowedRelationship"], "range": ["ArchiMateElement"], "minCount": 1, "maxCount": 1, "severity": "error", "labels": { "en": "Allowed target class" } },
+
+    { "iriLocal": "enumeratesProperty", "datatype": "EntityReference", "domain": ["StringEnum"], "minCount": 1, "maxCount": 1, "severity": "error", "labels": { "en": "Enumerates property" }, "descriptions": { "en": "The P* whose string values this enum constrains (tool-side)." } },
+    { "iriLocal": "allowedValue", "datatype": "String", "domain": ["StringEnum"], "minCount": 1, "severity": "error", "labels": { "en": "Allowed value" } },
+
+    { "iriLocal": "catalogVersion", "datatype": "String", "domain": ["ExchangeSpec"], "maxCount": 1, "labels": { "en": "Catalog version" } },
+    { "iriLocal": "exchangeFormat", "datatype": "String", "domain": ["ExchangeSpec"], "maxCount": 1, "labels": { "en": "Exchange format" } },
+    { "iriLocal": "exchangeElementXsiType", "datatype": "String", "domain": ["ExchangeSpec"], "maxCount": 1, "labels": { "en": "Element xsi:type rule" } },
+    { "iriLocal": "exchangeRelationshipXsiType", "datatype": "String", "domain": ["ExchangeSpec"], "maxCount": 1, "labels": { "en": "Relationship xsi:type rule" } },
+    { "iriLocal": "exchangeDeployedOn", "datatype": "String", "domain": ["ExchangeSpec"], "maxCount": 1, "labels": { "en": "DeployedOn exchange rule" } },
+    { "iriLocal": "exchangeRisk", "datatype": "String", "domain": ["ExchangeSpec"], "maxCount": 1, "labels": { "en": "Risk exchange rule" } },
+    { "iriLocal": "exchangeViews", "datatype": "String", "domain": ["ExchangeSpec"], "maxCount": 1, "labels": { "en": "Views exchange rule" } },
+    { "iriLocal": "exchangeIdentifier", "datatype": "String", "domain": ["ExchangeSpec"], "maxCount": 1, "labels": { "en": "Identifier exchange rule" } }
   ],
   "shapes": [
     {
@@ -169,6 +194,18 @@
       "code": "aml-view-connection",
       "class": "ViewConnection",
       "required": ["relationshipRef", "sourceNode", "targetNode"],
+      "severity": "error"
+    },
+    {
+      "code": "aml-allowed-relationship",
+      "class": "AllowedRelationship",
+      "required": ["allowedRelType", "allowedSourceClass", "allowedTargetClass"],
+      "severity": "error"
+    },
+    {
+      "code": "aml-string-enum",
+      "class": "StringEnum",
+      "required": ["enumeratesProperty", "allowedValue"],
       "severity": "error"
     }
   ],

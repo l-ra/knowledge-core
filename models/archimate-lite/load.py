@@ -2,7 +2,8 @@
 """Load ArchiMate Lite metamodel into a running knowledge-core via HTTP API.
 
 Does not modify knowledge-core source. Idempotent: skips existing package
-objects matched by iriLocal, and existing shapes matched by code.
+objects matched by iriLocal, existing shapes matched by code, and upserts
+policy statements (class annotations, allowed pairs, enums, exchange-spec).
 
 Auth (first match):
   KC_TOKEN          Bearer token (bootstrap password or OIDC access token)
@@ -197,6 +198,202 @@ def ensure_instance_of(kc: KC, cat: dict, pkg_code: str, prop_ids: dict[str, str
     print(f"set instanceOfProperty={pid}")
 
 
+def ref_value(entity_id: str) -> dict:
+    return {"type": "EntityReference", "entityId": entity_id}
+
+
+def str_value(s: str) -> dict:
+    return {"type": "String", "string": s}
+
+
+def value_matches(stored: dict, wanted: dict) -> bool:
+    if (stored or {}).get("type") != wanted.get("type"):
+        return False
+    t = wanted["type"]
+    if t == "EntityReference":
+        return stored.get("entityId") == wanted.get("entityId")
+    if t == "String":
+        return stored.get("string") == wanted.get("string")
+    return stored == wanted
+
+
+def ensure_upsert_statement(kc: KC, code: str, subject: str, prop: str, value: dict) -> None:
+    status, body = kc.post("/v1/statements", {
+        "packageCode": code,
+        "subject": subject,
+        "property": prop,
+        "value": value,
+        "upsert": True,
+    })
+    if status not in (200, 201):
+        raise SystemExit(f"statement {subject} {prop}: {status} {body}")
+
+
+def ensure_singleton_statement(kc: KC, code: str, subject: str, prop: str, value: dict) -> None:
+    st, body = kc.get(f"/v1/entities/{subject}/statements", property=prop)
+    if st != 200:
+        raise SystemExit(f"list statements {subject} {prop}: {st} {body}")
+    stmts = body.get("statements") or []
+    for s in stmts:
+        if value_matches(s.get("value") or {}, value):
+            return
+    if not stmts:
+        ensure_upsert_statement(kc, code, subject, prop, value)
+        return
+    s0 = stmts[0]
+    status, body = kc.post(f"/v1/statements/{s0['id']}/revise", {
+        "expectedRevision": s0.get("revisionNo") or 1,
+        "value": value,
+    })
+    if status not in (200, 201):
+        raise SystemExit(f"revise {s0.get('id')}: {status} {body}")
+
+
+def ensure_typed_entity(
+    kc: KC,
+    code: str,
+    by_iri: dict[str, str],
+    iri: str,
+    labels: dict,
+    class_id: str,
+    instance_of: str,
+) -> str:
+    if iri in by_iri:
+        qid = by_iri[iri]
+    else:
+        status, body = kc.post("/v1/entities", {
+            "packageCode": code,
+            "labels": labels,
+            "iriLocal": iri,
+        })
+        if status not in (200, 201):
+            raise SystemExit(f"create entity {iri}: {status} {body}")
+        qid = unwrap(body)["id"]
+        by_iri[iri] = qid
+        print(f"created entity {iri} -> {qid}")
+    ensure_upsert_statement(kc, code, qid, instance_of, ref_value(class_id))
+    return qid
+
+
+def load_class_annotations(
+    kc: KC, cat: dict, code: str, class_ids: dict[str, str], prop_ids: dict[str, str],
+) -> None:
+    layer_p = prop_ids.get("archiLayer")
+    overlay_p = prop_ids.get("overlay")
+    xtype_p = prop_ids.get("exchangeType")
+    for cls in cat["classes"]:
+        cid = class_ids.get(cls["iriLocal"])
+        if not cid:
+            continue
+        if layer_p and cls.get("layer"):
+            ensure_singleton_statement(kc, code, cid, layer_p, str_value(cls["layer"]))
+        if overlay_p and cls.get("overlay"):
+            ensure_singleton_statement(kc, code, cid, overlay_p, str_value(cls["overlay"]))
+        if xtype_p and cls.get("exchangeType"):
+            ensure_singleton_statement(kc, code, cid, xtype_p, str_value(cls["exchangeType"]))
+    print("class annotations loaded")
+
+
+def load_allowed_relationships(
+    kc: KC,
+    cat: dict,
+    code: str,
+    class_ids: dict[str, str],
+    prop_ids: dict[str, str],
+    by_iri: dict[str, str],
+    instance_of: str,
+) -> None:
+    rule_cls = class_ids.get("AllowedRelationship")
+    p_type = prop_ids.get("allowedRelType")
+    p_src = prop_ids.get("allowedSourceClass")
+    p_tgt = prop_ids.get("allowedTargetClass")
+    if not all([rule_cls, p_type, p_src, p_tgt]):
+        raise SystemExit("missing AllowedRelationship class or properties")
+    n = 0
+    for row in cat.get("allowedRelationships") or []:
+        t, src, tgt = row["type"], row["source"], row["target"]
+        for name in (t, src, tgt):
+            if name not in class_ids:
+                raise SystemExit(f"allowedRelationships: unknown class {name}")
+        iri = f"allowed/{t}/{src}/{tgt}"
+        qid = ensure_typed_entity(
+            kc, code, by_iri, iri,
+            {"en": f"{t} {src} → {tgt}"},
+            rule_cls, instance_of,
+        )
+        ensure_singleton_statement(kc, code, qid, p_type, ref_value(class_ids[t]))
+        ensure_singleton_statement(kc, code, qid, p_src, ref_value(class_ids[src]))
+        ensure_singleton_statement(kc, code, qid, p_tgt, ref_value(class_ids[tgt]))
+        n += 1
+    print(f"allowedRelationships loaded ({n})")
+
+
+def load_enums(
+    kc: KC,
+    cat: dict,
+    code: str,
+    class_ids: dict[str, str],
+    prop_ids: dict[str, str],
+    by_iri: dict[str, str],
+    instance_of: str,
+) -> None:
+    enum_cls = class_ids.get("StringEnum")
+    p_prop = prop_ids.get("enumeratesProperty")
+    p_val = prop_ids.get("allowedValue")
+    if not all([enum_cls, p_prop, p_val]):
+        raise SystemExit("missing StringEnum class or properties")
+    for name, values in (cat.get("enums") or {}).items():
+        if name not in prop_ids:
+            raise SystemExit(f"enums: unknown property {name}")
+        iri = f"enum/{name}"
+        qid = ensure_typed_entity(
+            kc, code, by_iri, iri,
+            {"en": f"Enum {name}"},
+            enum_cls, instance_of,
+        )
+        ensure_singleton_statement(kc, code, qid, p_prop, ref_value(prop_ids[name]))
+        for v in values:
+            ensure_upsert_statement(kc, code, qid, p_val, str_value(v))
+    print(f"enums loaded ({len(cat.get('enums') or {})})")
+
+
+def load_exchange_spec(
+    kc: KC,
+    cat: dict,
+    code: str,
+    class_ids: dict[str, str],
+    prop_ids: dict[str, str],
+    by_iri: dict[str, str],
+    instance_of: str,
+) -> None:
+    spec_cls = class_ids.get("ExchangeSpec")
+    if not spec_cls:
+        raise SystemExit("missing ExchangeSpec class")
+    qid = ensure_typed_entity(
+        kc, code, by_iri, "exchange-spec",
+        {"en": "Open Exchange mapping"},
+        spec_cls, instance_of,
+    )
+    ex = cat.get("exchange") or {}
+    fields = {
+        "catalogVersion": cat.get("version") or "",
+        "exchangeFormat": ex.get("format") or "",
+        "exchangeElementXsiType": ex.get("elementXsiType") or "",
+        "exchangeRelationshipXsiType": ex.get("relationshipXsiType") or "",
+        "exchangeDeployedOn": ex.get("deployedOn") or "",
+        "exchangeRisk": ex.get("risk") or "",
+        "exchangeViews": ex.get("views") or "",
+        "exchangeIdentifier": ex.get("identifier") or "",
+    }
+    for iri, text in fields.items():
+        pid = prop_ids.get(iri)
+        if not pid:
+            raise SystemExit(f"missing property {iri}")
+        if text:
+            ensure_singleton_statement(kc, code, qid, pid, str_value(text))
+    print("exchange-spec loaded")
+
+
 def main() -> int:
     base = os.environ.get("KC_BASE_URL", "http://localhost:8080")
     cat = json.loads(CATALOG.read_text())
@@ -299,6 +496,19 @@ def main() -> int:
         if status not in (200, 201):
             raise SystemExit(f"create shape {sh['code']}: {status} {body}")
         print(f"created shape {sh['code']}")
+
+    st, cfg = kc.get("/v1/admin/schema-config")
+    if st != 200:
+        raise SystemExit(f"schema-config: {st} {cfg}")
+    instance_of = (cfg.get("instanceOfProperty") or "").strip()
+    if not instance_of:
+        raise SystemExit("instanceOfProperty is empty; cannot load catalog policy entities")
+
+    by_iri = index_by_iri(list_package_entities(kc, code))
+    load_class_annotations(kc, cat, code, class_ids, prop_ids)
+    load_allowed_relationships(kc, cat, code, class_ids, prop_ids, by_iri, instance_of)
+    load_enums(kc, cat, code, class_ids, prop_ids, by_iri, instance_of)
+    load_exchange_spec(kc, cat, code, class_ids, prop_ids, by_iri, instance_of)
 
     print("done.")
     print(f"classes={len(class_ids)} properties={len(prop_ids)}")
