@@ -344,8 +344,11 @@ export function PackagesPage() {
       </form>
       {error && <p className="error">{error}</p>}
 
-      <section className="panel stack">
-        <h2>{t("packages.rdfImport")}</h2>
+      <details className="panel collapsible-section">
+        <summary>
+          <h2>{t("packages.rdfImport")}</h2>
+        </summary>
+        <div className="stack collapsible-body">
         <p className="muted">{t("packages.rdfGlobalHint")}</p>
         <label className="field">
           {t("packages.rdfFile")}
@@ -529,10 +532,14 @@ export function PackagesPage() {
             ))}
           </div>
         )}
-      </section>
+        </div>
+      </details>
 
-      <section className="panel stack">
-        <h2>{t("packages.import")}</h2>
+      <details className="panel collapsible-section">
+        <summary>
+          <h2>{t("packages.import")}</h2>
+        </summary>
+        <div className="stack collapsible-body">
         <p className="muted">{t("packages.importHint")}</p>
         <label className="field">
           {t("packages.bundleFile")}
@@ -544,7 +551,8 @@ export function PackagesPage() {
         </label>
         {importError && <p className="error">{importError}</p>}
         {importOk && <p className="muted">{importOk}</p>}
-      </section>
+        </div>
+      </details>
 
       <table className="table">
         <thead>

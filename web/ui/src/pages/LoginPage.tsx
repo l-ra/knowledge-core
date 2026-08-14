@@ -1,11 +1,13 @@
 import { FormEvent, useState } from "react";
+import { Navigate, useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { useAuth } from "../auth";
 import { apiFetch, startOidcLogin } from "../api";
 
 export function LoginPage() {
   const { t } = useTranslation();
-  const { cfg, ready, setSession } = useAuth();
+  const navigate = useNavigate();
+  const { cfg, ready, session, setSession } = useAuth();
   const [password, setPassword] = useState("");
   const [subject, setSubject] = useState("admin");
   const [roles, setRoles] = useState("admin");
@@ -13,6 +15,7 @@ export function LoginPage() {
   const [busy, setBusy] = useState(false);
 
   if (!ready) return <div className="login-page">{t("login.loading")}</div>;
+  if (session) return <Navigate to="/" replace />;
   if (!cfg) return <div className="login-page error">{t("common.error")}: config</div>;
 
   async function onSubmit(e: FormEvent) {
@@ -21,13 +24,15 @@ export function LoginPage() {
     setError("");
     try {
       if (cfg!.authMode === "bootstrap") {
-        const session = { mode: "bootstrap" as const, token: password };
-        const me = await apiFetch<{ id: string; displayName?: string }>("/v1/me", {}, session);
-        setSession({ ...session, subject: me.id, displayName: me.displayName || me.id });
+        const next = { mode: "bootstrap" as const, token: password };
+        const me = await apiFetch<{ id: string; displayName?: string }>("/v1/me", {}, next);
+        setSession({ ...next, subject: me.id, displayName: me.displayName || me.id });
+        navigate("/", { replace: true });
       } else if (cfg!.authMode === "dev") {
-        const session = { mode: "dev" as const, subject, roles };
-        const me = await apiFetch<{ id: string; displayName?: string }>("/v1/me", {}, session);
-        setSession({ ...session, displayName: me.displayName || me.id || subject });
+        const next = { mode: "dev" as const, subject, roles };
+        const me = await apiFetch<{ id: string; displayName?: string }>("/v1/me", {}, next);
+        setSession({ ...next, displayName: me.displayName || me.id || subject });
+        navigate("/", { replace: true });
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : t("login.error"));
