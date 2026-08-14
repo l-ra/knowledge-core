@@ -119,7 +119,7 @@ func (s *Store) CreateClass(ctx context.Context, meta domain.WriteMeta, in domai
 
 	c := domain.ClassDefinition{
 		ID: id.String(), PublicID: publicID, Status: domain.PropertyActive,
-		PackageCode: in.PackageCode, Document: doc, Labels: labels, Descriptions: descs,
+		PackageCode: in.PackageCode, IRILocal: iriLocal, Document: doc, Labels: labels, Descriptions: descs,
 		CreatedAt: now.Format(time.RFC3339Nano), UpdatedAt: now.Format(time.RFC3339Nano),
 	}
 	if err := s.finalizeChangeSet(ctx, tx, cs, c); err != nil {
@@ -135,15 +135,16 @@ func (s *Store) GetClassByPublicID(ctx context.Context, cid string) (*domain.Cla
 	var c domain.ClassDefinition
 	var id uuid.UUID
 	var pkgCode *string
+	var iriBase string
 	var docJSON []byte
 	var createdAt, updatedAt time.Time
 	err := s.pool.QueryRow(ctx, `
-		SELECT e.id, e.public_id, e.status, pkg.code, cp.document, e.created_at, e.updated_at
+		SELECT e.id, e.public_id, e.status, pkg.code, COALESCE(e.iri_local,''), COALESCE(pkg.iri_base,''), cp.document, e.created_at, e.updated_at
 		FROM class_profile cp
 		JOIN entity e ON e.id = cp.entity_id
 		LEFT JOIN package pkg ON pkg.id = e.package_id
 		WHERE e.public_id = $1 AND e.status <> 'deleted'
-	`, cid).Scan(&id, &c.PublicID, &c.Status, &pkgCode, &docJSON, &createdAt, &updatedAt)
+	`, cid).Scan(&id, &c.PublicID, &c.Status, &pkgCode, &c.IRILocal, &iriBase, &docJSON, &createdAt, &updatedAt)
 	if err != nil {
 		return nil, err
 	}
@@ -151,6 +152,7 @@ func (s *Store) GetClassByPublicID(ctx context.Context, cid string) (*domain.Cla
 	if pkgCode != nil {
 		c.PackageCode = *pkgCode
 	}
+	c.IRI = datatype.ResolveIRI(iriBase, c.IRILocal, c.PublicID, fallbackNSForPublicID(c.PublicID))
 	_ = json.Unmarshal(docJSON, &c.Document)
 	c.Labels, _ = s.loadLabels(ctx, `SELECT lang, text FROM entity_label WHERE entity_id = $1`, id)
 	c.Descriptions, _ = s.loadLabels(ctx, `SELECT lang, text FROM entity_description WHERE entity_id = $1`, id)
@@ -176,7 +178,7 @@ func (s *Store) ListClasses(ctx context.Context, opt ListOptions) ([]domain.Clas
 	limitArg := fmt.Sprintf(`$%d`, len(args))
 
 	rows, err := s.pool.Query(ctx, `
-		SELECT e.id, e.public_id, e.status, pkg.code, cp.document, e.created_at, e.updated_at
+		SELECT e.id, e.public_id, e.status, pkg.code, COALESCE(e.iri_local,''), COALESCE(pkg.iri_base,''), cp.document, e.created_at, e.updated_at
 		FROM class_profile cp
 		JOIN entity e ON e.id = cp.entity_id
 		LEFT JOIN package pkg ON pkg.id = e.package_id
@@ -193,15 +195,17 @@ func (s *Store) ListClasses(ctx context.Context, opt ListOptions) ([]domain.Clas
 		var c domain.ClassDefinition
 		var id uuid.UUID
 		var pkgCode *string
+		var iriBase string
 		var docJSON []byte
 		var createdAt, updatedAt time.Time
-		if err := rows.Scan(&id, &c.PublicID, &c.Status, &pkgCode, &docJSON, &createdAt, &updatedAt); err != nil {
+		if err := rows.Scan(&id, &c.PublicID, &c.Status, &pkgCode, &c.IRILocal, &iriBase, &docJSON, &createdAt, &updatedAt); err != nil {
 			return nil, "", err
 		}
 		c.ID = id.String()
 		if pkgCode != nil {
 			c.PackageCode = *pkgCode
 		}
+		c.IRI = datatype.ResolveIRI(iriBase, c.IRILocal, c.PublicID, fallbackNSForPublicID(c.PublicID))
 		_ = json.Unmarshal(docJSON, &c.Document)
 		c.Labels, _ = s.loadLabels(ctx, `SELECT lang, text FROM entity_label WHERE entity_id = $1`, id)
 		c.Descriptions, _ = s.loadLabels(ctx, `SELECT lang, text FROM entity_description WHERE entity_id = $1`, id)

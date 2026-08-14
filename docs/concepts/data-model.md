@@ -1,6 +1,6 @@
 # Datový model Knowledge Core
 
-Fyzické PostgreSQL schema odvozené z migrací `migrations/00001`–`00010`.  
+Fyzické PostgreSQL schema odvozené z migrací `migrations/00001`–`00014`.  
 Logické koncepty: [overview.md](overview.md). Schema objekty: [ADR 0005](../decisions/0005-entity-profile-schema.md).
 
 **SoT** = canonical graph + schema profiles v PostgreSQL.  
@@ -26,6 +26,7 @@ erDiagram
     entity ||--o| property_profile : "P* schema"
     entity ||--o| class_profile : "C* schema"
     class_profile ||--o{ shape_profile : shaped_by
+    package ||--o{ shape_profile : owns
 
     entity ||--o{ statement : subject
     property_profile ||--o{ statement : predicate
@@ -71,6 +72,7 @@ erDiagram
 | `property_profile.entity_id` | `entity` | 1:1, public_id `P*` |
 | `class_profile.entity_id` | `entity` | 1:1, public_id `C*` |
 | `shape_profile.class_id` | `class_profile` | |
+| `shape_profile.package_id` | `package` | volitelné vlastnictví + release bundle |
 | `instanceOf` hodnota | `C*` entita | přes `model_schema_config.instance_of_property` |
 
 Profile = SoT pro datatype/constraints/subClassOf. RDF může profile emitovat (`rdf:Property`, `rdfs:Class`).
@@ -93,3 +95,7 @@ Beze změny konceptu: `change_set`, `entity_revision`, `statement_revision`. Pro
 | `00004` | package, release |
 | `00005`–`00009` | auth, lenses, outbox, RDF, auth_runtime |
 | `00010` | class_profile, shape_profile, schema config, validation_report |
+| `00011` | schema model properties |
+| `00012` | user ChangeSet draft |
+| `00013` | IRI mapping / aliases |
+| `00014` | incoming index; `shape_profile.package_id` |

@@ -15,6 +15,8 @@ type Options struct {
 }
 
 type snapshot struct {
+	store       *store.Store
+	ctx         context.Context
 	instanceOf  string
 	classes     map[string]domain.ClassDefinition
 	constraints map[string]domain.PropertyConstraints
@@ -26,7 +28,7 @@ func Entity(ctx context.Context, st *store.Store, qid string, opt Options) (*dom
 	if err != nil {
 		return nil, err
 	}
-	stmts, err := st.ListStatementsBySubject(ctx, qid)
+	stmts, err := st.ListStatementsBySubject(ctx, qid, "")
 	if err != nil {
 		return nil, err
 	}
@@ -61,6 +63,8 @@ func loadSnapshot(ctx context.Context, st *store.Store) (*snapshot, error) {
 		return nil, err
 	}
 	s := &snapshot{
+		store:       st,
+		ctx:         ctx,
 		instanceOf:  cfg.InstanceOfProperty,
 		constraints: constraints,
 		shapes:      shapes,
@@ -93,7 +97,7 @@ func resolveEntityClasses(s *snapshot, stmts []domain.Statement) []string {
 		if st.Value.Type != datatype.EntityReference || st.Value.EntityID == nil {
 			continue
 		}
-		target := *st.Value.EntityID
+		target := publicClassID(s, *st.Value.EntityID)
 		if _, ok := s.classes[target]; ok {
 			direct = append(direct, target)
 		}
@@ -198,11 +202,33 @@ func validateStatements(qid string, stmts []domain.Statement, entityClasses []st
 	return findings
 }
 
+func publicClassID(s *snapshot, idOrPublic string) string {
+	if _, ok := s.classes[idOrPublic]; ok {
+		return idOrPublic
+	}
+	if s.store == nil || s.ctx == nil {
+		return idOrPublic
+	}
+	pub, err := s.store.ResolveEntityPublicID(s.ctx, idOrPublic)
+	if err != nil || pub == "" {
+		return idOrPublic
+	}
+	return pub
+}
+
 func resolveTargetClasses(targetQID string, s *snapshot) []string {
+	targetQID = publicClassID(s, targetQID)
 	if _, ok := s.classes[targetQID]; ok {
 		return expandClasses([]string{targetQID}, s.classes)
 	}
-	return nil
+	if s.store == nil || s.ctx == nil {
+		return nil
+	}
+	stmts, err := s.store.ListStatementsBySubject(s.ctx, targetQID, s.instanceOf)
+	if err != nil {
+		return nil
+	}
+	return resolveEntityClasses(s, stmts)
 }
 
 func validateShapes(qid string, stmts []domain.Statement, entityClasses []string, s *snapshot) []domain.ValidationFinding {

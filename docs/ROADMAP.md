@@ -195,6 +195,15 @@ Detail: [specs/phase-13-web-ui.md](specs/phase-13-web-ui.md)
 
 ---
 
+## Fáze 19 — Graph query API (hotovo)
+
+- [x] Incoming statements, IRI/`iriLocal` lookup, `rangeClasses` na instance `Q*`, `iriLocal` na class/property DTO
+- [x] `instanceOf` list, graph neighborhood, statement `?property=`, camelCase package deps, shapes v package/bundle
+- [x] PATCH constraints, package move, statement upsert, `effectiveClasses`, OpenAPI 0.2.0
+- Detail: [specs/phase-19-graph-api.md](specs/phase-19-graph-api.md)
+
+---
+
 ## Doporučené pořadí další práce
 
 ```text
@@ -226,6 +235,7 @@ Turtle import; auto-rebuild RDF při změně package.iri_base
 | — | Import promotion | `TestAcceptanceImportPromotion` | done |
 | — | Schema validation relaxed | `TestAcceptanceSchemaValidationRelaxed` | done |
 | — | Entity+Profile | `TestAcceptanceEntityProfile` | done |
+| — | Graph API P0–P2 | `TestAcceptanceGraphAPIExtensions` | done |
 
 ---
 

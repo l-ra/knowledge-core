@@ -389,3 +389,138 @@ func (s *Store) resolveAndEncodeValue(ctx context.Context, tx pgx.Tx, dtype data
 	sv, err := encodeValue(dtype, val)
 	return val, sv, err
 }
+
+func (s *Store) UpdateProperty(ctx context.Context, meta domain.WriteMeta, pid string, in domain.UpdatePropertyInput) (*domain.WriteResult[domain.Property], error) {
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback(ctx)
+
+	if hit, err := s.checkIdempotency(ctx, tx, meta); err != nil {
+		return nil, err
+	} else if hit != nil {
+		if err := tx.Commit(ctx); err != nil {
+			return nil, err
+		}
+		var p domain.Property
+		if err := json.Unmarshal(hit.responseBody, &p); err != nil {
+			return nil, err
+		}
+		return &domain.WriteResult[domain.Property]{Value: p, Replay: true, ResponseRaw: hit.responseBody}, nil
+	}
+
+	var entityID uuid.UUID
+	var rev int
+	err = tx.QueryRow(ctx, `
+		SELECT e.id, e.current_revision_no FROM entity e
+		JOIN property_profile pp ON pp.entity_id = e.id
+		WHERE e.public_id = $1 AND e.status <> 'deleted'
+	`, pid).Scan(&entityID, &rev)
+	if err != nil {
+		return nil, err
+	}
+	if in.ExpectedRevision > 0 && in.ExpectedRevision != rev {
+		return nil, fmt.Errorf("%w: expected revision %d have %d", ErrConflict, in.ExpectedRevision, rev)
+	}
+	if in.Constraints != nil {
+		constraintsJSON, _ := json.Marshal(*in.Constraints)
+		if _, err := tx.Exec(ctx, `UPDATE property_profile SET constraints = $2 WHERE entity_id = $1`, entityID, constraintsJSON); err != nil {
+			return nil, err
+		}
+	}
+	nextRev := rev + 1
+	now := time.Now().UTC()
+	if _, err := tx.Exec(ctx, `UPDATE entity SET current_revision_no = $2, updated_at = $3 WHERE id = $1`, entityID, nextRev, now); err != nil {
+		return nil, err
+	}
+	cs, err := s.beginChangeSetTx(ctx, tx, meta)
+	if err != nil {
+		return nil, err
+	}
+	if err := cs.addItem(ctx, tx, "property", entityID, pid, "update", map[string]any{"revisionNo": nextRev}); err != nil {
+		return nil, err
+	}
+	if err := s.finalizeChangeSet(ctx, tx, cs, map[string]any{"id": pid, "revisionNo": nextRev}); err != nil {
+		return nil, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return nil, err
+	}
+	p, err := s.GetPropertyByPublicID(ctx, pid)
+	if err != nil {
+		return nil, err
+	}
+	return &domain.WriteResult[domain.Property]{Value: *p, ChangeSet: s.changeSetDomain(cs, meta)}, nil
+}
+
+func (s *Store) MoveEntity(ctx context.Context, meta domain.WriteMeta, publicID string, in domain.MoveEntityInput) (*domain.WriteResult[domain.Entity], error) {
+	if in.PackageCode == "" {
+		return nil, fmt.Errorf("packageCode required")
+	}
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback(ctx)
+
+	if hit, err := s.checkIdempotency(ctx, tx, meta); err != nil {
+		return nil, err
+	} else if hit != nil {
+		if err := tx.Commit(ctx); err != nil {
+			return nil, err
+		}
+		var ent domain.Entity
+		if err := json.Unmarshal(hit.responseBody, &ent); err != nil {
+			return nil, err
+		}
+		return &domain.WriteResult[domain.Entity]{Value: ent, Replay: true, ResponseRaw: hit.responseBody}, nil
+	}
+
+	var entityID uuid.UUID
+	var oldPkg *uuid.UUID
+	var rev int
+	err = tx.QueryRow(ctx, `SELECT id, package_id, current_revision_no FROM entity WHERE public_id = $1`, publicID).
+		Scan(&entityID, &oldPkg, &rev)
+	if err != nil {
+		return nil, err
+	}
+	if in.ExpectedRevision > 0 && in.ExpectedRevision != rev {
+		return nil, fmt.Errorf("%w: expected revision %d have %d", ErrConflict, in.ExpectedRevision, rev)
+	}
+	newPkg, err := s.resolvePackageIDRequired(ctx, tx, in.PackageCode)
+	if err != nil {
+		return nil, err
+	}
+	nextRev := rev + 1
+	now := time.Now().UTC()
+	if _, err := tx.Exec(ctx, `UPDATE entity SET package_id = $2, current_revision_no = $3, updated_at = $4 WHERE id = $1`, entityID, newPkg, nextRev, now); err != nil {
+		return nil, fmt.Errorf("%w: %v", ErrConflict, err)
+	}
+	if oldPkg != nil {
+		if _, err := tx.Exec(ctx, `
+			UPDATE statement SET package_id = $2, updated_at = $3
+			WHERE subject_id = $1 AND package_id = $4
+		`, entityID, newPkg, now, *oldPkg); err != nil {
+			return nil, err
+		}
+	}
+	cs, err := s.beginChangeSetTx(ctx, tx, meta)
+	if err != nil {
+		return nil, err
+	}
+	if err := cs.addItem(ctx, tx, "entity", entityID, publicID, "move", map[string]any{"packageCode": in.PackageCode, "revisionNo": nextRev}); err != nil {
+		return nil, err
+	}
+	if err := s.finalizeChangeSet(ctx, tx, cs, map[string]any{"id": publicID, "packageCode": in.PackageCode}); err != nil {
+		return nil, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return nil, err
+	}
+	ent, err := s.GetEntityByPublicID(ctx, publicID)
+	if err != nil {
+		return nil, err
+	}
+	return &domain.WriteResult[domain.Entity]{Value: *ent, ChangeSet: s.changeSetDomain(cs, meta)}, nil
+}

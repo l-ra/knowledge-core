@@ -69,6 +69,11 @@ func (s *Store) ImportReleaseBundle(ctx context.Context, meta domain.WriteMeta, 
 			return nil, err
 		}
 	}
+	for _, sh := range bundle.Shapes {
+		if err := s.importShape(ctx, tx, sh); err != nil {
+			return nil, err
+		}
+	}
 	for _, e := range bundle.Entities {
 		if err := s.importEntity(ctx, tx, e, cs); err != nil {
 			return nil, err
@@ -404,6 +409,45 @@ func (s *Store) importClass(ctx context.Context, tx pgx.Tx, bc domain.BundleClas
 		return fmt.Errorf("%w: class %s revision %d", ErrImportCollision, bc.PublicID, bc.RevisionNo)
 	}
 	return nil
+}
+
+func (s *Store) importShape(ctx context.Context, tx pgx.Tx, bs domain.BundleShape) error {
+	if bs.Code == "" || bs.ClassID == "" {
+		return fmt.Errorf("shape code and classId required")
+	}
+	var exists bool
+	err := tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM shape_profile WHERE code = $1)`, bs.Code).Scan(&exists)
+	if err != nil {
+		return err
+	}
+	if exists {
+		return nil
+	}
+	var classUUID string
+	err = tx.QueryRow(ctx, `
+		SELECT e.id FROM class_profile cp JOIN entity e ON e.id = cp.entity_id
+		WHERE e.public_id = $1 AND e.status <> 'deleted'
+	`, bs.ClassID).Scan(&classUUID)
+	if err != nil {
+		return fmt.Errorf("shape class %s: %w", bs.ClassID, err)
+	}
+	var pkgID any
+	if bs.PackageCode != "" {
+		id, err := s.resolvePackageIDRequired(ctx, tx, bs.PackageCode)
+		if err != nil {
+			return err
+		}
+		pkgID = id
+	}
+	docJSON, err := json.Marshal(bs.Document)
+	if err != nil {
+		return err
+	}
+	_, err = tx.Exec(ctx, `
+		INSERT INTO shape_profile (id, code, class_id, document, package_id, created_at, updated_at)
+		VALUES ($1,$2,$3,$4,$5,now(),now())
+	`, datatype.NewUUID(), bs.Code, classUUID, docJSON, pkgID)
+	return err
 }
 
 func (s *Store) insertImportedClass(ctx context.Context, tx pgx.Tx, bc domain.BundleClass, cs *changeSetTx) error {

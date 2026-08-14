@@ -12,7 +12,7 @@ import (
 )
 
 type StatementReader interface {
-	ListEntityStatements(ctx context.Context, qid string) ([]domain.Statement, error)
+	ListEntityStatements(ctx context.Context, qid, propertyPID string) ([]domain.Statement, error)
 }
 
 type StatementWriter interface {
@@ -60,7 +60,7 @@ func (e *Engine) ReadInstanceByEntity(ctx context.Context, lensCode, qid string)
 }
 
 func (e *Engine) readByEntity(ctx context.Context, lens *domain.LensDefinition, qid string) (map[string]any, error) {
-	statements, err := e.reader.ListEntityStatements(ctx, qid)
+	statements, err := e.reader.ListEntityStatements(ctx, qid, "")
 	if err != nil {
 		return nil, err
 	}

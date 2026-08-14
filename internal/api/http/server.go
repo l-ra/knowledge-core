@@ -5,6 +5,7 @@ import (
 	"errors"
 	"io/fs"
 	"net/http"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -64,6 +65,9 @@ func New(eng *engine.Engine, st *store.Store, authn Authenticator, cfg config.Co
 		r.Get("/entities/{qid}/validation", s.getEntityValidation)
 		r.Get("/entities/{qid}/history", s.getEntityHistory)
 		r.Get("/entities/{qid}/statements", s.listEntityStatements)
+		r.Get("/entities/{qid}/incoming", s.listIncomingStatements)
+		r.Get("/entities/{qid}/graph", s.getEntityGraph)
+		r.Post("/entities/{qid}/move", s.moveEntity)
 		r.Get("/entities/{qid}", s.getEntity)
 		r.Patch("/entities/{qid}", s.updateEntity)
 		r.Put("/entities/{qid}/iri-aliases", s.putEntityIRIAliases)
@@ -71,6 +75,7 @@ func New(eng *engine.Engine, st *store.Store, authn Authenticator, cfg config.Co
 		r.Get("/properties", s.listProperties)
 		r.Post("/properties", s.createProperty)
 		r.Get("/properties/{pid}", s.getProperty)
+		r.Patch("/properties/{pid}", s.patchProperty)
 
 		r.Get("/packages", s.listPackages)
 		r.Post("/packages", s.createPackage)
@@ -375,6 +380,7 @@ type createStatementReq struct {
 	ReferenceIDs []string                `json:"referenceIds,omitempty"`
 	ValidFrom    *time.Time              `json:"validFrom,omitempty"`
 	ValidTo      *time.Time              `json:"validTo,omitempty"`
+	Upsert       bool                    `json:"upsert,omitempty"`
 }
 
 func (s *Server) createStatement(w http.ResponseWriter, r *http.Request) {
@@ -392,7 +398,7 @@ func (s *Server) createStatement(w http.ResponseWriter, r *http.Request) {
 	res, err := s.engine.CreateStatement(r.Context(), meta, domain.CreateStatementInput{
 		PackageCode: req.PackageCode, SubjectPublicID: req.Subject, PropertyPublicID: req.Property, Value: req.Value,
 		Qualifiers: req.Qualifiers, ReferenceIDs: req.ReferenceIDs,
-		ValidFrom: req.ValidFrom, ValidTo: req.ValidTo,
+		ValidFrom: req.ValidFrom, ValidTo: req.ValidTo, Upsert: req.Upsert,
 	})
 	if err != nil {
 		writeEngineError(w, err)
@@ -511,7 +517,7 @@ func (s *Server) getStatementHistory(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) listEntityStatements(w http.ResponseWriter, r *http.Request) {
-	list, err := s.engine.ListEntityStatements(r.Context(), chi.URLParam(r, "qid"))
+	list, err := s.engine.ListEntityStatements(r.Context(), chi.URLParam(r, "qid"), r.URL.Query().Get("property"))
 	if err != nil {
 		writeEngineError(w, err)
 		return
@@ -521,6 +527,105 @@ func (s *Server) listEntityStatements(w http.ResponseWriter, r *http.Request) {
 		out = append(out, statementDTO(&list[i]))
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"statements": out})
+}
+
+func (s *Server) listIncomingStatements(w http.ResponseWriter, r *http.Request) {
+	list, err := s.engine.ListIncomingStatements(r.Context(), chi.URLParam(r, "qid"), r.URL.Query().Get("property"))
+	if err != nil {
+		writeEngineError(w, err)
+		return
+	}
+	out := make([]any, 0, len(list))
+	for i := range list {
+		out = append(out, statementDTO(&list[i]))
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"statements": out})
+}
+
+func (s *Server) getEntityGraph(w http.ResponseWriter, r *http.Request) {
+	depth := 1
+	if v := r.URL.Query().Get("depth"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil {
+			depth = n
+		}
+	}
+	g, err := s.engine.GetEntityGraph(r.Context(), chi.URLParam(r, "qid"), depth)
+	if err != nil {
+		writeEngineError(w, err)
+		return
+	}
+	neighbors := make([]any, 0, len(g.Neighbors))
+	for i := range g.Neighbors {
+		neighbors = append(neighbors, entityDTO(&g.Neighbors[i]))
+	}
+	outSt := make([]any, 0, len(g.Outgoing))
+	for i := range g.Outgoing {
+		outSt = append(outSt, statementDTO(&g.Outgoing[i]))
+	}
+	inSt := make([]any, 0, len(g.Incoming))
+	for i := range g.Incoming {
+		inSt = append(inSt, statementDTO(&g.Incoming[i]))
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"entity": entityDTO(&g.Entity),
+		"outgoing": outSt,
+		"incoming": inSt,
+		"neighbors": neighbors,
+	})
+}
+
+type moveEntityReq struct {
+	PackageCode      string `json:"packageCode"`
+	ExpectedRevision int    `json:"expectedRevision"`
+}
+
+func (s *Server) moveEntity(w http.ResponseWriter, r *http.Request) {
+	body, err := readBody(r)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid body")
+		return
+	}
+	var req moveEntityReq
+	if err := json.Unmarshal(body, &req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid JSON")
+		return
+	}
+	meta := writeMetaFromRequest(r, "moveEntity", hashBody(body))
+	res, err := s.engine.MoveEntity(r.Context(), meta, chi.URLParam(r, "qid"), domain.MoveEntityInput{
+		PackageCode: req.PackageCode, ExpectedRevision: req.ExpectedRevision,
+	})
+	if err != nil {
+		writeEngineError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, writeResponse(entityDTO(&res.Value), res.ChangeSet))
+}
+
+type patchPropertyReq struct {
+	Constraints      *domain.PropertyConstraints `json:"constraints"`
+	ExpectedRevision int                         `json:"expectedRevision"`
+}
+
+func (s *Server) patchProperty(w http.ResponseWriter, r *http.Request) {
+	body, err := readBody(r)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid body")
+		return
+	}
+	var req patchPropertyReq
+	if err := json.Unmarshal(body, &req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid JSON")
+		return
+	}
+	meta := writeMetaFromRequest(r, "updateProperty", hashBody(body))
+	res, err := s.engine.UpdateProperty(r.Context(), meta, chi.URLParam(r, "pid"), domain.UpdatePropertyInput{
+		Constraints: req.Constraints, ExpectedRevision: req.ExpectedRevision,
+	})
+	if err != nil {
+		writeEngineError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, writeResponse(propertyDTO(&res.Value), res.ChangeSet))
 }
 
 type applyChangeSetReq struct {
@@ -911,11 +1016,14 @@ func entityDTO(e *domain.Entity) map[string]any {
 			"subClassOf": e.ClassProfile.SubClassOf,
 		}
 	}
+	if len(e.EffectiveClasses) > 0 {
+		out["effectiveClasses"] = e.EffectiveClasses
+	}
 	return out
 }
 
 func propertyDTO(p *domain.Property) map[string]any {
-	return map[string]any{
+	out := map[string]any{
 		"id": p.PublicID, "canonicalId": p.ID.String(), "datatype": p.Datatype, "status": p.Status,
 		"revisionNo": p.RevisionNo,
 		"labels": p.Labels, "descriptions": p.Descriptions,
@@ -923,6 +1031,14 @@ func propertyDTO(p *domain.Property) map[string]any {
 		"createdAt": p.CreatedAt.UTC().Format(time.RFC3339Nano),
 		"updatedAt": p.UpdatedAt.UTC().Format(time.RFC3339Nano),
 	}
+	if p.PackageCode != "" {
+		out["packageCode"] = p.PackageCode
+	}
+	out["iriLocal"] = p.IRILocal
+	if p.IRI != "" {
+		out["iri"] = p.IRI
+	}
+	return out
 }
 
 func statementDTO(st *domain.Statement) map[string]any {

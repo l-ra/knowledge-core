@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"strconv"
 	"strings"
 	"time"
@@ -13,11 +14,16 @@ import (
 )
 
 type ListOptions struct {
-	Limit       int
-	Cursor      string
-	Query       string
-	Kind        string // "", "entity", "property", "class"
-	PackageCode string
+	Limit             int
+	Cursor            string
+	Query             string
+	Kind              string // "", "entity", "property", "class"
+	PackageCode       string
+	IRILocal          string
+	IRI               string
+	InstanceOf        string
+	IncludeSubclasses bool
+	PropertyPID       string // filter statements by property
 }
 
 func (s *Store) ListEntities(ctx context.Context, opt ListOptions) ([]domain.Entity, string, error) {
@@ -42,6 +48,47 @@ func (s *Store) ListEntities(ctx context.Context, opt ListOptions) ([]domain.Ent
 	if pkg := strings.TrimSpace(opt.PackageCode); pkg != "" {
 		args = append(args, pkg)
 		where += ` AND EXISTS (SELECT 1 FROM package p WHERE p.id = e.package_id AND p.code = $` + strconv.Itoa(len(args)) + `)`
+	}
+	if local := strings.TrimSpace(opt.IRILocal); local != "" {
+		args = append(args, local)
+		where += ` AND e.iri_local = $` + strconv.Itoa(len(args))
+	}
+	if iri := strings.TrimSpace(opt.IRI); iri != "" {
+		args = append(args, iri)
+		n := strconv.Itoa(len(args))
+		where += ` AND (
+			EXISTS (SELECT 1 FROM entity_iri_alias a WHERE a.entity_id = e.id AND a.iri = $` + n + `)
+			OR (COALESCE(p.iri_base,'') || COALESCE(NULLIF(e.iri_local,''), e.public_id)) = $` + n + `
+		)`
+	}
+	if inst := strings.TrimSpace(opt.InstanceOf); inst != "" {
+		cfg, err := s.GetSchemaConfig(ctx)
+		if err != nil {
+			return nil, "", err
+		}
+		if strings.TrimSpace(cfg.InstanceOfProperty) == "" {
+			return nil, "", fmt.Errorf("instanceOf filter requires schema-config instanceOfProperty")
+		}
+		classIDs := []string{inst}
+		if opt.IncludeSubclasses {
+			desc, err := s.classDescendants(ctx, inst)
+			if err != nil {
+				return nil, "", err
+			}
+			classIDs = append(classIDs, desc...)
+		}
+		args = append(args, cfg.InstanceOfProperty)
+		propN := strconv.Itoa(len(args))
+		args = append(args, classIDs)
+		clsN := strconv.Itoa(len(args))
+		where += ` AND EXISTS (
+			SELECT 1 FROM statement_current sc
+			JOIN entity prop ON prop.id = sc.property_id
+			JOIN entity cls ON cls.id = sc.value_entity_id
+			WHERE sc.subject_id = e.id
+			  AND prop.public_id = $` + propN + `
+			  AND cls.public_id = ANY($` + clsN + `)
+		)`
 	}
 	if opt.Cursor != "" {
 		args = append(args, opt.Cursor)
@@ -147,9 +194,11 @@ func (s *Store) ListProperties(ctx context.Context, opt ListOptions) ([]domain.P
 	limitArg := `$` + strconv.Itoa(len(args))
 
 	rows, err := s.pool.Query(ctx, `
-		SELECT e.id, e.public_id, pp.datatype, e.status, e.current_revision_no, pp.constraints, e.created_at, e.updated_at
+		SELECT e.id, e.public_id, pp.datatype, e.status, e.current_revision_no, pp.constraints,
+			e.created_at, e.updated_at, pkg.code, COALESCE(e.iri_local,''), COALESCE(pkg.iri_base,'')
 		FROM entity e
 		JOIN property_profile pp ON pp.entity_id = e.id
+		LEFT JOIN package pkg ON pkg.id = e.package_id
 		WHERE `+where+`
 		ORDER BY e.public_id
 		LIMIT `+limitArg+`
@@ -166,11 +215,17 @@ func (s *Store) ListProperties(ctx context.Context, opt ListOptions) ([]domain.P
 		var dt string
 		var constraintsJSON []byte
 		var created, updated time.Time
-		if err := rows.Scan(&id, &p.PublicID, &dt, &p.Status, &p.RevisionNo, &constraintsJSON, &created, &updated); err != nil {
+		var pkgCode *string
+		var iriBase string
+		if err := rows.Scan(&id, &p.PublicID, &dt, &p.Status, &p.RevisionNo, &constraintsJSON, &created, &updated, &pkgCode, &p.IRILocal, &iriBase); err != nil {
 			return nil, "", err
 		}
 		p.ID = id
 		p.Datatype = datatype.Type(dt)
+		if pkgCode != nil {
+			p.PackageCode = *pkgCode
+		}
+		p.IRI = datatype.ResolveIRI(iriBase, p.IRILocal, p.PublicID, rdfNSProperty)
 		if len(constraintsJSON) > 0 {
 			_ = json.Unmarshal(constraintsJSON, &p.Constraints)
 		}

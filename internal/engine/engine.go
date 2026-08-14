@@ -52,6 +52,11 @@ func (e *Engine) GetEntity(ctx context.Context, qid string) (*domain.Entity, err
 	if err != nil {
 		return nil, mapErr(err)
 	}
+	classes, err := e.store.EntityEffectiveClasses(ctx, qid)
+	if err != nil {
+		return nil, mapErr(err)
+	}
+	ent.EffectiveClasses = classes
 	return ent, nil
 }
 
@@ -228,11 +233,11 @@ func (e *Engine) GetStatement(ctx context.Context, sid string) (*domain.Statemen
 	return e.presentStatement(ctx, st)
 }
 
-func (e *Engine) ListEntityStatements(ctx context.Context, qid string) ([]domain.Statement, error) {
+func (e *Engine) ListEntityStatements(ctx context.Context, qid, propertyPID string) ([]domain.Statement, error) {
 	if _, _, err := datatype.ParsePublicGraphID(qid); err != nil {
 		return nil, fmt.Errorf("%w: %v", ErrInvalid, err)
 	}
-	list, err := e.store.ListStatementsBySubject(ctx, qid)
+	list, err := e.store.ListStatementsBySubject(ctx, qid, propertyPID)
 	if err != nil {
 		return nil, mapErr(err)
 	}

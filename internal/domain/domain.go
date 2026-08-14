@@ -66,15 +66,19 @@ type Entity struct {
 	Labels       map[string]string
 	Descriptions map[string]string
 	RevisionNo   int
-	PropertyProfile *PropertyProfileInfo
-	ClassProfile    *ClassProfileInfo
-	CreatedAt    time.Time
-	UpdatedAt    time.Time
+	PropertyProfile   *PropertyProfileInfo
+	ClassProfile      *ClassProfileInfo
+	EffectiveClasses  []string
+	CreatedAt         time.Time
+	UpdatedAt         time.Time
 }
 
 type Property struct {
 	ID           uuid.UUID
 	PublicID     string
+	PackageCode  string
+	IRILocal     string
+	IRI          string
 	Datatype     datatype.Type
 	Status       PropertyStatus
 	Labels       map[string]string
@@ -211,6 +215,24 @@ type CreateStatementInput struct {
 	ReferenceIDs     []string
 	ValidFrom        *time.Time
 	ValidTo          *time.Time
+	Upsert           bool
+}
+
+type UpdatePropertyInput struct {
+	Constraints      *PropertyConstraints
+	ExpectedRevision int
+}
+
+type MoveEntityInput struct {
+	PackageCode      string
+	ExpectedRevision int
+}
+
+type EntityGraph struct {
+	Entity    Entity
+	Outgoing  []Statement
+	Incoming  []Statement
+	Neighbors []Entity
 }
 
 type ReviseStatementInput struct {
@@ -249,6 +271,7 @@ type ChangeOperation struct {
 	Descriptions     map[string]string   `json:"descriptions,omitempty"`
 	IRILocal         string              `json:"iriLocal,omitempty"`
 	ExpectedRevision int                 `json:"expectedRevision,omitempty"`
+	Upsert           bool                `json:"upsert,omitempty"`
 }
 
 type ApplyChangeSetInput struct {
@@ -296,8 +319,8 @@ type Package struct {
 }
 
 type PackageDependency struct {
-	DependsOnCode string
-	VersionRange  string
+	DependsOnCode string `json:"dependsOnCode"`
+	VersionRange  string `json:"versionRange"`
 }
 
 type Release struct {
@@ -341,8 +364,17 @@ type Bundle struct {
 	Entities   []BundleEntity    `json:"entities,omitempty"`
 	Properties []BundleProperty  `json:"properties,omitempty"`
 	Classes    []BundleClass     `json:"classes,omitempty"`
+	Shapes     []BundleShape     `json:"shapes,omitempty"`
 	Statements []BundleStatement `json:"statements,omitempty"`
 	References []BundleReference `json:"references,omitempty"`
+}
+
+type BundleShape struct {
+	Code        string        `json:"code"`
+	PackageCode string        `json:"packageCode,omitempty"`
+	ClassID     string        `json:"classId"`
+	Document    ShapeDocument `json:"document"`
+	RevisionNo  int           `json:"revisionNo"`
 }
 
 type BundleManifest struct {

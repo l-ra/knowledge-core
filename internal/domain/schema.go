@@ -40,17 +40,20 @@ type ClassDocument struct {
 }
 
 type ClassDefinition struct {
-	ID                string
-	PublicID          string
-	Status            PropertyStatus
-	PackageCode       string
-	CanonicalEntityID string
+	ID                 string
+	PublicID           string
+	Status             PropertyStatus
+	PackageCode        string
+	IRILocal           string
+	IRI                string
+	CanonicalEntityID  string
 	CanonicalEntityQID string
-	Document          ClassDocument
-	Labels            map[string]string
-	Descriptions      map[string]string
-	CreatedAt         string
-	UpdatedAt         string
+	Document           ClassDocument
+	Labels             map[string]string
+	Descriptions       map[string]string
+	EffectiveClasses   []string
+	CreatedAt          string
+	UpdatedAt          string
 }
 
 type CreateClassInput struct {
@@ -70,19 +73,21 @@ type ShapeDocument struct {
 }
 
 type ShapeProfile struct {
-	ID        string
-	Code      string
-	ClassID   string
-	ClassPID  string
-	Document  ShapeDocument
-	CreatedAt string
-	UpdatedAt string
+	ID          string
+	Code        string
+	ClassID     string
+	ClassPID    string
+	PackageCode string
+	Document    ShapeDocument
+	CreatedAt   string
+	UpdatedAt   string
 }
 
 type CreateShapeInput struct {
-	Code     string
-	ClassID  string
-	Document ShapeDocument
+	Code        string
+	ClassID     string
+	PackageCode string
+	Document    ShapeDocument
 }
 
 type ModelSchemaConfig struct {

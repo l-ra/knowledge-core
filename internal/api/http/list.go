@@ -8,12 +8,17 @@ import (
 )
 
 func (s *Server) listEntities(w http.ResponseWriter, r *http.Request) {
+	q := r.URL.Query()
 	opt := store.ListOptions{
-		Query:       r.URL.Query().Get("q"),
-		Cursor:      r.URL.Query().Get("cursor"),
-		Kind:        r.URL.Query().Get("kind"),
-		PackageCode: r.URL.Query().Get("package"),
-		Limit:       50,
+		Query:             q.Get("q"),
+		Cursor:            q.Get("cursor"),
+		Kind:              q.Get("kind"),
+		PackageCode:       q.Get("package"),
+		IRILocal:          q.Get("iriLocal"),
+		IRI:               q.Get("iri"),
+		InstanceOf:        q.Get("instanceOf"),
+		IncludeSubclasses: q.Get("includeSubclasses") == "true" || q.Get("includeSubclasses") == "1",
+		Limit:             50,
 	}
 	if v := r.URL.Query().Get("limit"); v != "" {
 		if n, err := strconv.Atoi(v); err == nil && n > 0 {

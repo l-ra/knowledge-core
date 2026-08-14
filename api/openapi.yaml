@@ -1,7 +1,7 @@
 openapi: 3.0.3
 info:
   title: Knowledge Core API
-  version: 0.1.0
+  version: 0.2.0
   description: |
     Knowledge graph core (Wikibase-inspired). All `/v1/*` endpoints require authentication.
 servers:
@@ -53,16 +53,34 @@ paths:
       parameters:
         - name: q
           in: query
-          schema:
-            type: string
+          schema: { type: string }
         - name: limit
           in: query
-          schema:
-            type: integer
+          schema: { type: integer }
         - name: cursor
           in: query
-          schema:
-            type: string
+          schema: { type: string }
+        - name: kind
+          in: query
+          schema: { type: string, enum: [entity, property, class] }
+        - name: package
+          in: query
+          schema: { type: string }
+        - name: iriLocal
+          in: query
+          description: Match entity.iri_local (unique per package when package is set)
+          schema: { type: string }
+        - name: iri
+          in: query
+          description: Canonical IRI (iriBase+iriLocal) or entity_iri_alias
+          schema: { type: string }
+        - name: instanceOf
+          in: query
+          description: Class public id (C*)
+          schema: { type: string }
+        - name: includeSubclasses
+          in: query
+          schema: { type: boolean }
       responses:
         "200":
           description: OK
@@ -74,7 +92,7 @@ paths:
           description: Created
   /v1/entities/{qid}:
     get:
-      summary: Get entity
+      summary: Get entity (includes effectiveClasses)
       tags: [graph]
       parameters:
         - $ref: "#/components/parameters/qid"
@@ -93,13 +111,51 @@ paths:
           description: OK
   /v1/entities/{qid}/statements:
     get:
-      summary: List entity statements
+      summary: List outgoing statements
+      tags: [graph]
+      parameters:
+        - $ref: "#/components/parameters/qid"
+        - name: property
+          in: query
+          schema: { type: string }
+      responses:
+        "200":
+          description: OK
+  /v1/entities/{qid}/incoming:
+    get:
+      summary: List incoming statements (value_entity = this entity)
+      tags: [graph]
+      parameters:
+        - $ref: "#/components/parameters/qid"
+        - name: property
+          in: query
+          schema: { type: string }
+      responses:
+        "200":
+          description: OK
+  /v1/entities/{qid}/graph:
+    get:
+      summary: Neighborhood (outgoing, incoming, neighbor entities)
+      tags: [graph]
+      parameters:
+        - $ref: "#/components/parameters/qid"
+        - name: depth
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 2, default: 1 }
+      responses:
+        "200":
+          description: OK
+  /v1/entities/{qid}/move:
+    post:
+      summary: Move entity (and same-package subject statements) to another package
       tags: [graph]
       parameters:
         - $ref: "#/components/parameters/qid"
       responses:
         "200":
           description: OK
+        "409":
+          description: iriLocal conflict in target package
   /v1/entities/{qid}/history:
     get:
       summary: Entity revision history
@@ -116,16 +172,13 @@ paths:
       parameters:
         - name: q
           in: query
-          schema:
-            type: string
+          schema: { type: string }
         - name: limit
           in: query
-          schema:
-            type: integer
+          schema: { type: integer }
         - name: cursor
           in: query
-          schema:
-            type: string
+          schema: { type: string }
       responses:
         "200":
           description: OK
@@ -137,24 +190,37 @@ paths:
           description: Created
   /v1/properties/{pid}:
     get:
-      summary: Get property
+      summary: Get property (includes iriLocal, iri, packageCode)
       tags: [graph]
       parameters:
         - name: pid
           in: path
           required: true
-          schema:
-            type: string
+          schema: { type: string }
+      responses:
+        "200":
+          description: OK
+    patch:
+      summary: Update property constraints
+      tags: [graph]
+      parameters:
+        - name: pid
+          in: path
+          required: true
+          schema: { type: string }
       responses:
         "200":
           description: OK
   /v1/statements:
     post:
-      summary: Create statement
+      summary: Create statement (upsert=true returns existing duplicate as 200)
       tags: [graph]
       responses:
         "201":
           description: Created
+        "200":
+          description: Existing statement returned (upsert)
+
   /v1/statements/{sid}:
     get:
       summary: Get statement
@@ -249,7 +315,7 @@ paths:
           description: Created
   /v1/packages/{code}:
     get:
-      summary: Get package
+      summary: Get package (dependencies as dependsOnCode / versionRange)
       tags: [packages]
       parameters:
         - name: code
@@ -384,6 +450,73 @@ paths:
           required: true
           schema:
             type: string
+      responses:
+        "200":
+          description: OK
+  /v1/classes:
+    get:
+      summary: List classes
+      tags: [schema]
+      responses:
+        "200":
+          description: OK
+    post:
+      summary: Create class
+      tags: [schema]
+      responses:
+        "201":
+          description: Created
+  /v1/classes/{cid}:
+    get:
+      summary: Get class (iriLocal, iri, effectiveClasses)
+      tags: [schema]
+      parameters:
+        - name: cid
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: OK
+  /v1/shapes:
+    get:
+      summary: List shapes
+      tags: [schema]
+      parameters:
+        - name: package
+          in: query
+          schema: { type: string }
+      responses:
+        "200":
+          description: OK
+    post:
+      summary: Create shape (optional packageCode; defaults to class package)
+      tags: [schema]
+      responses:
+        "201":
+          description: Created
+  /v1/shapes/{code}:
+    get:
+      summary: Get shape
+      tags: [schema]
+      parameters:
+        - name: code
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: OK
+  /v1/admin/schema-config:
+    get:
+      summary: Schema config (instanceOfProperty)
+      tags: [schema]
+      responses:
+        "200":
+          description: OK
+    put:
+      summary: Update schema config
+      tags: [schema]
       responses:
         "200":
           description: OK

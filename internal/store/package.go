@@ -353,6 +353,22 @@ func (s *Store) PublishRelease(ctx context.Context, meta domain.WriteMeta, packa
 	}
 	stmtRows.Close()
 
+	shapeRows, err := tx.Query(ctx, `
+		SELECT code FROM shape_profile WHERE package_id = $1 ORDER BY code
+	`, packageID)
+	if err != nil {
+		return nil, err
+	}
+	for shapeRows.Next() {
+		var code string
+		if err := shapeRows.Scan(&code); err != nil {
+			shapeRows.Close()
+			return nil, err
+		}
+		objects = append(objects, domain.ReleaseObject{ObjectType: "shape", ObjectPublicID: code, RevisionNo: 1})
+	}
+	shapeRows.Close()
+
 	manifest := domain.BundleManifest{
 		FormatVersion: 1,
 		Package:       packageCode,
@@ -536,6 +552,15 @@ func (s *Store) ExportReleaseBundle(ctx context.Context, packageCode, version st
 			for _, rid := range bs.ReferenceIDs {
 				refIDs[rid] = struct{}{}
 			}
+		case "shape":
+			sh, err := s.GetShapeByCode(ctx, obj.ObjectPublicID)
+			if err != nil {
+				return nil, err
+			}
+			bundle.Shapes = append(bundle.Shapes, domain.BundleShape{
+				Code: sh.Code, PackageCode: sh.PackageCode, ClassID: sh.ClassPID,
+				Document: sh.Document, RevisionNo: 1,
+			})
 		}
 	}
 	for rid := range refIDs {
@@ -777,6 +802,10 @@ func (s *Store) ListPackageObjects(ctx context.Context, packageCode string) ([]d
 			FROM entity e
 			JOIN class_profile cp ON cp.entity_id = e.id
 			WHERE e.package_id = $1
+			UNION ALL
+			SELECT 'shape', sp.code, 1, NULL::uuid
+			FROM shape_profile sp
+			WHERE sp.package_id = $1
 			UNION ALL
 			SELECT 'statement', st.public_id, st.current_revision_no, NULL::uuid
 			FROM statement st

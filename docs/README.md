@@ -10,6 +10,7 @@ Tato složka je zdroj pravdy pro vývoj: koncepty, uzavřená implementační ro
 | [concepts/](concepts/) | Stabilní vysvětlení klíčových konceptů + [datový model / ER](concepts/data-model.md) |
 | [decisions/](decisions/) | ADR — konkrétní rozhodnutí (stack, §38, schema) |
 | [specs/](specs/) | Zadání pro vývoj po fázích (API, schema, acceptance) |
+| [models/](models/) | Doménové modely **nad** jádrem (ne součást KC): [ArchiMate Lite](models/archimate-lite.md), [API pro nástroje](models/archimate-lite-kc.md) |
 
 ## Pořadí čtení
 
@@ -43,6 +44,6 @@ Tato složka je zdroj pravdy pro vývoj: koncepty, uzavřená implementační ro
 |------|-------|--------|
 | 8 | Helm, CI, release, Pocket ID OIDC Job, runbook | done |
 
-Detailní plán dalších fází (9–12): [ROADMAP.md](ROADMAP.md) — **fáze 8–12 hotové**.
+Detailní plán dalších fází (9–19): [ROADMAP.md](ROADMAP.md).
 
-Fáze 8–12: provoz, policy API, nested lenses, ACL/RDF/outbox, kvalita (viz ROADMAP).
+Fáze 8–19: provoz, policy API, nested lenses, ACL/RDF/outbox, kvalita, schema, IRI, RDF import, graph query API (viz ROADMAP).

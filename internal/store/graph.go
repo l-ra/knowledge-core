@@ -301,8 +301,12 @@ func (s *Store) CreateProperty(ctx context.Context, meta domain.WriteMeta, in do
 
 	p := domain.Property{
 		ID: id, PublicID: publicID, Datatype: in.Datatype, Status: domain.PropertyActive,
+		PackageCode: in.PackageCode, IRILocal: iriLocal,
 		Labels: labels, Descriptions: descs, Constraints: in.Constraints, RevisionNo: 1,
 		CreatedAt: now, UpdatedAt: now,
+	}
+	if err := s.fillPropertyIRI(ctx, &p); err != nil {
+		return nil, err
 	}
 	if err := s.finalizeChangeSet(ctx, tx, cs, p); err != nil {
 		return nil, err
@@ -317,14 +321,21 @@ func (s *Store) GetPropertyByPublicID(ctx context.Context, pid string) (*domain.
 	var p domain.Property
 	var dt string
 	var constraintsJSON []byte
+	var pkgCode *string
+	var iriBase string
 	err := s.pool.QueryRow(ctx, `
-		SELECT e.id, e.public_id, pp.datatype, e.status, e.current_revision_no, pp.constraints, e.created_at, e.updated_at
+		SELECT e.id, e.public_id, pp.datatype, e.status, e.current_revision_no, pp.constraints,
+			e.created_at, e.updated_at, pkg.code, COALESCE(e.iri_local,''), COALESCE(pkg.iri_base,'')
 		FROM property_profile pp
 		JOIN entity e ON e.id = pp.entity_id
+		LEFT JOIN package pkg ON pkg.id = e.package_id
 		WHERE e.public_id = $1 AND e.status <> 'deleted'
-	`, pid).Scan(&p.ID, &p.PublicID, &dt, &p.Status, &p.RevisionNo, &constraintsJSON, &p.CreatedAt, &p.UpdatedAt)
+	`, pid).Scan(&p.ID, &p.PublicID, &dt, &p.Status, &p.RevisionNo, &constraintsJSON, &p.CreatedAt, &p.UpdatedAt, &pkgCode, &p.IRILocal, &iriBase)
 	if err != nil {
 		return nil, err
+	}
+	if pkgCode != nil {
+		p.PackageCode = *pkgCode
 	}
 	p.Datatype = datatype.Type(dt)
 	if len(constraintsJSON) > 0 {
@@ -338,7 +349,20 @@ func (s *Store) GetPropertyByPublicID(ctx context.Context, pid string) (*domain.
 	if err != nil {
 		return nil, err
 	}
+	p.IRI = datatype.ResolveIRI(iriBase, p.IRILocal, p.PublicID, rdfNSProperty)
 	return &p, nil
+}
+
+func (s *Store) fillPropertyIRI(ctx context.Context, p *domain.Property) error {
+	if p == nil {
+		return nil
+	}
+	var base string
+	if p.PackageCode != "" {
+		_ = s.pool.QueryRow(ctx, `SELECT COALESCE(iri_base,'') FROM package WHERE code = $1`, p.PackageCode).Scan(&base)
+	}
+	p.IRI = datatype.ResolveIRI(base, p.IRILocal, p.PublicID, rdfNSProperty)
+	return nil
 }
 
 type storedValue struct {
@@ -562,6 +586,26 @@ func (s *Store) CreateStatement(ctx context.Context, meta domain.WriteMeta, in d
 		return nil, err
 	}
 
+	if in.Upsert {
+		dup, err := s.findDuplicateStatementTx(ctx, tx, subjectID, propertyID, sv)
+		if err == nil && dup != "" {
+			st, err := s.getStatementTx(ctx, tx, dup)
+			if err != nil {
+				return nil, err
+			}
+			if err := s.enrichStatement(ctx, tx, st); err != nil {
+				return nil, err
+			}
+			if err := tx.Commit(ctx); err != nil {
+				return nil, err
+			}
+			return &domain.WriteResult[domain.Statement]{Value: *st, Replay: true}, nil
+		}
+		if err != nil && err != pgx.ErrNoRows {
+			return nil, err
+		}
+	}
+
 	id := datatype.NewUUID()
 	publicID, err := s.nextPublicID(ctx, tx, "statement", "S")
 	if err != nil {
@@ -686,8 +730,8 @@ func (s *Store) GetStatementByPublicID(ctx context.Context, sid string) (*domain
 	return st, nil
 }
 
-func (s *Store) ListStatementsBySubject(ctx context.Context, qid string) ([]domain.Statement, error) {
-	rows, err := s.pool.Query(ctx, `
+func (s *Store) ListStatementsBySubject(ctx context.Context, qid string, propertyPID string) ([]domain.Statement, error) {
+	q := `
 		SELECT st.id, st.public_id, st.subject_id, e.public_id, st.property_id, p.public_id, st.status,
 			st.value_type, st.value_bool, st.value_int64, st.value_numeric, st.value_date, st.value_timestamptz,
 			st.value_text, st.value_entity_id, st.value_json, st.valid_from, st.valid_to,
@@ -698,8 +742,14 @@ func (s *Store) ListStatementsBySubject(ctx context.Context, qid string) ([]doma
 		JOIN property_profile pp ON pp.entity_id = st.property_id
 		JOIN entity p ON p.id = pp.entity_id
 		WHERE e.public_id = $1
-		ORDER BY st.public_id
-	`, qid)
+	`
+	args := []any{qid}
+	if propertyPID != "" {
+		args = append(args, propertyPID)
+		q += ` AND p.public_id = $2`
+	}
+	q += ` ORDER BY st.public_id`
+	rows, err := s.pool.Query(ctx, q, args...)
 	if err != nil {
 		return nil, err
 	}

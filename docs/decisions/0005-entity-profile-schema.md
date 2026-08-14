@@ -23,5 +23,5 @@ Požadavek: všechno důležité v grafu je **entita**; schema kontrakt (datatyp
 
 - `/v1/properties` a `/v1/classes` zůstávají schema views nad entity+profile.
 - `/v1/entities/{id}` funguje i pro `P*` / `C*`.
-- Validace domain/range odkazuje `C*` přímo.
+- Validace domain odkazuje `C*` přímo. `rangeClasses` u `EntityReference` bere `instanceOf` cílového `Q*` a expanduje `subClassOf`.
 - Breaking vůči starému `canonicalEntityId` a tabulkám `property_definition` / `class_definition`.

@@ -5,8 +5,8 @@ Extends the knowledge model with classes, property constraints, and SHACL-like s
 ## Model
 
 - **ClassDefinition** (`C*`) — entity with `class_profile` (labels on entity, optional `subClassOf`). Typing uses `instanceOf → C*`.
-- **Property constraints** — JSON on `property_definition.constraints`: `domainClasses`, `rangeClasses`, `minCount`, `maxCount`, `severity`.
-- **ShapeProfile** — per-class required/allowed properties, optional `closed` flag.
+- **Property constraints** — JSON on `property_profile.constraints`: `domainClasses`, `rangeClasses`, `minCount`, `maxCount`, `severity`. `rangeClasses` na `EntityReference` bere `instanceOf` cíle (instance `Q*`) a expanduje `subClassOf`.
+- **ShapeProfile** — per-class required/allowed properties, optional `closed` flag; volitelný `packageCode` (vlastnictví + release bundle).
 - **Schema config** — `instanceOfProperty` (property public id) configured via `PUT /v1/admin/schema-config`.
 
 ## Validation modes
@@ -21,8 +21,8 @@ Query override: `?validation=relaxed`
 
 ## API
 
-- `GET/POST /v1/classes`, `GET /v1/classes/{cid}`
-- `GET/POST /v1/shapes`, `GET /v1/shapes/{code}`
+- `GET/POST /v1/classes`, `GET /v1/classes/{cid}` (iriLocal, iri, effectiveClasses)
+- `GET/POST /v1/shapes`, `GET /v1/shapes/{code}` (`?package=`, create `packageCode`)
 - `GET/PUT /v1/admin/schema-config`
 - `GET /v1/entities/{qid}/validation`
 - `POST /v1/validation/reports` — body `{ entityIds, persist?, scope? }`

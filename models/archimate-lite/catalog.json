@@ -1,0 +1,213 @@
+{
+  "version": "1.0.0",
+  "package": {
+    "code": "archimate-lite",
+    "lifecycle": "continuous",
+    "iriBase": "https://knowledge-core.local/archimate-lite/",
+    "labels": {
+      "en": "ArchiMate Lite",
+      "cs": "ArchiMate Lite"
+    },
+    "descriptions": {
+      "en": "Metamodel for describing systems with a subset of ArchiMate (L0–L4). Not part of knowledge-core.",
+      "cs": "Metamodel pro popis systémů podmnožinou ArchiMate (L0–L4). Není součástí jádra knowledge-core."
+    }
+  },
+  "instanceOf": {
+    "iriLocal": "instanceOf",
+    "datatype": "EntityReference",
+    "createIfSchemaConfigEmpty": true,
+    "labels": { "en": "instance of", "cs": "instance třídy" },
+    "descriptions": {
+      "en": "Global typing property. Created only when GET /v1/admin/schema-config has empty instanceOfProperty. Not ArchiMate-specific."
+    }
+  },
+  "classes": [
+    { "iriLocal": "ArchiMateConcept", "labels": { "en": "ArchiMate concept" } },
+    { "iriLocal": "ArchiMateElement", "parent": "ArchiMateConcept", "labels": { "en": "ArchiMate element" } },
+    { "iriLocal": "ArchiMateRelationship", "parent": "ArchiMateConcept", "labels": { "en": "ArchiMate relationship" } },
+    { "iriLocal": "ArchiMateViewConcept", "parent": "ArchiMateConcept", "labels": { "en": "ArchiMate view concept" } },
+
+    { "iriLocal": "BusinessActor", "parent": "ArchiMateElement", "layer": "business", "labels": { "en": "Business actor" } },
+    { "iriLocal": "BusinessRole", "parent": "ArchiMateElement", "layer": "business", "labels": { "en": "Business role" } },
+    { "iriLocal": "BusinessService", "parent": "ArchiMateElement", "layer": "business", "labels": { "en": "Business service" } },
+    { "iriLocal": "BusinessProcess", "parent": "ArchiMateElement", "layer": "business", "labels": { "en": "Business process" } },
+
+    { "iriLocal": "ApplicationComponent", "parent": "ArchiMateElement", "layer": "application", "labels": { "en": "Application component" } },
+    { "iriLocal": "ApplicationService", "parent": "ArchiMateElement", "layer": "application", "labels": { "en": "Application service" } },
+    { "iriLocal": "ApplicationInterface", "parent": "ArchiMateElement", "layer": "application", "labels": { "en": "Application interface" } },
+    { "iriLocal": "ApplicationFunction", "parent": "ArchiMateElement", "layer": "application", "labels": { "en": "Application function" } },
+    { "iriLocal": "ApplicationProcess", "parent": "ArchiMateElement", "layer": "application", "labels": { "en": "Application process" } },
+    { "iriLocal": "ApplicationEvent", "parent": "ArchiMateElement", "layer": "application", "labels": { "en": "Application event" } },
+    { "iriLocal": "ApplicationCollaboration", "parent": "ArchiMateElement", "layer": "application", "labels": { "en": "Application collaboration" } },
+    { "iriLocal": "DataObject", "parent": "ArchiMateElement", "layer": "application", "labels": { "en": "Data object" } },
+
+    { "iriLocal": "TechnologyService", "parent": "ArchiMateElement", "layer": "technology", "labels": { "en": "Technology service" } },
+    { "iriLocal": "TechnologyInterface", "parent": "ArchiMateElement", "layer": "technology", "labels": { "en": "Technology interface" } },
+    { "iriLocal": "Node", "parent": "ArchiMateElement", "layer": "technology", "labels": { "en": "Node" } },
+    { "iriLocal": "Device", "parent": "ArchiMateElement", "layer": "technology", "labels": { "en": "Device" } },
+    { "iriLocal": "SystemSoftware", "parent": "ArchiMateElement", "layer": "technology", "labels": { "en": "System software" } },
+    { "iriLocal": "Artifact", "parent": "ArchiMateElement", "layer": "technology", "labels": { "en": "Artifact" } },
+    { "iriLocal": "CommunicationNetwork", "parent": "ArchiMateElement", "layer": "technology", "labels": { "en": "Communication network" } },
+    { "iriLocal": "Path", "parent": "ArchiMateElement", "layer": "technology", "labels": { "en": "Path" } },
+
+    { "iriLocal": "Facility", "parent": "ArchiMateElement", "layer": "physical", "labels": { "en": "Facility" } },
+    { "iriLocal": "Location", "parent": "ArchiMateElement", "layer": "composite", "labels": { "en": "Location" } },
+
+    { "iriLocal": "Requirement", "parent": "ArchiMateElement", "layer": "motivation", "labels": { "en": "Requirement" } },
+    { "iriLocal": "Assessment", "parent": "ArchiMateElement", "layer": "motivation", "labels": { "en": "Assessment" } },
+    { "iriLocal": "Risk", "parent": "ArchiMateElement", "layer": "motivation", "overlay": "risk-and-security", "labels": { "en": "Risk" } },
+
+    { "iriLocal": "Gap", "parent": "ArchiMateElement", "layer": "implementation", "labels": { "en": "Gap" } },
+    { "iriLocal": "WorkPackage", "parent": "ArchiMateElement", "layer": "implementation", "labels": { "en": "Work package" } },
+
+    { "iriLocal": "Composition", "parent": "ArchiMateRelationship", "exchangeType": "Composition", "labels": { "en": "Composition" } },
+    { "iriLocal": "Aggregation", "parent": "ArchiMateRelationship", "exchangeType": "Aggregation", "labels": { "en": "Aggregation" } },
+    { "iriLocal": "Assignment", "parent": "ArchiMateRelationship", "exchangeType": "Assignment", "labels": { "en": "Assignment" } },
+    { "iriLocal": "Realization", "parent": "ArchiMateRelationship", "exchangeType": "Realization", "labels": { "en": "Realization" } },
+    { "iriLocal": "Serving", "parent": "ArchiMateRelationship", "exchangeType": "Serving", "labels": { "en": "Serving" } },
+    { "iriLocal": "Access", "parent": "ArchiMateRelationship", "exchangeType": "Access", "labels": { "en": "Access" } },
+    { "iriLocal": "Flow", "parent": "ArchiMateRelationship", "exchangeType": "Flow", "labels": { "en": "Flow" } },
+    { "iriLocal": "Triggering", "parent": "ArchiMateRelationship", "exchangeType": "Triggering", "labels": { "en": "Triggering" } },
+    { "iriLocal": "Specialization", "parent": "ArchiMateRelationship", "exchangeType": "Specialization", "labels": { "en": "Specialization" } },
+    { "iriLocal": "Association", "parent": "ArchiMateRelationship", "exchangeType": "Association", "labels": { "en": "Association" } },
+    { "iriLocal": "Influence", "parent": "ArchiMateRelationship", "exchangeType": "Influence", "labels": { "en": "Influence" } },
+    { "iriLocal": "DeployedOn", "parent": "ArchiMateRelationship", "exchangeType": null, "labels": { "en": "Deployed on" }, "descriptions": { "en": "Lite convenience. Exchange tools expand to Assignment (component→system software→node, artifact→node)." } },
+
+    { "iriLocal": "DiagramView", "parent": "ArchiMateViewConcept", "labels": { "en": "Diagram view" } },
+    { "iriLocal": "ViewNode", "parent": "ArchiMateViewConcept", "labels": { "en": "View node" } },
+    { "iriLocal": "ViewConnection", "parent": "ArchiMateViewConcept", "labels": { "en": "View connection" } }
+  ],
+  "properties": [
+    { "iriLocal": "relSource", "datatype": "EntityReference", "domain": ["ArchiMateRelationship"], "range": ["ArchiMateElement"], "minCount": 1, "maxCount": 1, "severity": "error", "labels": { "en": "Source" }, "descriptions": { "en": "Relationship source element (instance of ArchiMateElement or subclass)." } },
+    { "iriLocal": "relTarget", "datatype": "EntityReference", "domain": ["ArchiMateRelationship"], "range": ["ArchiMateElement"], "minCount": 1, "maxCount": 1, "severity": "error", "labels": { "en": "Target" }, "descriptions": { "en": "Relationship target element (instance of ArchiMateElement or subclass)." } },
+
+    { "iriLocal": "modelingDepth", "datatype": "String", "domain": ["ArchiMateElement"], "severity": "warning", "labels": { "en": "Modeling depth" }, "descriptions": { "en": "catalog | dr_minimum | application_detail | infrastructure_detail | network_detail" } },
+    { "iriLocal": "lifecycleState", "datatype": "String", "domain": ["ArchiMateElement"], "labels": { "en": "Lifecycle state" } },
+    { "iriLocal": "externalReference", "datatype": "URI", "domain": ["ArchiMateElement"], "labels": { "en": "External reference" } },
+    { "iriLocal": "sourceOfTruth", "datatype": "String", "domain": ["ArchiMateElement"], "labels": { "en": "Source of truth" } },
+
+    { "iriLocal": "owner", "datatype": "String", "domain": ["ArchiMateElement"], "labels": { "en": "Owner" } },
+    { "iriLocal": "technicalOwner", "datatype": "String", "domain": ["ArchiMateElement"], "labels": { "en": "Technical owner" } },
+    { "iriLocal": "criticality", "datatype": "String", "domain": ["ArchiMateElement"], "labels": { "en": "Criticality" } },
+    { "iriLocal": "rto", "datatype": "String", "domain": ["ArchiMateElement"], "labels": { "en": "RTO" } },
+    { "iriLocal": "rpo", "datatype": "String", "domain": ["ArchiMateElement"], "labels": { "en": "RPO" } },
+
+    { "iriLocal": "dependencyType", "datatype": "String", "domain": ["ArchiMateRelationship"], "labels": { "en": "Dependency type" } },
+    { "iriLocal": "dependencyStrength", "datatype": "String", "domain": ["ArchiMateRelationship"], "labels": { "en": "Dependency strength" }, "descriptions": { "en": "mandatory | optional" } },
+    { "iriLocal": "degradedMode", "datatype": "String", "domain": ["ArchiMateRelationship"], "labels": { "en": "Degraded mode" } },
+    { "iriLocal": "businessImpact", "datatype": "String", "domain": ["ArchiMateRelationship"], "labels": { "en": "Business impact" } },
+
+    { "iriLocal": "protocol", "datatype": "String", "domain": ["ArchiMateConcept"], "labels": { "en": "Protocol" } },
+    { "iriLocal": "port", "datatype": "Integer", "domain": ["ArchiMateConcept"], "labels": { "en": "Port" } },
+    { "iriLocal": "synchronous", "datatype": "Boolean", "domain": ["ArchiMateConcept"], "labels": { "en": "Synchronous" } },
+    { "iriLocal": "authentication", "datatype": "String", "domain": ["ArchiMateConcept"], "labels": { "en": "Authentication" } },
+    { "iriLocal": "timeout", "datatype": "String", "domain": ["ArchiMateConcept"], "labels": { "en": "Timeout" } },
+    { "iriLocal": "retryPolicy", "datatype": "String", "domain": ["ArchiMateConcept"], "labels": { "en": "Retry policy" } },
+    { "iriLocal": "messageOrObject", "datatype": "String", "domain": ["ArchiMateConcept"], "labels": { "en": "Message or object" } },
+    { "iriLocal": "accessMode", "datatype": "String", "domain": ["Access"], "labels": { "en": "Access mode" }, "descriptions": { "en": "read | write | readWrite" } },
+
+    { "iriLocal": "dataClass", "datatype": "String", "domain": ["DataObject"], "labels": { "en": "Data class" } },
+    { "iriLocal": "masterSource", "datatype": "String", "domain": ["DataObject"], "labels": { "en": "Master source" } },
+    { "iriLocal": "retention", "datatype": "String", "domain": ["DataObject"], "labels": { "en": "Retention" } },
+    { "iriLocal": "rebuildable", "datatype": "Boolean", "domain": ["DataObject"], "labels": { "en": "Rebuildable" } },
+    { "iriLocal": "backupRequired", "datatype": "Boolean", "domain": ["DataObject"], "labels": { "en": "Backup required" } },
+    { "iriLocal": "classification", "datatype": "String", "domain": ["DataObject"], "labels": { "en": "Classification" } },
+
+    { "iriLocal": "environment", "datatype": "String", "domain": ["ArchiMateElement"], "labels": { "en": "Environment" } },
+    { "iriLocal": "cluster", "datatype": "String", "domain": ["ArchiMateElement"], "labels": { "en": "Cluster" } },
+    { "iriLocal": "namespace", "datatype": "String", "domain": ["ArchiMateElement"], "labels": { "en": "Namespace" } },
+    { "iriLocal": "runtime", "datatype": "String", "domain": ["ArchiMateElement"], "labels": { "en": "Runtime" } },
+    { "iriLocal": "replicaCount", "datatype": "Integer", "domain": ["ArchiMateElement"], "labels": { "en": "Replica count" } },
+    { "iriLocal": "haMode", "datatype": "String", "domain": ["ArchiMateElement"], "labels": { "en": "HA mode" } },
+    { "iriLocal": "primarySite", "datatype": "String", "domain": ["ArchiMateElement"], "labels": { "en": "Primary site" } },
+    { "iriLocal": "drSite", "datatype": "String", "domain": ["ArchiMateElement"], "labels": { "en": "DR site" } },
+    { "iriLocal": "deploymentSource", "datatype": "String", "domain": ["ArchiMateElement"], "labels": { "en": "Deployment source" } },
+
+    { "iriLocal": "vlanId", "datatype": "Integer", "domain": ["CommunicationNetwork"], "labels": { "en": "VLAN ID" } },
+    { "iriLocal": "cidr", "datatype": "String", "domain": ["CommunicationNetwork"], "labels": { "en": "CIDR" } },
+    { "iriLocal": "zone", "datatype": "String", "domain": ["ArchiMateConcept"], "labels": { "en": "Zone" } },
+    { "iriLocal": "site", "datatype": "String", "domain": ["ArchiMateConcept"], "labels": { "en": "Site" } },
+    { "iriLocal": "routingDomain", "datatype": "String", "domain": ["CommunicationNetwork"], "labels": { "en": "Routing domain" } },
+    { "iriLocal": "fqdn", "datatype": "String", "domain": ["TechnologyInterface"], "labels": { "en": "FQDN" } },
+    { "iriLocal": "vip", "datatype": "String", "domain": ["TechnologyInterface"], "labels": { "en": "VIP" } },
+    { "iriLocal": "ipAddress", "datatype": "String", "domain": ["TechnologyInterface"], "labels": { "en": "IP address" } },
+    { "iriLocal": "certificateReference", "datatype": "String", "domain": ["TechnologyInterface"], "labels": { "en": "Certificate reference" } },
+    { "iriLocal": "sourceZone", "datatype": "String", "domain": ["Flow"], "labels": { "en": "Source zone" } },
+    { "iriLocal": "targetZone", "datatype": "String", "domain": ["Flow"], "labels": { "en": "Target zone" } },
+    { "iriLocal": "direction", "datatype": "String", "domain": ["Flow"], "labels": { "en": "Direction" } },
+    { "iriLocal": "firewallPolicyReference", "datatype": "String", "domain": ["Flow"], "labels": { "en": "Firewall policy reference" } },
+
+    { "iriLocal": "viewpoint", "datatype": "String", "domain": ["DiagramView"], "labels": { "en": "Viewpoint" }, "descriptions": { "en": "catalog | dependencies | application | technology | network" } },
+    { "iriLocal": "elementRef", "datatype": "EntityReference", "domain": ["ViewNode"], "range": ["ArchiMateElement"], "maxCount": 1, "labels": { "en": "Element reference" } },
+    { "iriLocal": "nodeKind", "datatype": "String", "domain": ["ViewNode"], "labels": { "en": "Node kind" }, "descriptions": { "en": "element | container | label" } },
+    { "iriLocal": "boundsX", "datatype": "Integer", "domain": ["ViewNode"], "labels": { "en": "Bounds X" } },
+    { "iriLocal": "boundsY", "datatype": "Integer", "domain": ["ViewNode"], "labels": { "en": "Bounds Y" } },
+    { "iriLocal": "boundsW", "datatype": "Integer", "domain": ["ViewNode"], "labels": { "en": "Bounds width" } },
+    { "iriLocal": "boundsH", "datatype": "Integer", "domain": ["ViewNode"], "labels": { "en": "Bounds height" } },
+    { "iriLocal": "style", "datatype": "String", "domain": ["ArchiMateViewConcept"], "labels": { "en": "Style JSON" } },
+    { "iriLocal": "parentNode", "datatype": "EntityReference", "domain": ["ViewNode"], "range": ["ViewNode"], "maxCount": 1, "labels": { "en": "Parent view node" } },
+    { "iriLocal": "relationshipRef", "datatype": "EntityReference", "domain": ["ViewConnection"], "range": ["ArchiMateRelationship"], "minCount": 1, "maxCount": 1, "severity": "error", "labels": { "en": "Relationship reference" } },
+    { "iriLocal": "sourceNode", "datatype": "EntityReference", "domain": ["ViewConnection"], "range": ["ViewNode"], "minCount": 1, "maxCount": 1, "severity": "error", "labels": { "en": "Source view node" } },
+    { "iriLocal": "targetNode", "datatype": "EntityReference", "domain": ["ViewConnection"], "range": ["ViewNode"], "minCount": 1, "maxCount": 1, "severity": "error", "labels": { "en": "Target view node" } },
+    { "iriLocal": "bendpoints", "datatype": "String", "domain": ["ViewConnection"], "labels": { "en": "Bendpoints JSON" } }
+  ],
+  "shapes": [
+    {
+      "code": "aml-element",
+      "class": "ArchiMateElement",
+      "required": ["modelingDepth"],
+      "severity": "warning"
+    },
+    {
+      "code": "aml-relationship",
+      "class": "ArchiMateRelationship",
+      "required": ["relSource", "relTarget"],
+      "severity": "error"
+    },
+    {
+      "code": "aml-view-connection",
+      "class": "ViewConnection",
+      "required": ["relationshipRef", "sourceNode", "targetNode"],
+      "severity": "error"
+    }
+  ],
+  "allowedRelationships": [
+    { "type": "Assignment", "source": "BusinessActor", "target": "BusinessRole" },
+    { "type": "Assignment", "source": "BusinessRole", "target": "BusinessService" },
+    { "type": "Realization", "source": "ApplicationComponent", "target": "BusinessService" },
+    { "type": "Realization", "source": "ApplicationComponent", "target": "ApplicationService" },
+    { "type": "Association", "source": "Requirement", "target": "ApplicationComponent" },
+    { "type": "Influence", "source": "Assessment", "target": "Requirement" },
+    { "type": "Influence", "source": "Risk", "target": "BusinessService" },
+    { "type": "Serving", "source": "ApplicationService", "target": "BusinessProcess" },
+    { "type": "Serving", "source": "TechnologyService", "target": "ApplicationComponent" },
+    { "type": "Access", "source": "ApplicationComponent", "target": "DataObject" },
+    { "type": "Flow", "source": "ApplicationComponent", "target": "ApplicationComponent" },
+    { "type": "Composition", "source": "ApplicationComponent", "target": "ApplicationComponent" },
+    { "type": "DeployedOn", "source": "ApplicationComponent", "target": "SystemSoftware" },
+    { "type": "Assignment", "source": "SystemSoftware", "target": "Node" },
+    { "type": "Association", "source": "Node", "target": "Facility" },
+    { "type": "Association", "source": "Facility", "target": "Location" },
+    { "type": "Assignment", "source": "Artifact", "target": "Node" },
+    { "type": "DeployedOn", "source": "Artifact", "target": "Node" },
+    { "type": "Association", "source": "Node", "target": "CommunicationNetwork" },
+    { "type": "Serving", "source": "Device", "target": "CommunicationNetwork" }
+  ],
+  "exchange": {
+    "format": "ArchiMate Model Exchange File Format 3.1/3.2 XML",
+    "elementXsiType": "class iriLocal (except Risk, View*, DeployedOn)",
+    "relationshipXsiType": "class iriLocal when exchangeType is set",
+    "deployedOn": "expand to Assignment",
+    "risk": "Risk and Security overlay type, or Assessment plus property overlay=Risk",
+    "views": "DiagramView / ViewNode / ViewConnection → views/diagrams/view",
+    "identifier": "iriLocal of instance, else entity_iri_alias kind imported, else public id"
+  },
+  "enums": {
+    "modelingDepth": ["catalog", "dr_minimum", "application_detail", "infrastructure_detail", "network_detail"],
+    "dependencyStrength": ["mandatory", "optional"],
+    "accessMode": ["read", "write", "readWrite"],
+    "nodeKind": ["element", "container", "label"],
+    "viewpoint": ["catalog", "dependencies", "application", "technology", "network"]
+  }
+}

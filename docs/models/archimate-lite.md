@@ -482,3 +482,20 @@ L4: jen pro síťově, bezpečnostně nebo provozně významné části
 
 Důležité je také nevynucovat jednu úroveň pro celý model. Systém může být popsán na L3, zatímco sdílený Keycloak jen na L1 a kritická WAN cesta na L4. Granularita by tedy měla být vlastností konkrétní části modelu, ne pouze celého projektu.
 
+---
+
+# Mapování do knowledge-core
+
+ArchiMate Lite je **doménový package nad jádrem**, ne součást knowledge-core. Jádro se nemění.
+
+- Metamodel (C*/P*/shapes): package `archimate-lite`, katalog [`models/archimate-lite/catalog.json`](../../models/archimate-lite/catalog.json), nahrání [`models/archimate-lite/load.py`](../../models/archimate-lite/load.py)
+- Prvek, vazba i view = entita `Q*` s `instanceOf` na třídu z package
+- Vazba je **vlastní entita** (`relSource` / `relTarget`), ne predikát mezi dvěma prvky
+- `relSource` / `relTarget` mají `rangeClasses` = `ArchiMateElement` (KC expanduje `instanceOf` cíle)
+- Tvary `aml-*` patří do package `archimate-lite` a jdou do release bundle
+- Stabilní jména slovníku = `iriLocal` (ne `C*`/`P*` dané databáze)
+- Incoming vazby, graph neighborhood a lookup podle IRI jsou generické `/v1` endpointy (fáze 19)
+- Export do ArchiMate Open Exchange XML dělá **samostatný nástroj** přes HTTP API
+
+API kontrakt, vzory zápisu a endpointy: [archimate-lite-kc.md](archimate-lite-kc.md).
+

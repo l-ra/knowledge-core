@@ -143,7 +143,7 @@ func (s *Store) applyOneOp(ctx context.Context, tx pgx.Tx, cs *changeSetTx, meta
 		st, err := s.createStatementInTx(ctx, tx, cs, meta, domain.CreateStatementInput{
 			PackageCode: op.PackageCode, SubjectPublicID: subject, PropertyPublicID: property,
 			Value: val, Qualifiers: op.Qualifiers, ReferenceIDs: op.ReferenceIDs,
-			ValidFrom: op.ValidFrom, ValidTo: op.ValidTo,
+			ValidFrom: op.ValidFrom, ValidTo: op.ValidTo, Upsert: op.Upsert,
 		})
 		if err != nil {
 			return nil, err
@@ -450,6 +450,22 @@ func (s *Store) createStatementInTx(ctx context.Context, tx pgx.Tx, cs *changeSe
 	}
 	if err := validateValidTime(in.ValidFrom, in.ValidTo); err != nil {
 		return nil, err
+	}
+	if in.Upsert {
+		dup, err := s.findDuplicateStatementTx(ctx, tx, subjectID, propertyID, sv)
+		if err == nil && dup != "" {
+			st, err := s.getStatementTx(ctx, tx, dup)
+			if err != nil {
+				return nil, err
+			}
+			if err := s.enrichStatement(ctx, tx, st); err != nil {
+				return nil, err
+			}
+			return st, nil
+		}
+		if err != nil && err != pgx.ErrNoRows {
+			return nil, err
+		}
 	}
 	id := datatype.NewUUID()
 	publicID, err := s.nextPublicID(ctx, tx, "statement", "S")

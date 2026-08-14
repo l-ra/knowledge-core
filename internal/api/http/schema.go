@@ -74,7 +74,7 @@ func (s *Server) getClass(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) listShapes(w http.ResponseWriter, r *http.Request) {
-	items, err := s.engine.ListShapes(r.Context())
+	items, err := s.engine.ListShapes(r.Context(), r.URL.Query().Get("package"))
 	if err != nil {
 		writeEngineError(w, err)
 		return
@@ -87,9 +87,10 @@ func (s *Server) listShapes(w http.ResponseWriter, r *http.Request) {
 }
 
 type createShapeReq struct {
-	Code     string                `json:"code"`
-	ClassID  string                `json:"classId"`
-	Document domain.ShapeDocument  `json:"document"`
+	Code        string               `json:"code"`
+	ClassID     string               `json:"classId"`
+	PackageCode string               `json:"packageCode,omitempty"`
+	Document    domain.ShapeDocument `json:"document"`
 }
 
 func (s *Server) createShape(w http.ResponseWriter, r *http.Request) {
@@ -104,7 +105,7 @@ func (s *Server) createShape(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	sh, err := s.engine.CreateShape(r.Context(), domain.CreateShapeInput{
-		Code: req.Code, ClassID: req.ClassID, Document: req.Document,
+		Code: req.Code, ClassID: req.ClassID, PackageCode: req.PackageCode, Document: req.Document,
 	})
 	if err != nil {
 		writeEngineError(w, err)
@@ -215,15 +216,26 @@ func classDTO(c *domain.ClassDefinition) map[string]any {
 	if c.PackageCode != "" {
 		out["packageCode"] = c.PackageCode
 	}
+	out["iriLocal"] = c.IRILocal
+	if c.IRI != "" {
+		out["iri"] = c.IRI
+	}
+	if len(c.EffectiveClasses) > 0 {
+		out["effectiveClasses"] = c.EffectiveClasses
+	}
 	return out
 }
 
 func shapeDTO(sh *domain.ShapeProfile) map[string]any {
-	return map[string]any{
+	out := map[string]any{
 		"id": sh.ID, "code": sh.Code, "classId": sh.ClassPID,
 		"document": sh.Document,
 		"createdAt": sh.CreatedAt, "updatedAt": sh.UpdatedAt,
 	}
+	if sh.PackageCode != "" {
+		out["packageCode"] = sh.PackageCode
+	}
+	return out
 }
 
 func schemaConfigDTO(cfg *domain.ModelSchemaConfig) map[string]any {

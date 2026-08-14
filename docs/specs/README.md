@@ -35,3 +35,4 @@ Rozhodnutí zůstávají v [decisions/](../decisions/).
 | [rdf-well-known-vocab.md](rdf-well-known-vocab.md) | RDF/RDFS/OWL/XSD mapování import ↔ export; co není package kandidát |
 | [phase-17-iri-rdf.md](phase-17-iri-rdf.md) | IRI base / local / aliases |
 | [phase-18-rdf-import.md](phase-18-rdf-import.md) | Globální N-Triples import |
+| [phase-19-graph-api.md](phase-19-graph-api.md) | Incoming, IRI lookup, graph, move, upsert, shapes v package |

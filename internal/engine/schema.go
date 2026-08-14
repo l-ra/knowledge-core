@@ -119,6 +119,11 @@ func (e *Engine) GetClass(ctx context.Context, cid string) (*domain.ClassDefinit
 	if err != nil {
 		return nil, mapErr(err)
 	}
+	anc, err := e.store.ClassAncestry(ctx, cid)
+	if err != nil {
+		return nil, mapErr(err)
+	}
+	c.EffectiveClasses = anc
 	return c, nil
 }
 
@@ -151,11 +156,11 @@ func (e *Engine) GetShape(ctx context.Context, code string) (*domain.ShapeProfil
 	return sh, nil
 }
 
-func (e *Engine) ListShapes(ctx context.Context) ([]domain.ShapeProfile, error) {
+func (e *Engine) ListShapes(ctx context.Context, packageCode string) ([]domain.ShapeProfile, error) {
 	if err := e.authorizeGlobal(ctx, auth.OpRead); err != nil {
 		return nil, err
 	}
-	return e.store.ListShapes(ctx)
+	return e.store.ListShapes(ctx, packageCode)
 }
 
 func (e *Engine) GetSchemaConfig(ctx context.Context) (*domain.ModelSchemaConfig, error) {
