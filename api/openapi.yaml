@@ -1,9 +1,12 @@
 openapi: 3.0.3
 info:
   title: Knowledge Core API
-  version: 0.2.0
+  version: 0.2.1
   description: |
     Knowledge graph core (Wikibase-inspired). All `/v1/*` endpoints require authentication.
+
+    Integration guide: docs/integration/README.md
+    Request/response patterns and value types: docs/integration/api-contract.md
 servers:
   - url: /
 paths:
@@ -84,12 +87,26 @@ paths:
       responses:
         "200":
           description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EntityList"
     post:
       summary: Create entity
       tags: [graph]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateEntity"
       responses:
         "201":
           description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WriteResponseEntity"
   /v1/entities/{qid}:
     get:
       summary: Get entity (includes effectiveClasses)
@@ -185,9 +202,19 @@ paths:
     post:
       summary: Create property
       tags: [graph]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateProperty"
       responses:
         "201":
           description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WriteResponseProperty"
   /v1/properties/{pid}:
     get:
       summary: Get property (includes iriLocal, iri, packageCode)
@@ -215,11 +242,25 @@ paths:
     post:
       summary: Create statement (upsert=true returns existing duplicate as 200)
       tags: [graph]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateStatement"
       responses:
         "201":
           description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WriteResponseStatement"
         "200":
           description: Existing statement returned (upsert)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WriteResponseStatement"
 
   /v1/statements/{sid}:
     get:
@@ -310,9 +351,19 @@ paths:
     post:
       summary: Create package
       tags: [packages]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreatePackage"
       responses:
         "201":
           description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WriteResponsePackage"
   /v1/packages/{code}:
     get:
       summary: Get package (dependencies as dependsOnCode / versionRange)
@@ -463,9 +514,19 @@ paths:
     post:
       summary: Create class
       tags: [schema]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateClass"
       responses:
         "201":
           description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WriteResponseClass"
   /v1/classes/{cid}:
     get:
       summary: Get class (iriLocal, iri, effectiveClasses)
@@ -517,9 +578,19 @@ paths:
     put:
       summary: Update schema config
       tags: [schema]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SchemaConfig"
       responses:
         "200":
           description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SchemaConfig"
   /v1/lenses:
     get:
       summary: List lenses
@@ -661,6 +732,473 @@ components:
           schema:
             $ref: "#/components/schemas/Error"
   schemas:
+    LocalizedLabels:
+      type: object
+      required: [en]
+      properties:
+        en:
+          type: string
+      additionalProperties:
+        type: string
+    Value:
+      type: object
+      required: [type]
+      properties:
+        type:
+          type: string
+          enum:
+            - EntityReference
+            - String
+            - LocalizedString
+            - Boolean
+            - Integer
+            - Decimal
+            - Date
+            - DateTime
+            - URI
+            - ExternalIdentifier
+            - Quantity
+            - Interval
+        entityId:
+          type: string
+          description: EntityReference — Q*/P*/C*
+        string:
+          type: string
+        langMap:
+          type: object
+          additionalProperties:
+            type: string
+        bool:
+          type: boolean
+        int64:
+          type: integer
+          format: int64
+        decimal:
+          type: string
+        date:
+          type: string
+          format: date
+        dateTime:
+          type: string
+          format: date-time
+        uri:
+          type: string
+          format: uri
+        scheme:
+          type: string
+        value:
+          type: string
+        quantityValue:
+          type: string
+        unitEntityId:
+          type: string
+        from:
+          type: object
+        to:
+          type: object
+    Qualifier:
+      type: object
+      required: [property, value]
+      properties:
+        property:
+          type: string
+        value:
+          $ref: "#/components/schemas/Value"
+    PackageDependency:
+      type: object
+      required: [dependsOnCode, versionRange]
+      properties:
+        dependsOnCode:
+          type: string
+        versionRange:
+          type: string
+    PropertyConstraints:
+      type: object
+      properties:
+        domainClasses:
+          type: array
+          items:
+            type: string
+        rangeClasses:
+          type: array
+          items:
+            type: string
+        minCount:
+          type: integer
+        maxCount:
+          type: integer
+        severity:
+          type: string
+    ChangeSet:
+      type: object
+      properties:
+        id:
+          type: string
+        canonicalId:
+          type: string
+          format: uuid
+        actor:
+          type: string
+        operationType:
+          type: string
+        committedAt:
+          type: string
+          format: date-time
+        items:
+          type: array
+          items:
+            type: object
+            properties:
+              objectType:
+                type: string
+              objectId:
+                type: string
+                format: uuid
+              publicId:
+                type: string
+              op:
+                type: string
+    CreateEntity:
+      type: object
+      required: [labels]
+      properties:
+        packageCode:
+          type: string
+        labels:
+          $ref: "#/components/schemas/LocalizedLabels"
+        descriptions:
+          type: object
+          additionalProperties:
+            type: string
+        iriLocal:
+          type: string
+    Entity:
+      type: object
+      properties:
+        id:
+          type: string
+        canonicalId:
+          type: string
+          format: uuid
+        status:
+          type: string
+        kind:
+          type: string
+          enum: [entity, property, class]
+        revisionNo:
+          type: integer
+        labels:
+          $ref: "#/components/schemas/LocalizedLabels"
+        descriptions:
+          type: object
+          additionalProperties:
+            type: string
+        packageCode:
+          type: string
+        iriLocal:
+          type: string
+        iri:
+          type: string
+        iriAliases:
+          type: array
+          items:
+            type: object
+            properties:
+              iri:
+                type: string
+              kind:
+                type: string
+        effectiveClasses:
+          type: array
+          items:
+            type: string
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    CreateStatement:
+      type: object
+      required: [subject, property, value]
+      properties:
+        packageCode:
+          type: string
+        subject:
+          type: string
+        property:
+          type: string
+        value:
+          $ref: "#/components/schemas/Value"
+        qualifiers:
+          type: array
+          items:
+            $ref: "#/components/schemas/Qualifier"
+        referenceIds:
+          type: array
+          items:
+            type: string
+        validFrom:
+          type: string
+          format: date-time
+        validTo:
+          type: string
+          format: date-time
+        upsert:
+          type: boolean
+          default: false
+    Statement:
+      type: object
+      properties:
+        id:
+          type: string
+        canonicalId:
+          type: string
+          format: uuid
+        subject:
+          type: string
+        property:
+          type: string
+        status:
+          type: string
+        revisionNo:
+          type: integer
+        value:
+          $ref: "#/components/schemas/Value"
+        qualifiers:
+          type: array
+          items:
+            $ref: "#/components/schemas/Qualifier"
+        referenceIds:
+          type: array
+          items:
+            type: string
+        validFrom:
+          type: string
+          format: date-time
+        validTo:
+          type: string
+          format: date-time
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    CreatePackage:
+      type: object
+      required: [code, labels]
+      properties:
+        code:
+          type: string
+        lifecycle:
+          type: string
+          enum: [released, continuous]
+          default: released
+        iriBase:
+          type: string
+        labels:
+          $ref: "#/components/schemas/LocalizedLabels"
+        dependencies:
+          type: array
+          items:
+            $ref: "#/components/schemas/PackageDependency"
+    Package:
+      type: object
+      properties:
+        code:
+          type: string
+        lifecycle:
+          type: string
+        iriBase:
+          type: string
+        labels:
+          $ref: "#/components/schemas/LocalizedLabels"
+        dependencies:
+          type: array
+          items:
+            $ref: "#/components/schemas/PackageDependency"
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    CreateClass:
+      type: object
+      required: [labels]
+      properties:
+        packageCode:
+          type: string
+        labels:
+          $ref: "#/components/schemas/LocalizedLabels"
+        descriptions:
+          type: object
+          additionalProperties:
+            type: string
+        subClassOf:
+          type: string
+        iriLocal:
+          type: string
+    Class:
+      type: object
+      properties:
+        id:
+          type: string
+        canonicalId:
+          type: string
+          format: uuid
+        status:
+          type: string
+        labels:
+          $ref: "#/components/schemas/LocalizedLabels"
+        descriptions:
+          type: object
+          additionalProperties:
+            type: string
+        document:
+          type: object
+          properties:
+            subClassOf:
+              type: string
+        packageCode:
+          type: string
+        iriLocal:
+          type: string
+        iri:
+          type: string
+        effectiveClasses:
+          type: array
+          items:
+            type: string
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    CreateProperty:
+      type: object
+      required: [datatype, labels]
+      properties:
+        packageCode:
+          type: string
+        datatype:
+          type: string
+          enum:
+            - EntityReference
+            - String
+            - LocalizedString
+            - Boolean
+            - Integer
+            - Decimal
+            - Date
+            - DateTime
+            - URI
+            - ExternalIdentifier
+            - Quantity
+            - Interval
+            - Any
+        labels:
+          $ref: "#/components/schemas/LocalizedLabels"
+        descriptions:
+          type: object
+          additionalProperties:
+            type: string
+        constraints:
+          $ref: "#/components/schemas/PropertyConstraints"
+        iriLocal:
+          type: string
+    Property:
+      type: object
+      properties:
+        id:
+          type: string
+        canonicalId:
+          type: string
+          format: uuid
+        datatype:
+          type: string
+        status:
+          type: string
+        revisionNo:
+          type: integer
+        labels:
+          $ref: "#/components/schemas/LocalizedLabels"
+        descriptions:
+          type: object
+          additionalProperties:
+            type: string
+        constraints:
+          $ref: "#/components/schemas/PropertyConstraints"
+        packageCode:
+          type: string
+        iriLocal:
+          type: string
+        iri:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    SchemaConfig:
+      type: object
+      properties:
+        instanceOfProperty:
+          type: string
+        modelProperties:
+          type: array
+          items:
+            type: string
+        updatedAt:
+          type: string
+          format: date-time
+    EntityList:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/Entity"
+        nextCursor:
+          type: string
+    WriteResponseEntity:
+      type: object
+      properties:
+        data:
+          $ref: "#/components/schemas/Entity"
+        changeSet:
+          $ref: "#/components/schemas/ChangeSet"
+    WriteResponseStatement:
+      type: object
+      properties:
+        data:
+          $ref: "#/components/schemas/Statement"
+        changeSet:
+          $ref: "#/components/schemas/ChangeSet"
+    WriteResponsePackage:
+      type: object
+      properties:
+        data:
+          $ref: "#/components/schemas/Package"
+        changeSet:
+          $ref: "#/components/schemas/ChangeSet"
+    WriteResponseClass:
+      type: object
+      properties:
+        data:
+          $ref: "#/components/schemas/Class"
+        changeSet:
+          $ref: "#/components/schemas/ChangeSet"
+    WriteResponseProperty:
+      type: object
+      properties:
+        data:
+          $ref: "#/components/schemas/Property"
+        changeSet:
+          $ref: "#/components/schemas/ChangeSet"
     Error:
       type: object
       properties:

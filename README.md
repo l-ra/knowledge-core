@@ -8,6 +8,8 @@ Repository: [github.com/l-ra/knowledge-core](https://github.com/l-ra/knowledge-c
 
 Viz [docs/README.md](docs/README.md): koncepty, ADR, zadání fází. **Aktuální plán:** [docs/ROADMAP.md](docs/ROADMAP.md).
 
+**Integrace a klientské aplikace:** [docs/integration/README.md](docs/integration/README.md) — koncepty, implementační návod, API kontrakt, příklady.
+
 **Po instalaci (forbidden / první data):** [docs/ops/post-install.md](docs/ops/post-install.md) — bootstrap admin, OIDC napojení a jak získat práva zapisovat data.
 
 ## Rychlý start

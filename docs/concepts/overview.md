@@ -1,6 +1,8 @@
 # Koncepty Knowledge Core
 
-Zkrácený model pro implementátory. Normativní detaily: [technický návrh](../design/knowledge_core_v1_technicky_navrh.md).  
+Zkrácený model pro implementátory jádra. Pro architekty a vývojáře klientských aplikací: [integrační balíček](../integration/README.md).
+
+Normativní detaily: [technický návrh](../design/knowledge_core_v1_technicky_navrh.md).  
 Fyzické PostgreSQL schema a ER vazby: [data-model.md](data-model.md).  
 Schema objekty: [ADR 0005 — Entity + Profile](../decisions/0005-entity-profile-schema.md).
 

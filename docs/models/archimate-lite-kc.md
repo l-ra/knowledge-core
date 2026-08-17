@@ -1,5 +1,8 @@
 # ArchiMate Lite — package a API pro nástroje
 
+> Obecný integrační návod: [integration/client-guide.md](../integration/client-guide.md).  
+> Tento dokument je **doménově specifický kontrakt** pro nástroje nad ArchiMate Lite.
+
 Tento dokument je kontrakt pro **samostatný nástroj** (export/import Open Exchange, validační CLI, editor), který pracuje **jen přes HTTP API knowledge-core**. Jádro KC neobsahuje ArchiMate typy; generické mezery P0–P2 jsou ve [fázi 19](../specs/phase-19-graph-api.md).
 
 Rozsah modelování (L0–L4): [archimate-lite.md](archimate-lite.md).  
@@ -299,7 +302,7 @@ Architektura není ve view. View jen vybírá a kreslí.
 | GET | `/v1/packages/{code}/releases/{version}/bundle` | přenositelný bundle |
 | POST | `/v1/releases/import` | promotion bundle |
 
-OpenAPI: [`api/openapi.yaml`](../../api/openapi.yaml) (0.2.0).
+OpenAPI: [`api/openapi.yaml`](../../api/openapi.yaml) (0.2.1).
 
 Lenses (`POST /v1/lenses`, `GET/PATCH .../instances/{key}`) jsou volitelné; nástroj může jít přímo na entity/statementy.
 

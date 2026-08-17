@@ -1,0 +1,211 @@
+# Knowledge Core — integration examples
+# Requires REST Client extension (VS Code / IntelliJ) or manual curl adaptation.
+#
+# Setup:
+#   export KC_BASE_URL=http://localhost:8080
+#   export KC_TOKEN=<bootstrap-password>
+
+@baseUrl = {{$dotenv KC_BASE_URL}}
+@token = {{$dotenv KC_TOKEN}}
+
+### Health (no auth)
+GET {{baseUrl}}/healthz
+
+### Current user
+GET {{baseUrl}}/v1/me
+Authorization: Bearer {{token}}
+
+### --- Package (metamodel) ---
+
+### Create metamodel package
+POST {{baseUrl}}/v1/packages
+Authorization: Bearer {{token}}
+Content-Type: application/json
+Idempotency-Key: demo-pkg-my-domain-1
+
+{
+  "code": "my-domain",
+  "lifecycle": "released",
+  "iriBase": "https://example.org/my-domain/",
+  "labels": { "en": "My Domain Model" },
+  "dependencies": []
+}
+
+### Get package
+GET {{baseUrl}}/v1/packages/my-domain
+Authorization: Bearer {{token}}
+
+### --- Schema objects ---
+
+### Create class
+POST {{baseUrl}}/v1/classes
+Authorization: Bearer {{token}}
+Content-Type: application/json
+Idempotency-Key: demo-class-app-component
+
+{
+  "packageCode": "my-domain",
+  "labels": { "en": "Application Component" },
+  "iriLocal": "ApplicationComponent"
+}
+
+### Create property (String attribute)
+POST {{baseUrl}}/v1/properties
+Authorization: Bearer {{token}}
+Content-Type: application/json
+Idempotency-Key: demo-prop-criticality
+
+{
+  "packageCode": "my-domain",
+  "datatype": "String",
+  "labels": { "en": "Criticality" },
+  "iriLocal": "criticality"
+}
+
+### Create instanceOf property (for schema config)
+POST {{baseUrl}}/v1/properties
+Authorization: Bearer {{token}}
+Content-Type: application/json
+Idempotency-Key: demo-prop-instance-of
+
+{
+  "packageCode": "my-domain",
+  "datatype": "EntityReference",
+  "labels": { "en": "Instance of" },
+  "iriLocal": "instanceOf"
+}
+
+### Resolve class by iriLocal
+GET {{baseUrl}}/v1/entities?package=my-domain&iriLocal=ApplicationComponent
+Authorization: Bearer {{token}}
+
+### List all classes in package
+GET {{baseUrl}}/v1/entities?package=my-domain&kind=class&limit=200
+Authorization: Bearer {{token}}
+
+### Schema config (set instanceOfProperty to resolved P* id)
+# Replace P3 with actual id from create property response
+PUT {{baseUrl}}/v1/admin/schema-config
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "instanceOfProperty": "P3"
+}
+
+### Get schema config
+GET {{baseUrl}}/v1/admin/schema-config
+Authorization: Bearer {{token}}
+
+### --- Instance package ---
+
+### Create instance package
+POST {{baseUrl}}/v1/packages
+Authorization: Bearer {{token}}
+Content-Type: application/json
+Idempotency-Key: demo-pkg-sys-crm
+
+{
+  "code": "sys-crm",
+  "lifecycle": "continuous",
+  "iriBase": "https://example.org/systems/crm/",
+  "labels": { "en": "CRM System" },
+  "dependencies": [
+    { "dependsOnCode": "my-domain", "versionRange": "*" }
+  ]
+}
+
+### --- Entity + statements ---
+
+### Create entity instance
+POST {{baseUrl}}/v1/entities
+Authorization: Bearer {{token}}
+Content-Type: application/json
+Idempotency-Key: demo-entity-crm-backend
+
+{
+  "packageCode": "sys-crm",
+  "labels": { "en": "CRM Backend" },
+  "iriLocal": "crm-backend"
+}
+
+### Type instance (instanceOf statement)
+# Replace Q42, P3, C5 with actual ids
+POST {{baseUrl}}/v1/statements
+Authorization: Bearer {{token}}
+Content-Type: application/json
+Idempotency-Key: demo-stmt-instance-of
+
+{
+  "packageCode": "sys-crm",
+  "subject": "Q42",
+  "property": "P3",
+  "value": { "type": "EntityReference", "entityId": "C5" }
+}
+
+### Set attribute (with upsert)
+POST {{baseUrl}}/v1/statements
+Authorization: Bearer {{token}}
+Content-Type: application/json
+X-Validation-Mode: relaxed
+
+{
+  "packageCode": "sys-crm",
+  "subject": "Q42",
+  "property": "P8",
+  "value": { "type": "String", "string": "high" },
+  "upsert": true
+}
+
+### --- Graph queries ---
+
+### Outgoing statements
+GET {{baseUrl}}/v1/entities/Q42/statements
+Authorization: Bearer {{token}}
+
+### Incoming statements (who points to this entity)
+GET {{baseUrl}}/v1/entities/Q42/incoming
+Authorization: Bearer {{token}}
+
+### Neighborhood graph
+GET {{baseUrl}}/v1/entities/Q42/graph?depth=1
+Authorization: Bearer {{token}}
+
+### Instances of class (with subclasses)
+GET {{baseUrl}}/v1/entities?instanceOf=C5&includeSubclasses=true
+Authorization: Bearer {{token}}
+
+### Full-text search
+GET {{baseUrl}}/v1/projections/search?q=crm
+Authorization: Bearer {{token}}
+
+### --- Release ---
+
+### Publish release
+POST {{baseUrl}}/v1/packages/my-domain/releases
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "version": "1.0.0" }
+
+### Export bundle
+GET {{baseUrl}}/v1/packages/my-domain/releases/1.0.0/bundle
+Authorization: Bearer {{token}}
+
+### --- ArchiMate Lite reference loader ---
+# Run from repo root:
+#   export KC_BASE_URL=http://localhost:8080
+#   export KC_TOKEN='…'
+#   python3 models/archimate-lite/load.py
+#
+# Then verify:
+GET {{baseUrl}}/v1/packages/archimate-lite
+Authorization: Bearer {{token}}
+
+###
+GET {{baseUrl}}/v1/entities?package=archimate-lite&iriLocal=ApplicationComponent
+Authorization: Bearer {{token}}
+
+###
+GET {{baseUrl}}/v1/shapes?package=archimate-lite
+Authorization: Bearer {{token}}

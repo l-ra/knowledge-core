@@ -4,6 +4,7 @@ Tato složka je zdroj pravdy pro vývoj: koncepty, uzavřená implementační ro
 
 | Složka | Účel |
 |--------|------|
+| [integration/](integration/) | **Integrační balíček** pro architekty a vývojáře klientských aplikací |
 | [ROADMAP.md](ROADMAP.md) | **Aktuální plán** — stav fází 0–8+, mezery, další kroky |
 | [ops/](ops/) | Provozní návody (post-install, oprávnění) |
 | [design/](design/) | Architektonický návrh v1 (vstupní specifikace) |
@@ -13,6 +14,16 @@ Tato složka je zdroj pravdy pro vývoj: koncepty, uzavřená implementační ro
 | [models/](models/) | Doménové modely **nad** jádrem (ne součást KC): [ArchiMate Lite](models/archimate-lite.md), [API pro nástroje](models/archimate-lite-kc.md) |
 
 ## Pořadí čtení
+
+### Pro integraci a klientské aplikace
+
+1. [integration/README.md](integration/README.md) — **start zde**
+2. [integration/concepts.md](integration/concepts.md) — koncepty pro externí konzumenty
+3. [integration/client-guide.md](integration/client-guide.md) — postup vytvoření doménového grafu
+4. [integration/api-contract.md](integration/api-contract.md) — JSON kontrakty, auth, chyby
+5. [models/archimate-lite-kc.md](models/archimate-lite-kc.md) — referenční implementace
+
+### Pro vývoj jádra
 
 1. [ROADMAP.md](ROADMAP.md) — **co je hotové a co dál**
 2. [ops/post-install.md](ops/post-install.md) — **po instalaci: admin, OIDC, proč forbidden, první data**
