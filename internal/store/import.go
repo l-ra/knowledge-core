@@ -177,6 +177,9 @@ func (s *Store) ensureImportPackage(ctx context.Context, tx pgx.Tx, code string)
 }
 
 func (s *Store) reservePublicID(ctx context.Context, tx pgx.Tx, kind, prefix, publicID string) error {
+	if datatype.IsIRI(publicID) {
+		return nil
+	}
 	n, err := parsePublicIDNumber(prefix, publicID)
 	if err != nil {
 		return err
@@ -249,9 +252,9 @@ func (s *Store) insertImportedEntity(ctx context.Context, tx pgx.Tx, be domain.B
 	id := datatype.NewUUID()
 	now := time.Now().UTC()
 	_, err = tx.Exec(ctx, `
-		INSERT INTO entity (id, public_id, status, current_revision_no, package_id, created_at, updated_at)
-		VALUES ($1,$2,$3,$4,$5,$6,$6)
-	`, id, be.PublicID, string(be.Status), be.RevisionNo, pkgID, now)
+		INSERT INTO entity (id, public_id, status, current_revision_no, package_id, iri_local, created_at, updated_at)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$7)
+	`, id, be.PublicID, string(be.Status), be.RevisionNo, pkgID, be.IRILocal, now)
 	if err != nil {
 		return err
 	}
@@ -335,9 +338,9 @@ func (s *Store) insertImportedProperty(ctx context.Context, tx pgx.Tx, bp domain
 	id := datatype.NewUUID()
 	now := time.Now().UTC()
 	_, err = tx.Exec(ctx, `
-		INSERT INTO entity (id, public_id, status, current_revision_no, package_id, created_at, updated_at)
-		VALUES ($1,$2,$3,$4,$5,$6,$6)
-	`, id, bp.PublicID, string(bp.Status), bp.RevisionNo, pkgID, now)
+		INSERT INTO entity (id, public_id, status, current_revision_no, package_id, iri_local, created_at, updated_at)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$7)
+	`, id, bp.PublicID, string(bp.Status), bp.RevisionNo, pkgID, bp.IRILocal, now)
 	if err != nil {
 		return err
 	}
@@ -474,9 +477,9 @@ func (s *Store) insertImportedClass(ctx context.Context, tx pgx.Tx, bc domain.Bu
 	id := datatype.NewUUID()
 	now := time.Now().UTC()
 	_, err = tx.Exec(ctx, `
-		INSERT INTO entity (id, public_id, status, current_revision_no, package_id, created_at, updated_at)
-		VALUES ($1,$2,$3,$4,$5,$6,$6)
-	`, id, bc.PublicID, string(bc.Status), bc.RevisionNo, pkgID, now)
+		INSERT INTO entity (id, public_id, status, current_revision_no, package_id, iri_local, created_at, updated_at)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$7)
+	`, id, bc.PublicID, string(bc.Status), bc.RevisionNo, pkgID, bc.IRILocal, now)
 	if err != nil {
 		return err
 	}

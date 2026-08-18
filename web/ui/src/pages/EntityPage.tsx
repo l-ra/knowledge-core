@@ -6,7 +6,7 @@ import { pickLabel } from "../labels";
 import { usePackage } from "../package";
 import { useChangeSetDraft } from "../changeset";
 import { ApiValue, ValueEditor, displayValueText, emptyValue, valueFromApi } from "../ValueEditor";
-import { EntityLink, ReferenceLink } from "../links";
+import { EntityLink, ObjectLabel, ReferenceLink } from "../links";
 import { useEntityLookup } from "../useEntityLookup";
 import { StatementList, type PropertyMeta, type StatementItem } from "../StatementList";
 
@@ -14,6 +14,7 @@ type Finding = { code: string; severity: string; message: string };
 
 type Entity = {
   id: string;
+  displayId?: string;
   kind?: string;
   revisionNo: number;
   packageCode?: string;
@@ -32,25 +33,34 @@ type Statement = StatementItem;
 type Property = PropertyMeta;
 type ClassItem = {
   id: string;
+  displayId?: string;
   labels?: Record<string, string>;
   packageCode?: string;
   document?: { subClassOf?: string };
 };
-type EntityListItem = { id: string; labels?: Record<string, string>; kind?: string; packageCode?: string };
+type EntityListItem = { id: string; displayId?: string; labels?: Record<string, string>; kind?: string; packageCode?: string };
 
 type ObjectRelease = { packageCode: string; version: string; revisionNo: number };
 
 type LocState = { breadcrumb?: string[] };
 
 export function EntityPage() {
-  const { qid = "" } = useParams();
+  const hideModelStorageKey = "kc.hideModelStatements";
+  const { qid: rawQid = "" } = useParams();
+  const qid = (() => {
+    try {
+      return decodeURIComponent(rawQid);
+    } catch {
+      return rawQid;
+    }
+  })();
   const { t, i18n } = useTranslation();
   const location = useLocation();
   const [searchParams, setSearchParams] = useSearchParams();
   const { packageCode } = usePackage();
   const { isOpen, runWrite } = useChangeSetDraft();
   const breadcrumb = (location.state as LocState | null)?.breadcrumb || [];
-  const tab = searchParams.get("tab") || "detail";
+  const tab = searchParams.get("tab") || "statements";
 
   const [entity, setEntity] = useState<Entity | null>(null);
   const [statements, setStatements] = useState<Statement[]>([]);
@@ -58,7 +68,14 @@ export function EntityPage() {
   const [properties, setProperties] = useState<Property[]>([]);
   const [modelProps, setModelProps] = useState<string[]>([]);
   const [releases, setReleases] = useState<ObjectRelease[]>([]);
-  const [hideModel, setHideModel] = useState(true);
+  const [hideModel, setHideModel] = useState(() => {
+    try {
+      const saved = localStorage.getItem(hideModelStorageKey);
+      return saved === null ? true : saved !== "false";
+    } catch {
+      return true;
+    }
+  });
   const [error, setError] = useState("");
   const [info, setInfo] = useState("");
   const [mode, setMode] = useState<"view" | "editLabels" | "addStatement" | string>("view");
@@ -88,12 +105,12 @@ export function EntityPage() {
     setError("");
     try {
       const [ent, props, cfg, rels, cls] = await Promise.all([
-        apiFetch<Entity>(`/v1/entities/${qid}`),
+        apiFetch<Entity>(`/v1/entities/${encodeURIComponent(qid)}`),
         apiFetch<{ items: Property[] }>("/v1/properties?limit=500"),
         apiFetch<{ modelProperties?: string[]; instanceOfProperty?: string }>("/v1/admin/schema-config").catch(() => ({
           modelProperties: [] as string[],
         })),
-        apiFetch<{ items: ObjectRelease[] }>(`/v1/objects/${qid}/releases`).catch(() => ({ items: [] as ObjectRelease[] })),
+        apiFetch<{ items: ObjectRelease[] }>(`/v1/objects/${encodeURIComponent(qid)}/releases`).catch(() => ({ items: [] as ObjectRelease[] })),
         apiFetch<{ items: ClassItem[] }>("/v1/classes?limit=1000").catch(() => ({ items: [] as ClassItem[] })),
       ]);
       setEntity(ent);
@@ -139,6 +156,14 @@ export function EntityPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [qid]);
 
+  useEffect(() => {
+    try {
+      localStorage.setItem(hideModelStorageKey, String(hideModel));
+    } catch {
+      // Ignore storage failures and keep the in-memory preference.
+    }
+  }, [hideModel, hideModelStorageKey]);
+
   const selected = properties.find((p) => p.id === prop);
   const propLabel = (pid: string) => {
     const p = properties.find((x) => x.id === pid);
@@ -155,6 +180,18 @@ export function EntityPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [statements, hideModel, modelProps, properties, i18n.language]);
 
+  const statementGroups = useMemo(() => {
+    const groups = new Map<string, Statement[]>();
+    for (const st of visibleStatements) {
+      groups.set(st.property, [...(groups.get(st.property) || []), st]);
+    }
+    return Array.from(groups.entries()).map(([propertyId, items]) => ({
+      propertyId,
+      propertyMeta: properties.find((p) => p.id === propertyId),
+      items,
+    }));
+  }, [visibleStatements, properties]);
+
   const statementRelatedIds = useMemo(() => {
     const ids: string[] = [...breadcrumb];
     for (const st of visibleStatements) {
@@ -168,6 +205,8 @@ export function EntityPage() {
     }
     if (entity?.classProfile?.subClassOf) ids.push(entity.classProfile.subClassOf);
     for (const id of entity?.effectiveClasses || []) ids.push(id);
+    for (const id of entity?.propertyProfile?.constraints?.domainClasses || []) ids.push(id);
+    for (const id of entity?.propertyProfile?.constraints?.rangeClasses || []) ids.push(id);
     return ids;
   }, [entity, visibleStatements, breadcrumb]);
   const relatedEntities = useEntityLookup(statementRelatedIds);
@@ -196,7 +235,7 @@ export function EntityPage() {
     try {
       await runWrite(
         async () => {
-          await apiFetch(`/v1/entities/${qid}`, {
+          await apiFetch(`/v1/entities/${encodeURIComponent(qid)}`, {
             method: "PATCH",
             body: JSON.stringify(body),
           });
@@ -225,7 +264,7 @@ export function EntityPage() {
     setInfo("");
     setError("");
     try {
-      await apiFetch(`/v1/entities/${qid}/iri-aliases`, {
+      await apiFetch(`/v1/entities/${encodeURIComponent(qid)}/iri-aliases`, {
         method: "PUT",
         body: JSON.stringify({ aliases }),
       });
@@ -319,7 +358,7 @@ export function EntityPage() {
     try {
       await runWrite(
         async () => {
-          await apiFetch(`/v1/statements/${st.id}/revise`, {
+          await apiFetch(`/v1/statements/${encodeURIComponent(st.id)}/revise`, {
             method: "POST",
             body: JSON.stringify({
               expectedRevision: st.revisionNo,
@@ -442,7 +481,6 @@ export function EntityPage() {
 
   const tabItems = useMemo(() => {
     const tabs: Array<{ key: string; label: string }> = [
-      { key: "detail", label: t("entity.detailTab") },
       { key: "statements", label: t("entity.statements") },
       { key: "references", label: t("entity.referencesTab") },
     ];
@@ -453,6 +491,7 @@ export function EntityPage() {
     if (entity?.propertyProfile) {
       tabs.push({ key: "uses", label: t("entity.uses") });
     }
+    tabs.push({ key: "detail", label: t("entity.detailTab") });
     return tabs;
   }, [entity, t]);
 
@@ -461,21 +500,22 @@ export function EntityPage() {
   return (
     <div className="stack">
       <nav className="breadcrumb muted" aria-label="breadcrumb">
-        <Link to="/entities" state={{ breadcrumb: [] }}>
+        <Link to="/entities">
           {t("nav.entities")}
         </Link>
         {breadcrumb.map((id) => (
           <span key={id}>
             {" / "}
-            <Link to={`/entities/${id}`} state={{ breadcrumb: breadcrumb.slice(0, breadcrumb.indexOf(id)) }}>
-              {pickLabel(relatedEntities[id]?.labels, i18n.language, id)}
+            <Link to={`/entities/${encodeURIComponent(id)}`} state={{ breadcrumb: breadcrumb.slice(0, breadcrumb.indexOf(id)) }}>
+              {pickLabel(relatedEntities[id]?.labels, i18n.language, relatedEntities[id]?.displayId || id)}
             </Link>
           </span>
         ))}
         <span>
           {" / "}
-          <strong>{pickLabel(entity?.labels, i18n.language, qid)}</strong>
-          <span className="object-id" style={{ marginLeft: "0.4rem" }}>{qid}</span>
+          <strong>
+            <ObjectLabel id={qid} displayId={entity?.displayId} labels={entity?.labels} lang={i18n.language} />
+          </strong>
         </span>
       </nav>
 
@@ -484,12 +524,27 @@ export function EntityPage() {
           <div>
             <h1>{pickLabel(entity?.labels, i18n.language, qid)}</h1>
             <p className="muted">
-              {qid}
+              {entity?.displayId || qid}
               {entity?.kind ? ` · ${entity.kind}` : ""}
               {entity?.status ? ` · ${entity.status}` : ""}
               {entity?.packageCode ? ` · ${entity.packageCode}` : ""}
               {entity ? ` · rev ${entity.revisionNo}` : ""}
             </p>
+            {(entity?.effectiveClasses?.length || 0) > 0 && (
+              <div className="row compact entity-class-list">
+                <span className="muted">{t("classes.title")}:</span>
+                {(entity.effectiveClasses || []).map((classId) => (
+                  <EntityLink
+                    key={classId}
+                    id={classId}
+                    displayId={relatedEntities[classId]?.displayId}
+                    labels={relatedEntities[classId]?.labels}
+                    lang={i18n.language}
+                    breadcrumb={[...breadcrumb, qid]}
+                  />
+                ))}
+              </div>
+            )}
           </div>
           <div className="row">
             <button type="button" disabled={!packageCode} onClick={() => { setTab("detail"); setMode("editLabels"); }}>
@@ -536,7 +591,7 @@ export function EntityPage() {
               </li>
             ))}
           </ul>
-          <Link to={`/entities/${qid}/validation`}>{t("validation.fullReport")}</Link>
+          <Link to={`/entities/${encodeURIComponent(qid)}/validation`}>{t("validation.fullReport")}</Link>
         </div>
       )}
 
@@ -570,11 +625,61 @@ export function EntityPage() {
             {entity.propertyProfile && (
               <div className="panel stack">
                 <h3>{t("entity.propertyProfile")}</h3>
-                <p>
-                  <strong>{t("properties.datatype")}:</strong> {entity.propertyProfile.datatype}
-                </p>
-                {entity.propertyProfile.constraints && Object.keys(entity.propertyProfile.constraints).length > 0 && (
-                  <pre className="muted">{JSON.stringify(entity.propertyProfile.constraints, null, 2)}</pre>
+                <div className="stack compact">
+                  <div>
+                    <strong>{t("properties.datatype")}:</strong> {entity.propertyProfile.datatype}
+                  </div>
+                  {(entity.propertyProfile.constraints.domainClasses || []).length > 0 && (
+                    <div>
+                      <strong>{t("properties.domainClasses")}:</strong>{" "}
+                      <span className="row compact">
+                        {entity.propertyProfile.constraints.domainClasses!.map((classId) => (
+                          <EntityLink
+                            key={classId}
+                            id={classId}
+                            labels={relatedEntities[classId]?.labels}
+                            lang={i18n.language}
+                          />
+                        ))}
+                      </span>
+                    </div>
+                  )}
+                  {(entity.propertyProfile.constraints.rangeClasses || []).length > 0 && (
+                    <div>
+                      <strong>{t("properties.rangeClasses")}:</strong>{" "}
+                      <span className="row compact">
+                        {entity.propertyProfile.constraints.rangeClasses!.map((classId) => (
+                          <EntityLink
+                            key={classId}
+                            id={classId}
+                            labels={relatedEntities[classId]?.labels}
+                            lang={i18n.language}
+                          />
+                        ))}
+                      </span>
+                    </div>
+                  )}
+                  {entity.propertyProfile.constraints.minCount != null && (
+                    <div>
+                      <strong>{t("properties.minCount")}:</strong> {entity.propertyProfile.constraints.minCount}
+                    </div>
+                  )}
+                  {entity.propertyProfile.constraints.maxCount != null && (
+                    <div>
+                      <strong>{t("properties.maxCount")}:</strong> {entity.propertyProfile.constraints.maxCount}
+                    </div>
+                  )}
+                  {entity.propertyProfile.constraints.severity && (
+                    <div>
+                      <strong>{t("validation.severity")}:</strong> {entity.propertyProfile.constraints.severity}
+                    </div>
+                  )}
+                </div>
+                {Object.keys(entity.propertyProfile.constraints || {}).length > 0 && (
+                  <details className="advanced">
+                    <summary>{t("properties.constraintsRaw")}</summary>
+                    <pre className="muted">{JSON.stringify(entity.propertyProfile.constraints, null, 2)}</pre>
+                  </details>
                 )}
               </div>
             )}
@@ -691,9 +796,9 @@ export function EntityPage() {
             </div>
 
             <p>
-              <Link to={`/entities/${qid}/history`}>{t("entity.history")}</Link>
+              <Link to={`/entities/${encodeURIComponent(qid)}/history`}>{t("entity.history")}</Link>
               {" · "}
-              <Link to={`/entities/${qid}/validation`}>{t("validation.title")}</Link>
+              <Link to={`/entities/${encodeURIComponent(qid)}/validation`}>{t("validation.title")}</Link>
             </p>
           </section>
         )}
@@ -786,93 +891,112 @@ export function EntityPage() {
                 {t("entity.hideModel")}
               </label>
             </div>
-            {visibleStatements.map((st) => {
-              const editing = mode === `revise:${st.id}`;
-              const p = properties.find((x) => x.id === st.property);
-              return (
-                <div className="statement" key={st.id}>
-                  <div className="row" style={{ justifyContent: "space-between" }}>
-                    <strong>
-                      <EntityLink id={st.property} labels={p?.labels} lang={i18n.language} breadcrumb={[...breadcrumb, qid]} />
-                    </strong>
-                    <span className="muted">
-                      <Link to={`/statements/${st.id}`}>{st.id}</Link> · rev {st.revisionNo}
-                    </span>
-                  </div>
-                  {!editing && (
-                    <div className="row" style={{ justifyContent: "space-between" }}>
-                      <div>{renderValue(st.value)}</div>
-                      <button
-                        type="button"
-                        disabled={!packageCode}
-                        onClick={() => {
-                          setMode(`revise:${st.id}`);
-                          setReviseVal(valueFromApi(p?.datatype || "String", st.value));
-                        }}
-                      >
-                        {t("entity.revise")}
-                      </button>
-                    </div>
-                  )}
-                  {editing && reviseVal && (
-                    <form
-                      className="stack"
-                      onSubmit={(e) => {
-                        e.preventDefault();
-                        void revise(st);
-                      }}
-                    >
-                      <ValueEditor datatype={p?.datatype || "String"} value={reviseVal} onChange={setReviseVal} />
-                      <div className="row">
-                        <button className="primary" type="submit">
-                          {t("common.save")}
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setMode("view");
-                            setReviseVal(null);
-                          }}
-                        >
-                          {t("common.cancel")}
-                        </button>
-                      </div>
-                    </form>
-                  )}
-                  <details className="advanced">
-                    <summary>{t("entity.advanced")}</summary>
-                    <div className="stack compact">
-                      {(st.qualifiers?.length || 0) > 0 && (
-                        <div className="stack compact">
-                          <strong>{t("statement.qualifiers")}</strong>
-                          {st.qualifiers!.map((q, index) => (
-                            <div key={`${q.property}:${index}`} className="row compact">
-                              <EntityLink id={q.property} labels={relatedEntities[q.property]?.labels} lang={i18n.language} />:
-                              {renderValue(q.value)}
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                      {(st.referenceIds?.length || 0) > 0 && (
-                        <div className="stack compact">
-                          <strong>{t("statement.references")}</strong>
-                          <div className="row compact">
-                            {st.referenceIds!.map((id) => (
-                              <ReferenceLink key={id} id={id} />
-                            ))}
-                          </div>
-                        </div>
-                      )}
-                      {(st.validFrom || st.validTo) && (
-                        <p className="muted">
-                          {t("statement.validity")}: {st.validFrom || "—"} - {st.validTo || "—"}
-                        </p>
-                      )}
-                    </div>
-                  </details>
+            {statementGroups.length === 0 && <p className="muted">{t("search.empty")}</p>}
+            {statementGroups.map(({ propertyId, propertyMeta, items }) => (
+              <div className="statement-group panel" key={propertyId}>
+                <div className="statement-group-header">
+                  <strong>
+                    <EntityLink
+                      id={propertyId}
+                      labels={propertyMeta?.labels}
+                      lang={i18n.language}
+                      breadcrumb={[...breadcrumb, qid]}
+                    />
+                  </strong>
                 </div>
-              );
-            })}
+                <div className="statement-group-items">
+                  {items.map((st) => {
+                    const editing = mode === `revise:${st.id}`;
+                    const p = properties.find((x) => x.id === st.property);
+                    return (
+                      <div className="statement-row" key={st.id}>
+                        {!editing ? (
+                          <>
+                            <div className="statement-value-line">
+                              <span className="statement-value">{renderValue(st.value)}</span>
+                              <span className="statement-meta muted">
+                                <Link to={`/statements/${encodeURIComponent(st.id)}`}>{st.id}</Link> · rev {st.revisionNo}
+                              </span>
+                              <button
+                                type="button"
+                                className="statement-revise-button"
+                                disabled={!packageCode}
+                                onClick={() => {
+                                  setMode(`revise:${st.id}`);
+                                  setReviseVal(valueFromApi(p?.datatype || "String", st.value));
+                                }}
+                              >
+                                {t("entity.revise")}
+                              </button>
+                            </div>
+                            {((st.qualifiers?.length || 0) > 0 || (st.referenceIds?.length || 0) > 0 || st.validFrom || st.validTo) && (
+                              <details className="advanced">
+                                <summary>{t("entity.advanced")}</summary>
+                                <div className="stack compact">
+                                  {(st.qualifiers?.length || 0) > 0 && (
+                                    <div className="stack compact">
+                                      <strong>{t("statement.qualifiers")}</strong>
+                                      {st.qualifiers!.map((q, index) => (
+                                        <div key={`${q.property}:${index}`} className="row compact">
+                                          <EntityLink id={q.property} labels={relatedEntities[q.property]?.labels} lang={i18n.language} />:
+                                          {renderValue(q.value)}
+                                        </div>
+                                      ))}
+                                    </div>
+                                  )}
+                                  {(st.referenceIds?.length || 0) > 0 && (
+                                    <div className="stack compact">
+                                      <strong>{t("statement.references")}</strong>
+                                      <div className="row compact">
+                                        {st.referenceIds!.map((id) => (
+                                          <ReferenceLink key={id} id={id} />
+                                        ))}
+                                      </div>
+                                    </div>
+                                  )}
+                                  {(st.validFrom || st.validTo) && (
+                                    <p className="muted">
+                                      {t("statement.validity")}: {st.validFrom || "—"} - {st.validTo || "—"}
+                                    </p>
+                                  )}
+                                </div>
+                              </details>
+                            )}
+                          </>
+                        ) : (
+                          <form
+                            className="stack compact"
+                            onSubmit={(e) => {
+                              e.preventDefault();
+                              void revise(st);
+                            }}
+                          >
+                            <div className="statement-meta muted">
+                              <Link to={`/statements/${encodeURIComponent(st.id)}`}>{st.id}</Link> · rev {st.revisionNo}
+                            </div>
+                            <ValueEditor datatype={p?.datatype || "String"} value={reviseVal} onChange={setReviseVal} />
+                            <div className="row compact">
+                              <button className="primary" type="submit">
+                                {t("common.save")}
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setMode("view");
+                                  setReviseVal(null);
+                                }}
+                              >
+                                {t("common.cancel")}
+                              </button>
+                            </div>
+                          </form>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
             {statementNext && (
               <button type="button" onClick={() => void loadStatements(false, statementNext)}>
                 {t("common.next")}

@@ -44,10 +44,7 @@ func (s *Store) CreateClass(ctx context.Context, meta domain.WriteMeta, in domai
 	}
 
 	id := datatype.NewUUID()
-	publicID, err := s.nextPublicID(ctx, tx, "class", "C")
-	if err != nil {
-		return nil, err
-	}
+	localID := generatedIRILocal("class")
 	pkgID, err := s.resolvePackageIDRequired(ctx, tx, in.PackageCode)
 	if err != nil {
 		return nil, err
@@ -76,6 +73,14 @@ func (s *Store) CreateClass(ctx context.Context, meta domain.WriteMeta, in domai
 	iriLocal, err := normalizeOptionalIRILocal(in.IRILocal)
 	if err != nil {
 		return nil, err
+	}
+	pkgCode, iriBase, err := s.packageIRIBaseByID(ctx, tx, pkgID)
+	if err != nil {
+		return nil, err
+	}
+	publicID := resolvePublicIRI(iriBase, iriLocal, localID, pkgCode)
+	if iriLocal == "" {
+		iriLocal = localID
 	}
 	now := time.Now().UTC()
 	_, err = tx.Exec(ctx, `

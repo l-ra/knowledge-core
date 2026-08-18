@@ -591,13 +591,14 @@ func (s *Store) exportEntityAtRevision(ctx context.Context, qid string, rev int)
 	be.RevisionNo = rev
 	var labelsJSON, descJSON []byte
 	var pkgCode *string
+	var iriLocal string
 	err := s.pool.QueryRow(ctx, `
-		SELECT er.status, er.labels, er.descriptions, pkg.code
+		SELECT er.status, er.labels, er.descriptions, pkg.code, COALESCE(e.iri_local,'')
 		FROM entity_revision er
 		JOIN entity e ON e.id = er.entity_id
 		LEFT JOIN package pkg ON pkg.id = e.package_id
 		WHERE e.public_id = $1 AND er.revision_no = $2
-	`, qid, rev).Scan(&be.Status, &labelsJSON, &descJSON, &pkgCode)
+	`, qid, rev).Scan(&be.Status, &labelsJSON, &descJSON, &pkgCode, &iriLocal)
 	if err != nil {
 		return nil, err
 	}
@@ -606,6 +607,7 @@ func (s *Store) exportEntityAtRevision(ctx context.Context, qid string, rev int)
 	if pkgCode != nil {
 		be.PackageCode = *pkgCode
 	}
+	be.IRILocal = iriLocal
 	return &be, nil
 }
 
@@ -616,14 +618,15 @@ func (s *Store) exportPropertyAtRevision(ctx context.Context, pid string, rev in
 	var labelsJSON, descJSON []byte
 	var dt string
 	var pkgCode *string
+	var iriLocal string
 	err := s.pool.QueryRow(ctx, `
-		SELECT er.status, pp.datatype, er.labels, er.descriptions, pkg.code
+		SELECT er.status, pp.datatype, er.labels, er.descriptions, pkg.code, COALESCE(e.iri_local,'')
 		FROM entity_revision er
 		JOIN entity e ON e.id = er.entity_id
 		JOIN property_profile pp ON pp.entity_id = e.id
 		LEFT JOIN package pkg ON pkg.id = e.package_id
 		WHERE e.public_id = $1 AND er.revision_no = $2
-	`, pid, rev).Scan(&bp.Status, &dt, &labelsJSON, &descJSON, &pkgCode)
+	`, pid, rev).Scan(&bp.Status, &dt, &labelsJSON, &descJSON, &pkgCode, &iriLocal)
 	if err != nil {
 		return nil, err
 	}
@@ -633,6 +636,7 @@ func (s *Store) exportPropertyAtRevision(ctx context.Context, pid string, rev in
 	if pkgCode != nil {
 		bp.PackageCode = *pkgCode
 	}
+	bp.IRILocal = iriLocal
 	return &bp, nil
 }
 
@@ -642,14 +646,15 @@ func (s *Store) exportClassAtRevision(ctx context.Context, cid string, rev int) 
 	bc.RevisionNo = rev
 	var labelsJSON, descJSON, docJSON []byte
 	var pkgCode *string
+	var iriLocal string
 	err := s.pool.QueryRow(ctx, `
-		SELECT er.status, er.labels, er.descriptions, pkg.code, cp.document
+		SELECT er.status, er.labels, er.descriptions, pkg.code, cp.document, COALESCE(e.iri_local,'')
 		FROM entity_revision er
 		JOIN entity e ON e.id = er.entity_id
 		JOIN class_profile cp ON cp.entity_id = e.id
 		LEFT JOIN package pkg ON pkg.id = e.package_id
 		WHERE e.public_id = $1 AND er.revision_no = $2
-	`, cid, rev).Scan(&bc.Status, &labelsJSON, &descJSON, &pkgCode, &docJSON)
+	`, cid, rev).Scan(&bc.Status, &labelsJSON, &descJSON, &pkgCode, &docJSON, &iriLocal)
 	if err != nil {
 		return nil, err
 	}
@@ -658,6 +663,7 @@ func (s *Store) exportClassAtRevision(ctx context.Context, cid string, rev int) 
 	if pkgCode != nil {
 		bc.PackageCode = *pkgCode
 	}
+	bc.IRILocal = iriLocal
 	var doc domain.ClassDocument
 	_ = json.Unmarshal(docJSON, &doc)
 	bc.SubClassOf = doc.SubClassOf
@@ -786,28 +792,28 @@ func (s *Store) ListPackageObjects(ctx context.Context, packageCode string) ([]d
 	}
 
 	rows, err := s.pool.Query(ctx, `
-		SELECT object_type, public_id, revision_no, entity_id FROM (
-			SELECT 'entity'::text AS object_type, e.public_id, e.current_revision_no AS revision_no, e.id AS entity_id
+		SELECT object_type, public_id, revision_no, entity_id, iri_local FROM (
+			SELECT 'entity'::text AS object_type, e.public_id, e.current_revision_no AS revision_no, e.id AS entity_id, COALESCE(e.iri_local,'') AS iri_local
 			FROM entity e
 			WHERE e.package_id = $1
 			  AND NOT EXISTS (SELECT 1 FROM property_profile pp WHERE pp.entity_id = e.id)
 			  AND NOT EXISTS (SELECT 1 FROM class_profile cp WHERE cp.entity_id = e.id)
 			UNION ALL
-			SELECT 'property', e.public_id, e.current_revision_no, e.id
+			SELECT 'property', e.public_id, e.current_revision_no, e.id, COALESCE(e.iri_local,'')
 			FROM entity e
 			JOIN property_profile pp ON pp.entity_id = e.id
 			WHERE e.package_id = $1
 			UNION ALL
-			SELECT 'class', e.public_id, e.current_revision_no, e.id
+			SELECT 'class', e.public_id, e.current_revision_no, e.id, COALESCE(e.iri_local,'')
 			FROM entity e
 			JOIN class_profile cp ON cp.entity_id = e.id
 			WHERE e.package_id = $1
 			UNION ALL
-			SELECT 'shape', sp.code, 1, NULL::uuid
+			SELECT 'shape', sp.code, 1, NULL::uuid, ''::text
 			FROM shape_profile sp
 			WHERE sp.package_id = $1
 			UNION ALL
-			SELECT 'statement', st.public_id, st.current_revision_no, NULL::uuid
+			SELECT 'statement', st.public_id, st.current_revision_no, NULL::uuid, ''::text
 			FROM statement st
 			WHERE st.package_id = $1
 		) t
@@ -822,7 +828,8 @@ func (s *Store) ListPackageObjects(ctx context.Context, packageCode string) ([]d
 	for rows.Next() {
 		var o domain.PackageObject
 		var entityID *uuid.UUID
-		if err := rows.Scan(&o.ObjectType, &o.PublicID, &o.RevisionNo, &entityID); err != nil {
+		var iriLocal string
+		if err := rows.Scan(&o.ObjectType, &o.PublicID, &o.RevisionNo, &entityID, &iriLocal); err != nil {
 			return nil, err
 		}
 		if entityID != nil {
@@ -831,6 +838,7 @@ func (s *Store) ListPackageObjects(ctx context.Context, packageCode string) ([]d
 		if o.Labels == nil {
 			o.Labels = map[string]string{}
 		}
+		o.DisplayID = datatype.PackageDisplayID(packageCode, iriLocal, o.PublicID)
 		out = append(out, o)
 	}
 	return out, rows.Err()

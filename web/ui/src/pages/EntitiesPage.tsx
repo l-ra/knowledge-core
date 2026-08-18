@@ -9,6 +9,7 @@ import { EntityLink } from "../links";
 
 type Entity = {
   id: string;
+  displayId?: string;
   kind?: string;
   labels?: Record<string, string>;
   status?: string;
@@ -97,7 +98,7 @@ export function EntitiesPage() {
   }
 
   function openEntity(id: string) {
-    nav(`/entities/${id}`, { state: { breadcrumb: [] } });
+    nav(`/entities/${encodeURIComponent(id)}`);
   }
 
   async function create(e: FormEvent) {
@@ -332,7 +333,7 @@ export function EntitiesPage() {
           {items.map((it) => (
             <tr key={it.id}>
               <td>
-                <EntityLink id={it.id} labels={it.labels} lang={i18n.language} />
+                <EntityLink id={it.id} displayId={it.displayId} labels={it.labels} lang={i18n.language} />
               </td>
               <td>{it.kind || "entity"}</td>
               <td>{it.packageCode || "—"}</td>

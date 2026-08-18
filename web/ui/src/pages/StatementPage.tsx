@@ -8,6 +8,7 @@ import { useEntityLookup } from "../useEntityLookup";
 
 type Statement = {
   id: string;
+  displayId?: string;
   subject: string;
   property: string;
   revisionNo: number;
@@ -19,14 +20,21 @@ type Statement = {
 };
 
 export function StatementPage() {
-  const { sid = "" } = useParams();
+  const { sid: rawSid = "" } = useParams();
+  const sid = (() => {
+    try {
+      return decodeURIComponent(rawSid);
+    } catch {
+      return rawSid;
+    }
+  })();
   const { t, i18n } = useTranslation();
   const [statement, setStatement] = useState<Statement | null>(null);
   const [error, setError] = useState("");
 
   useEffect(() => {
     setError("");
-    void apiFetch<Statement>(`/v1/statements/${sid}`)
+    void apiFetch<Statement>(`/v1/statements/${encodeURIComponent(sid)}`)
       .then(setStatement)
       .catch((err) => setError(err instanceof Error ? err.message : t("common.error")));
   }, [sid, t]);
@@ -50,7 +58,7 @@ export function StatementPage() {
   function renderValue(value: ApiValue) {
     if (value?.type === "EntityReference" && value.entityId) {
       const id = String(value.entityId);
-      return <EntityLink id={id} labels={entities[id]?.labels} lang={i18n.language} />;
+      return <EntityLink id={id} displayId={entities[id]?.displayId} labels={entities[id]?.labels} lang={i18n.language} />;
     }
     return <span>{displayValueText(value, i18n.language)}</span>;
   }
@@ -64,12 +72,17 @@ export function StatementPage() {
         {statement && (
           <>
             {" / "}
-            <EntityLink id={statement.subject} labels={entities[statement.subject]?.labels} lang={i18n.language} />
+            <EntityLink
+              id={statement.subject}
+              displayId={entities[statement.subject]?.displayId}
+              labels={entities[statement.subject]?.labels}
+              lang={i18n.language}
+            />
           </>
         )}
         <span>
           {" / "}
-          <strong>{sid}</strong>
+          <strong>{statement?.displayId || sid}</strong>
         </span>
       </nav>
       {error && <p className="error">{error}</p>}
@@ -77,16 +90,26 @@ export function StatementPage() {
         <section className="panel stack">
           <h1>{t("statement.title")}</h1>
           <p className="muted">
-            {statement.id} · rev {statement.revisionNo}
+            {statement.displayId || statement.id} · rev {statement.revisionNo}
           </p>
           <div className="stack">
             <div>
               <strong>{t("statement.subject")}:</strong>{" "}
-              <EntityLink id={statement.subject} labels={entities[statement.subject]?.labels} lang={i18n.language} />
+              <EntityLink
+                id={statement.subject}
+                displayId={entities[statement.subject]?.displayId}
+                labels={entities[statement.subject]?.labels}
+                lang={i18n.language}
+              />
             </div>
             <div>
               <strong>{t("entity.property")}:</strong>{" "}
-              <EntityLink id={statement.property} labels={entities[statement.property]?.labels} lang={i18n.language} />
+              <EntityLink
+                id={statement.property}
+                displayId={entities[statement.property]?.displayId}
+                labels={entities[statement.property]?.labels}
+                lang={i18n.language}
+              />
             </div>
             <div>
               <strong>{t("entity.value")}:</strong> {renderValue(statement.value)}
@@ -102,7 +125,13 @@ export function StatementPage() {
               <h3>{t("statement.qualifiers")}</h3>
               {statement.qualifiers!.map((q, index) => (
                 <div className="statement-fragment" key={`${q.property}:${index}`}>
-                  <EntityLink id={q.property} labels={entities[q.property]?.labels} lang={i18n.language} />: {renderValue(q.value)}
+                  <EntityLink
+                    id={q.property}
+                    displayId={entities[q.property]?.displayId}
+                    labels={entities[q.property]?.labels}
+                    lang={i18n.language}
+                  />:{" "}
+                  {renderValue(q.value)}
                 </div>
               ))}
             </div>

@@ -16,8 +16,8 @@ type Shape = {
   };
 };
 
-type ClassDef = { id: string; labels?: Record<string, string> };
-type PropDef = { id: string; labels?: Record<string, string> };
+type ClassDef = { id: string; displayId?: string; labels?: Record<string, string> };
+type PropDef = { id: string; displayId?: string; labels?: Record<string, string> };
 
 export function ShapesPage() {
   const { t, i18n } = useTranslation();
@@ -91,7 +91,7 @@ export function ShapesPage() {
             <select value={classId} onChange={(e) => setClassId(e.target.value)}>
               {classes.map((c) => (
                 <option key={c.id} value={c.id}>
-                  {pickLabel(c.labels, i18n.language, c.id)} ({c.id})
+                  {pickLabel(c.labels, i18n.language, c.id)} ({c.displayId || c.id})
                 </option>
               ))}
             </select>
@@ -122,14 +122,24 @@ export function ShapesPage() {
             <tr key={s.code}>
               <td>{s.code}</td>
               <td>
-                <EntityLink id={s.classId} labels={classById.get(s.classId)?.labels} lang={i18n.language} />
+                <EntityLink
+                  id={s.classId}
+                  displayId={classById.get(s.classId)?.displayId}
+                  labels={classById.get(s.classId)?.labels}
+                  lang={i18n.language}
+                />
               </td>
               <td>
                 {(s.document?.requiredProperties || []).length > 0
                   ? s.document!.requiredProperties!.map((pid, i) => (
                       <span key={pid}>
                         {i > 0 && ", "}
-                        <EntityLink id={pid} labels={propById.get(pid)?.labels} lang={i18n.language} />
+                        <EntityLink
+                          id={pid}
+                          displayId={propById.get(pid)?.displayId}
+                          labels={propById.get(pid)?.labels}
+                          lang={i18n.language}
+                        />
                       </span>
                     ))
                   : "—"}

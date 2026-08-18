@@ -370,6 +370,54 @@ button:disabled {
   padding: 0.85rem 0;
 }
 
+.statement-group {
+  padding: 0;
+  overflow: hidden;
+}
+
+.statement-group-header {
+  padding: 0.75rem 1rem;
+  border-bottom: 1px solid var(--border);
+  background: color-mix(in oklab, var(--accent) 6%, transparent);
+}
+
+.statement-group-items {
+  display: flex;
+  flex-direction: column;
+}
+
+.statement-row {
+  padding: 0.65rem 1rem;
+  border-top: 1px solid var(--border);
+}
+
+.statement-group-items .statement-row:first-child {
+  border-top: none;
+}
+
+.statement-value-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.5rem;
+}
+
+.statement-value {
+  flex: 1 1 20rem;
+  min-width: 12rem;
+}
+
+.statement-meta {
+  font-size: 0.85rem;
+  white-space: nowrap;
+}
+
+.statement-revise-button {
+  margin-left: auto;
+  padding: 0.25rem 0.6rem;
+  font-size: 0.85rem;
+}
+
 details.advanced {
   border: 1px dashed var(--border);
   border-radius: var(--radius);
@@ -549,6 +597,10 @@ button.linkish {
   padding-top: 1rem;
 }
 
+.entity-class-list {
+  margin-top: 0.35rem;
+}
+
 .entity-header .profile-block {
   margin-top: 0.75rem;
   padding-top: 0.75rem;
@@ -642,6 +694,14 @@ button.linkish {
 .object-id {
   font-size: 0.78em;
   color: var(--muted);
+}
+
+.ids-hidden .object-id {
+  display: none;
+}
+
+.ids-hidden .object-label {
+  gap: 0;
 }
 
 .statement-fragment {

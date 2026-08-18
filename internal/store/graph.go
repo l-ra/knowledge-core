@@ -77,10 +77,7 @@ func (s *Store) CreateEntity(ctx context.Context, meta domain.WriteMeta, in doma
 	}
 
 	id := datatype.NewUUID()
-	publicID, err := s.nextPublicID(ctx, tx, "entity", "Q")
-	if err != nil {
-		return nil, err
-	}
+	localID := generatedIRILocal("entity")
 	pkgID, err := s.resolvePackageIDRequired(ctx, tx, in.PackageCode)
 	if err != nil {
 		return nil, err
@@ -88,6 +85,14 @@ func (s *Store) CreateEntity(ctx context.Context, meta domain.WriteMeta, in doma
 	iriLocal, err := normalizeOptionalIRILocal(in.IRILocal)
 	if err != nil {
 		return nil, err
+	}
+	pkgCode, iriBase, err := s.packageIRIBaseByID(ctx, tx, pkgID)
+	if err != nil {
+		return nil, err
+	}
+	publicID := resolvePublicIRI(iriBase, iriLocal, localID, pkgCode)
+	if iriLocal == "" {
+		iriLocal = localID
 	}
 	now := time.Now().UTC()
 	_, err = tx.Exec(ctx, `
@@ -244,10 +249,7 @@ func (s *Store) CreateProperty(ctx context.Context, meta domain.WriteMeta, in do
 	}
 
 	id := datatype.NewUUID()
-	publicID, err := s.nextPublicID(ctx, tx, "property", "P")
-	if err != nil {
-		return nil, err
-	}
+	localID := generatedIRILocal("property")
 	pkgID, err := s.resolvePackageIDRequired(ctx, tx, in.PackageCode)
 	if err != nil {
 		return nil, err
@@ -255,6 +257,14 @@ func (s *Store) CreateProperty(ctx context.Context, meta domain.WriteMeta, in do
 	iriLocal, err := normalizeOptionalIRILocal(in.IRILocal)
 	if err != nil {
 		return nil, err
+	}
+	pkgCode, iriBase, err := s.packageIRIBaseByID(ctx, tx, pkgID)
+	if err != nil {
+		return nil, err
+	}
+	publicID := resolvePublicIRI(iriBase, iriLocal, localID, pkgCode)
+	if iriLocal == "" {
+		iriLocal = localID
 	}
 	now := time.Now().UTC()
 	constraintsJSON, _ := json.Marshal(in.Constraints)
@@ -609,14 +619,16 @@ func (s *Store) CreateStatement(ctx context.Context, meta domain.WriteMeta, in d
 	}
 
 	id := datatype.NewUUID()
-	publicID, err := s.nextPublicID(ctx, tx, "statement", "S")
-	if err != nil {
-		return nil, err
-	}
+	localID := generatedIRILocal("statement")
 	pkgID, err := s.resolvePackageIDRequired(ctx, tx, in.PackageCode)
 	if err != nil {
 		return nil, err
 	}
+	pkgCode, iriBase, err := s.packageIRIBaseByID(ctx, tx, pkgID)
+	if err != nil {
+		return nil, err
+	}
+	publicID := resolvePublicIRI(iriBase, "statement/"+localID, "statement/"+localID, pkgCode)
 	now := time.Now().UTC()
 
 	_, err = tx.Exec(ctx, `

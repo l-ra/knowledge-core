@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"net/http"
 
-	"github.com/go-chi/chi/v5"
 	"github.com/l-ra/knowledge-core/internal/domain"
 )
 
@@ -36,7 +35,7 @@ func (s *Server) createLens(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) getLens(w http.ResponseWriter, r *http.Request) {
-	lens, err := s.engine.GetLens(r.Context(), chi.URLParam(r, "code"))
+	lens, err := s.engine.GetLens(r.Context(), pathParam(r, "code"))
 	if err != nil {
 		writeEngineError(w, err)
 		return
@@ -45,7 +44,7 @@ func (s *Server) getLens(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) getLensInstance(w http.ResponseWriter, r *http.Request) {
-	data, err := s.engine.ReadLensInstance(r.Context(), chi.URLParam(r, "code"), chi.URLParam(r, "key"))
+	data, err := s.engine.ReadLensInstance(r.Context(), pathParam(r, "code"), pathParam(r, "key"))
 	if err != nil {
 		writeEngineError(w, err)
 		return
@@ -65,7 +64,7 @@ func (s *Server) patchLensInstance(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	meta := writeMetaFromRequest(r, "patchLens", hashBody(body))
-	data, err := s.engine.PatchLensInstance(r.Context(), meta, chi.URLParam(r, "code"), chi.URLParam(r, "key"), req)
+	data, err := s.engine.PatchLensInstance(r.Context(), meta, pathParam(r, "code"), pathParam(r, "key"), req)
 	if err != nil {
 		writeEngineError(w, err)
 		return

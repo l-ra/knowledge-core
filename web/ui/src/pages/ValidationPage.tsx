@@ -20,7 +20,14 @@ type ValidationResult = {
 };
 
 export function ValidationPage() {
-  const { qid = "" } = useParams();
+  const { qid: rawQid = "" } = useParams();
+  const qid = (() => {
+    try {
+      return decodeURIComponent(rawQid);
+    } catch {
+      return rawQid;
+    }
+  })();
   const { t, i18n } = useTranslation();
   const [result, setResult] = useState<ValidationResult | null>(null);
   const [reportId, setReportId] = useState("");
@@ -30,7 +37,7 @@ export function ValidationPage() {
   async function load() {
     setError("");
     try {
-      const res = await apiFetch<ValidationResult>(`/v1/entities/${qid}/validation`);
+      const res = await apiFetch<ValidationResult>(`/v1/entities/${encodeURIComponent(qid)}/validation`);
       setResult(res);
     } catch (err) {
       setError(err instanceof Error ? err.message : t("common.error"));
@@ -61,7 +68,7 @@ export function ValidationPage() {
       <nav className="breadcrumb muted">
         <Link to="/entities">{t("nav.entities")}</Link>
         {" / "}
-        <EntityLink id={qid} labels={entities[qid]?.labels} lang={i18n.language} />
+        <EntityLink id={qid} displayId={entities[qid]?.displayId} labels={entities[qid]?.labels} lang={i18n.language} />
         {" / "}
         {t("validation.title")}
       </nav>

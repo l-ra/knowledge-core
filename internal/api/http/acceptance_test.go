@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -266,8 +267,8 @@ func TestAcceptanceNestedLensAndMany(t *testing.T) {
 	pTag := createProperty(t, h, "tag")
 	pOwnerRes := doJSON(t, h, http.MethodPost, "/v1/properties", map[string]any{
 		"packageCode": "test",
-		"datatype": "EntityReference",
-		"labels":   map[string]string{"en": "ownerRef"},
+		"datatype":    "EntityReference",
+		"labels":      map[string]string{"en": "ownerRef"},
 	}, nil)
 	if pOwnerRes.StatusCode != http.StatusCreated {
 		t.Fatalf("owner property: %d %s", pOwnerRes.StatusCode, pOwnerRes.Body)
@@ -283,9 +284,9 @@ func TestAcceptanceNestedLensAndMany(t *testing.T) {
 	_ = createStatement(t, h, app, pName, "CRM")
 	ownerStmt := doJSON(t, h, http.MethodPost, "/v1/statements", map[string]any{
 		"packageCode": "test",
-		"subject":  app,
-		"property": pOwner,
-		"value":    map[string]any{"type": "EntityReference", "entityId": owner},
+		"subject":     app,
+		"property":    pOwner,
+		"value":       map[string]any{"type": "EntityReference", "entityId": owner},
 	}, nil)
 	if ownerStmt.StatusCode != http.StatusCreated {
 		t.Fatalf("owner ref: %d %s", ownerStmt.StatusCode, ownerStmt.Body)
@@ -376,7 +377,7 @@ func TestAcceptanceA1A2A14(t *testing.T) {
 
 	res := doJSON(t, h, http.MethodPost, "/v1/entities", map[string]any{
 		"packageCode": "test",
-		"labels": map[string]string{"cs": "Zákazník"},
+		"labels":      map[string]string{"cs": "Zákazník"},
 	}, nil)
 	if res.StatusCode != http.StatusBadRequest {
 		t.Fatalf("A2: want 400, got %d %s", res.StatusCode, res.Body)
@@ -384,7 +385,7 @@ func TestAcceptanceA1A2A14(t *testing.T) {
 
 	ent := doJSON(t, h, http.MethodPost, "/v1/entities", map[string]any{
 		"packageCode": "test",
-		"labels": map[string]string{"en": "Customer"},
+		"labels":      map[string]string{"en": "Customer"},
 	}, nil)
 	if ent.StatusCode != http.StatusCreated {
 		t.Fatalf("create entity: %d %s", ent.StatusCode, ent.Body)
@@ -393,8 +394,8 @@ func TestAcceptanceA1A2A14(t *testing.T) {
 
 	prop := doJSON(t, h, http.MethodPost, "/v1/properties", map[string]any{
 		"packageCode": "test",
-		"datatype": "String",
-		"labels":   map[string]string{"en": "Code"},
+		"datatype":    "String",
+		"labels":      map[string]string{"en": "Code"},
 	}, nil)
 	if prop.StatusCode != http.StatusCreated {
 		t.Fatalf("create property: %d %s", prop.StatusCode, prop.Body)
@@ -403,9 +404,9 @@ func TestAcceptanceA1A2A14(t *testing.T) {
 
 	stmt := doJSON(t, h, http.MethodPost, "/v1/statements", map[string]any{
 		"packageCode": "test",
-		"subject":  qid,
-		"property": pid,
-		"value":    map[string]any{"type": "String", "string": "CRM-01"},
+		"subject":     qid,
+		"property":    pid,
+		"value":       map[string]any{"type": "String", "string": "CRM-01"},
 	}, nil)
 	if stmt.StatusCode != http.StatusCreated {
 		t.Fatalf("create statement: %d %s", stmt.StatusCode, stmt.Body)
@@ -521,10 +522,10 @@ func TestAcceptanceA10(t *testing.T) {
 	rid := parseDataID(t, ref.Body)
 
 	stmt := doJSON(t, h, http.MethodPost, "/v1/statements", map[string]any{
-		"packageCode": "test",
-		"subject":  qid,
-		"property": ownerProp,
-		"value":    map[string]any{"type": "String", "string": "owner-1"},
+		"packageCode":  "test",
+		"subject":      qid,
+		"property":     ownerProp,
+		"value":        map[string]any{"type": "String", "string": "owner-1"},
 		"referenceIds": []string{rid},
 		"qualifiers": []map[string]any{
 			{"property": roleProp, "value": map[string]any{"type": "String", "string": "business-owner"}},
@@ -727,6 +728,150 @@ func TestAcceptanceImportPromotion(t *testing.T) {
 	dup := doJSON(t, h, http.MethodPost, "/v1/releases/import", bundle, nil)
 	if dup.StatusCode != http.StatusConflict {
 		t.Fatalf("duplicate import: want 409, got %d %s", dup.StatusCode, dup.Body)
+	}
+}
+
+func TestAcceptanceIRIFirstIdentityBundle(t *testing.T) {
+	h := setupTestHandler(t)
+
+	urnEnt := doJSON(t, h, http.MethodPost, "/v1/entities", map[string]any{
+		"packageCode": "test",
+		"labels":      map[string]string{"en": "URN Entity"},
+	}, nil)
+	if urnEnt.StatusCode != http.StatusCreated {
+		t.Fatalf("create urn entity: %d %s", urnEnt.StatusCode, urnEnt.Body)
+	}
+	urnID := parseDataID(t, urnEnt.Body)
+	if !regexp.MustCompile(`^urn:kc:test:e_[0-9a-z]+$`).MatchString(urnID) {
+		t.Fatalf("expected URN entity id, got %q", urnID)
+	}
+	gotURN := doJSON(t, h, http.MethodGet, "/v1/entities/"+url.PathEscape(urnID), nil, nil)
+	if gotURN.StatusCode != http.StatusOK {
+		t.Fatalf("get urn entity by id: %d %s", gotURN.StatusCode, gotURN.Body)
+	}
+
+	res := doJSON(t, h, http.MethodPost, "/v1/packages", map[string]any{
+		"code":      "archimate-lite",
+		"lifecycle": "released",
+		"iriBase":   "https://example.org/archimate-lite/",
+		"labels":    map[string]string{"en": "archimate-lite"},
+	}, nil)
+	if res.StatusCode != http.StatusCreated {
+		t.Fatalf("create package: %d %s", res.StatusCode, res.Body)
+	}
+
+	ent := doJSON(t, h, http.MethodPost, "/v1/entities", map[string]any{
+		"packageCode": "archimate-lite",
+		"iriLocal":    "BusinessObject",
+		"labels":      map[string]string{"en": "Business Object"},
+	}, nil)
+	if ent.StatusCode != http.StatusCreated {
+		t.Fatalf("create entity: %d %s", ent.StatusCode, ent.Body)
+	}
+	qid := parseDataID(t, ent.Body)
+	if qid != "https://example.org/archimate-lite/BusinessObject" {
+		t.Fatalf("expected IRI entity id, got %q", qid)
+	}
+
+	fallbackEnt := doJSON(t, h, http.MethodPost, "/v1/entities", map[string]any{
+		"packageCode": "archimate-lite",
+		"labels":      map[string]string{"en": "Generated Object"},
+	}, nil)
+	if fallbackEnt.StatusCode != http.StatusCreated {
+		t.Fatalf("create fallback entity: %d %s", fallbackEnt.StatusCode, fallbackEnt.Body)
+	}
+	var fallbackEntity struct {
+		Data struct {
+			ID        string `json:"id"`
+			DisplayID string `json:"displayId"`
+			IRILocal  string `json:"iriLocal"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal([]byte(fallbackEnt.Body), &fallbackEntity); err != nil {
+		t.Fatal(err)
+	}
+	if !regexp.MustCompile(`^https://example\.org/archimate-lite/e_[0-9a-z]+$`).MatchString(fallbackEntity.Data.ID) {
+		t.Fatalf("expected snowflake fallback entity IRI, got %q", fallbackEntity.Data.ID)
+	}
+	if !regexp.MustCompile(`^archimate-lite:e_[0-9a-z]+$`).MatchString(fallbackEntity.Data.DisplayID) {
+		t.Fatalf("expected snowflake display id, got %q", fallbackEntity.Data.DisplayID)
+	}
+	if !regexp.MustCompile(`^e_[0-9a-z]+$`).MatchString(fallbackEntity.Data.IRILocal) {
+		t.Fatalf("expected snowflake iriLocal, got %q", fallbackEntity.Data.IRILocal)
+	}
+
+	prop := doJSON(t, h, http.MethodPost, "/v1/properties", map[string]any{
+		"packageCode": "archimate-lite",
+		"iriLocal":    "modelingDepth",
+		"datatype":    "String",
+		"labels":      map[string]string{"en": "Modeling depth"},
+	}, nil)
+	if prop.StatusCode != http.StatusCreated {
+		t.Fatalf("create property: %d %s", prop.StatusCode, prop.Body)
+	}
+	pid := parseDataID(t, prop.Body)
+	if pid != "https://example.org/archimate-lite/modelingDepth" {
+		t.Fatalf("expected IRI property id, got %q", pid)
+	}
+
+	stmt := doJSON(t, h, http.MethodPost, "/v1/statements", map[string]any{
+		"packageCode": "archimate-lite",
+		"subject":     qid,
+		"property":    pid,
+		"value":       map[string]any{"type": "String", "string": "catalog"},
+	}, nil)
+	if stmt.StatusCode != http.StatusCreated {
+		t.Fatalf("create statement: %d %s", stmt.StatusCode, stmt.Body)
+	}
+	sid := parseDataID(t, stmt.Body)
+	if !regexp.MustCompile(`^https://example\.org/archimate-lite/statement/s_[0-9a-z]+$`).MatchString(sid) &&
+		!regexp.MustCompile(`^urn:kc:archimate-lite:statement:s_[0-9a-z]+$`).MatchString(sid) {
+		t.Fatalf("expected IRI-like statement id, got %q", sid)
+	}
+
+	ref := doJSON(t, h, http.MethodPost, "/v1/references", map[string]any{
+		"fields": map[string]any{"sourceUrl": "https://example.org/doc"},
+	}, nil)
+	if ref.StatusCode != http.StatusCreated {
+		t.Fatalf("create reference: %d %s", ref.StatusCode, ref.Body)
+	}
+	rid := parseDataID(t, ref.Body)
+	if !regexp.MustCompile(`^urn:kc:reference:r_[0-9a-z]+$`).MatchString(rid) {
+		t.Fatalf("expected snowflake reference id, got %q", rid)
+	}
+
+	pub := doJSON(t, h, http.MethodPost, "/v1/packages/archimate-lite/releases", map[string]any{"version": "1.0.0"}, nil)
+	if pub.StatusCode != http.StatusCreated {
+		t.Fatalf("publish: %d %s", pub.StatusCode, pub.Body)
+	}
+
+	bundle := doJSON(t, h, http.MethodGet, "/v1/packages/archimate-lite/releases/1.0.0/bundle", nil, nil)
+	if bundle.StatusCode != http.StatusOK {
+		t.Fatalf("bundle: %d %s", bundle.StatusCode, bundle.Body)
+	}
+	var b struct {
+		Entities []struct {
+			ID       string `json:"id"`
+			IRILocal string `json:"iriLocal"`
+		} `json:"entities"`
+		Properties []struct {
+			ID       string `json:"id"`
+			IRILocal string `json:"iriLocal"`
+		} `json:"properties"`
+	}
+	if err := json.Unmarshal([]byte(bundle.Body), &b); err != nil {
+		t.Fatal(err)
+	}
+	if len(b.Entities) != 1 || b.Entities[0].ID != qid || b.Entities[0].IRILocal != "BusinessObject" {
+		t.Fatalf("unexpected entity bundle payload: %+v", b.Entities)
+	}
+	if len(b.Properties) != 1 || b.Properties[0].ID != pid || b.Properties[0].IRILocal != "modelingDepth" {
+		t.Fatalf("unexpected property bundle payload: %+v", b.Properties)
+	}
+
+	got := doJSON(t, h, http.MethodGet, "/v1/entities/"+url.PathEscape(qid), nil, nil)
+	if got.StatusCode != http.StatusOK {
+		t.Fatalf("get entity by iri: %d %s", got.StatusCode, got.Body)
 	}
 }
 
@@ -1434,7 +1579,7 @@ func TestAcceptanceSchemaValidationRelaxed(t *testing.T) {
 
 	ent := doJSON(t, h, http.MethodPost, "/v1/entities", map[string]any{
 		"packageCode": "test",
-		"labels": map[string]string{"en": "Person"},
+		"labels":      map[string]string{"en": "Person"},
 	}, adminHeaders())
 	if ent.StatusCode != http.StatusCreated {
 		t.Fatalf("create entity: %d %s", ent.StatusCode, ent.Body)
@@ -1443,15 +1588,15 @@ func TestAcceptanceSchemaValidationRelaxed(t *testing.T) {
 
 	typeProp := doJSON(t, h, http.MethodPost, "/v1/properties", map[string]any{
 		"packageCode": "test",
-		"datatype": "EntityReference",
-		"labels":   map[string]string{"en": "instance of"},
+		"datatype":    "EntityReference",
+		"labels":      map[string]string{"en": "instance of"},
 	}, adminHeaders())
 	pidType := parseDataID(t, typeProp.Body)
 
 	nameProp := doJSON(t, h, http.MethodPost, "/v1/properties", map[string]any{
 		"packageCode": "test",
-		"datatype": "String",
-		"labels":   map[string]string{"en": "name"},
+		"datatype":    "String",
+		"labels":      map[string]string{"en": "name"},
 		"constraints": map[string]any{
 			"domainClasses": []string{"C1"},
 			"severity":      "warning",
@@ -1461,7 +1606,7 @@ func TestAcceptanceSchemaValidationRelaxed(t *testing.T) {
 
 	class := doJSON(t, h, http.MethodPost, "/v1/classes", map[string]any{
 		"packageCode": "test",
-		"labels": map[string]string{"en": "Person"},
+		"labels":      map[string]string{"en": "Person"},
 	}, adminHeaders())
 	if class.StatusCode != http.StatusCreated {
 		t.Fatalf("create class: %d %s", class.StatusCode, class.Body)
@@ -1483,9 +1628,9 @@ func TestAcceptanceSchemaValidationRelaxed(t *testing.T) {
 
 	doJSON(t, h, http.MethodPost, "/v1/statements", map[string]any{
 		"packageCode": "test",
-		"subject":  qid,
-		"property": pidType,
-		"value":    map[string]any{"type": "EntityReference", "entityId": classID},
+		"subject":     qid,
+		"property":    pidType,
+		"value":       map[string]any{"type": "EntityReference", "entityId": classID},
 	}, adminHeaders())
 
 	// relaxed: write name without class typing would fail domain - but we typed entity above.
@@ -1494,9 +1639,9 @@ func TestAcceptanceSchemaValidationRelaxed(t *testing.T) {
 
 	st := doJSON(t, h, http.MethodPost, "/v1/statements", map[string]any{
 		"packageCode": "test",
-		"subject":  qid,
-		"property": pidName,
-		"value":    map[string]any{"type": "String", "string": "Alice"},
+		"subject":     qid,
+		"property":    pidName,
+		"value":       map[string]any{"type": "String", "string": "Alice"},
 	}, mergeHeaders(adminHeaders(), map[string]string{"X-Validation-Mode": "relaxed"}))
 	if st.StatusCode != http.StatusCreated {
 		t.Fatalf("create statement relaxed: %d %s", st.StatusCode, st.Body)
@@ -1518,9 +1663,9 @@ func TestAcceptanceSchemaValidationRelaxed(t *testing.T) {
 
 	strict := doJSON(t, h, http.MethodPost, "/v1/statements", map[string]any{
 		"packageCode": "test",
-		"subject":  qid,
-		"property": pidName,
-		"value":    map[string]any{"type": "String", "string": "Bob"},
+		"subject":     qid,
+		"property":    pidName,
+		"value":       map[string]any{"type": "String", "string": "Bob"},
 	}, mergeHeaders(adminHeaders(), map[string]string{"X-Validation-Mode": "strict"}))
 	if strict.StatusCode != http.StatusCreated {
 		t.Fatalf("strict duplicate name should still pass without maxCount: %d", strict.StatusCode)
@@ -1537,8 +1682,8 @@ func TestAcceptanceEntityProfile(t *testing.T) {
 
 	prop := doJSON(t, h, http.MethodPost, "/v1/properties", map[string]any{
 		"packageCode": "test",
-		"datatype": "String",
-		"labels":   map[string]string{"en": "note"},
+		"datatype":    "String",
+		"labels":      map[string]string{"en": "note"},
 	}, adminHeaders())
 	if prop.StatusCode != http.StatusCreated {
 		t.Fatalf("create property: %d %s", prop.StatusCode, prop.Body)
@@ -1552,15 +1697,15 @@ func TestAcceptanceEntityProfile(t *testing.T) {
 
 	class := doJSON(t, h, http.MethodPost, "/v1/classes", map[string]any{
 		"packageCode": "test",
-		"labels": map[string]string{"en": "Thing"},
+		"labels":      map[string]string{"en": "Thing"},
 	}, adminHeaders())
 	cid := parseDataID(t, class.Body)
 
 	st := doJSON(t, h, http.MethodPost, "/v1/statements", map[string]any{
 		"packageCode": "test",
-		"subject":  pid,
-		"property": pid,
-		"value":    map[string]any{"type": "String", "string": "meta about property"},
+		"subject":     pid,
+		"property":    pid,
+		"value":       map[string]any{"type": "String", "string": "meta about property"},
 	}, adminHeaders())
 	if st.StatusCode != http.StatusCreated {
 		t.Fatalf("statement about property: %d %s", st.StatusCode, st.Body)
@@ -1568,14 +1713,14 @@ func TestAcceptanceEntityProfile(t *testing.T) {
 
 	qEnt := doJSON(t, h, http.MethodPost, "/v1/entities", map[string]any{
 		"packageCode": "test",
-		"labels": map[string]string{"en": "ordinary"},
+		"labels":      map[string]string{"en": "ordinary"},
 	}, adminHeaders())
 	qid := parseDataID(t, qEnt.Body)
 	bad := doJSON(t, h, http.MethodPost, "/v1/statements", map[string]any{
 		"packageCode": "test",
-		"subject":  qid,
-		"property": qid,
-		"value":    map[string]any{"type": "String", "string": "no"},
+		"subject":     qid,
+		"property":    qid,
+		"value":       map[string]any{"type": "String", "string": "no"},
 	}, adminHeaders())
 	if bad.StatusCode == http.StatusCreated {
 		t.Fatal("expected reject when predicate has no property_profile")

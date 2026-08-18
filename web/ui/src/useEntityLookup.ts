@@ -3,9 +3,11 @@ import { apiFetch } from "./api";
 
 export type EntitySummary = {
   id: string;
+  displayId?: string;
   kind?: string;
   labels?: Record<string, string>;
   packageCode?: string;
+  iriLocal?: string;
 };
 
 const entityCache = new Map<string, EntitySummary>();
@@ -21,7 +23,7 @@ export function useEntityLookup(ids: string[]) {
     void Promise.all(
       missing.map(async (id) => {
         try {
-          const entity = await apiFetch<EntitySummary>(`/v1/entities/${id}`);
+          const entity = await apiFetch<EntitySummary>(`/v1/entities/${encodeURIComponent(id)}`);
           entityCache.set(id, entity);
         } catch {
           entityCache.set(id, { id });

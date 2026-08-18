@@ -19,6 +19,7 @@ type Pkg = {
 type OwnedObject = {
   objectType: string;
   publicId: string;
+  displayId?: string;
   revisionNo: number;
   labels?: Record<string, string>;
 };
@@ -196,9 +197,9 @@ export function PackageDetailPage() {
                 <td>{o.objectType}</td>
                 <td>
                   {o.objectType === "statement" ? (
-                    <StatementLink id={o.publicId} />
+                    <StatementLink id={o.publicId} displayId={o.displayId} />
                   ) : (
-                    <EntityLink id={o.publicId} labels={o.labels} lang={i18n.language} />
+                    <EntityLink id={o.publicId} displayId={o.displayId} labels={o.labels} lang={i18n.language} />
                   )}
                 </td>
                 <td>{o.revisionNo}</td>

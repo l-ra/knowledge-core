@@ -5,6 +5,7 @@ import (
 	"errors"
 	"io/fs"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 	"sync"
@@ -196,6 +197,18 @@ func subjectFromRequest(r *http.Request) (auth.Subject, bool) {
 	return auth.SubjectFromContext(r.Context())
 }
 
+func pathParam(r *http.Request, key string) string {
+	raw := chi.URLParam(r, key)
+	if raw == "" {
+		return ""
+	}
+	decoded, err := url.PathUnescape(raw)
+	if err != nil {
+		return raw
+	}
+	return decoded
+}
+
 func (s *Server) healthz(w http.ResponseWriter, r *http.Request) {
 	if err := s.store.Ping(r.Context()); err != nil {
 		writeError(w, http.StatusServiceUnavailable, "database unavailable")
@@ -238,7 +251,7 @@ func (s *Server) createEntity(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) getEntity(w http.ResponseWriter, r *http.Request) {
-	ent, err := s.engine.GetEntity(r.Context(), chi.URLParam(r, "qid"))
+	ent, err := s.engine.GetEntity(r.Context(), pathParam(r, "qid"))
 	if err != nil {
 		writeEngineError(w, err)
 		return
@@ -265,7 +278,7 @@ func (s *Server) updateEntity(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	meta := writeMetaFromRequest(r, "updateEntity", hashBody(body))
-	res, err := s.engine.UpdateEntity(r.Context(), meta, chi.URLParam(r, "qid"), domain.UpdateEntityInput{
+	res, err := s.engine.UpdateEntity(r.Context(), meta, pathParam(r, "qid"), domain.UpdateEntityInput{
 		Labels: req.Labels, Descriptions: req.Descriptions, IRILocal: req.IRILocal, ExpectedRevision: req.ExpectedRevision,
 	})
 	if err != nil {
@@ -301,7 +314,7 @@ func (s *Server) putEntityIRIAliases(w http.ResponseWriter, r *http.Request) {
 	for _, a := range req.Aliases {
 		aliases = append(aliases, domain.EntityIRIAlias{IRI: a.IRI, Kind: a.Kind})
 	}
-	ent, err := s.engine.SetEntityIRIAliases(r.Context(), chi.URLParam(r, "qid"), aliases)
+	ent, err := s.engine.SetEntityIRIAliases(r.Context(), pathParam(r, "qid"), aliases)
 	if err != nil {
 		writeEngineError(w, err)
 		return
@@ -310,7 +323,7 @@ func (s *Server) putEntityIRIAliases(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) getEntityHistory(w http.ResponseWriter, r *http.Request) {
-	h, err := s.engine.GetEntityHistory(r.Context(), chi.URLParam(r, "qid"))
+	h, err := s.engine.GetEntityHistory(r.Context(), pathParam(r, "qid"))
 	if err != nil {
 		writeEngineError(w, err)
 		return
@@ -364,7 +377,7 @@ func (s *Server) createProperty(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) getProperty(w http.ResponseWriter, r *http.Request) {
-	p, err := s.engine.GetProperty(r.Context(), chi.URLParam(r, "pid"))
+	p, err := s.engine.GetProperty(r.Context(), pathParam(r, "pid"))
 	if err != nil {
 		writeEngineError(w, err)
 		return
@@ -450,7 +463,7 @@ func (s *Server) createReference(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) getReference(w http.ResponseWriter, r *http.Request) {
-	ref, err := s.engine.GetReference(r.Context(), chi.URLParam(r, "rid"))
+	ref, err := s.engine.GetReference(r.Context(), pathParam(r, "rid"))
 	if err != nil {
 		writeEngineError(w, err)
 		return
@@ -487,7 +500,7 @@ func (s *Server) reviseStatement(w http.ResponseWriter, r *http.Request) {
 		in.ValidFrom = req.ValidFrom
 		in.ValidTo = req.ValidTo
 	}
-	res, err := s.engine.ReviseStatement(r.Context(), meta, chi.URLParam(r, "sid"), in)
+	res, err := s.engine.ReviseStatement(r.Context(), meta, pathParam(r, "sid"), in)
 	if err != nil {
 		writeEngineError(w, err)
 		return
@@ -496,7 +509,7 @@ func (s *Server) reviseStatement(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) getStatement(w http.ResponseWriter, r *http.Request) {
-	st, err := s.engine.GetStatement(r.Context(), chi.URLParam(r, "sid"))
+	st, err := s.engine.GetStatement(r.Context(), pathParam(r, "sid"))
 	if err != nil {
 		writeEngineError(w, err)
 		return
@@ -505,7 +518,7 @@ func (s *Server) getStatement(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) getStatementHistory(w http.ResponseWriter, r *http.Request) {
-	h, err := s.engine.GetStatementHistory(r.Context(), chi.URLParam(r, "sid"))
+	h, err := s.engine.GetStatementHistory(r.Context(), pathParam(r, "sid"))
 	if err != nil {
 		writeEngineError(w, err)
 		return
@@ -552,7 +565,7 @@ func (s *Server) listEntityStatements(w http.ResponseWriter, r *http.Request) {
 	list, next, err := s.engine.ListStatements(r.Context(), store.StatementListOptions{
 		Limit:       limit,
 		Cursor:      r.URL.Query().Get("cursor"),
-		SubjectQID:  chi.URLParam(r, "qid"),
+		SubjectQID:  pathParam(r, "qid"),
 		PropertyPID: r.URL.Query().Get("property"),
 	})
 	if err != nil {
@@ -576,7 +589,7 @@ func (s *Server) listIncomingStatements(w http.ResponseWriter, r *http.Request) 
 	list, next, err := s.engine.ListStatements(r.Context(), store.StatementListOptions{
 		Limit:       limit,
 		Cursor:      r.URL.Query().Get("cursor"),
-		ObjectQID:   chi.URLParam(r, "qid"),
+		ObjectQID:   pathParam(r, "qid"),
 		PropertyPID: r.URL.Query().Get("property"),
 	})
 	if err != nil {
@@ -597,7 +610,7 @@ func (s *Server) getEntityGraph(w http.ResponseWriter, r *http.Request) {
 			depth = n
 		}
 	}
-	g, err := s.engine.GetEntityGraph(r.Context(), chi.URLParam(r, "qid"), depth)
+	g, err := s.engine.GetEntityGraph(r.Context(), pathParam(r, "qid"), depth)
 	if err != nil {
 		writeEngineError(w, err)
 		return
@@ -639,7 +652,7 @@ func (s *Server) moveEntity(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	meta := writeMetaFromRequest(r, "moveEntity", hashBody(body))
-	res, err := s.engine.MoveEntity(r.Context(), meta, chi.URLParam(r, "qid"), domain.MoveEntityInput{
+	res, err := s.engine.MoveEntity(r.Context(), meta, pathParam(r, "qid"), domain.MoveEntityInput{
 		PackageCode: req.PackageCode, ExpectedRevision: req.ExpectedRevision,
 	})
 	if err != nil {
@@ -666,7 +679,7 @@ func (s *Server) patchProperty(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	meta := writeMetaFromRequest(r, "updateProperty", hashBody(body))
-	res, err := s.engine.UpdateProperty(r.Context(), meta, chi.URLParam(r, "pid"), domain.UpdatePropertyInput{
+	res, err := s.engine.UpdateProperty(r.Context(), meta, pathParam(r, "pid"), domain.UpdatePropertyInput{
 		Constraints: req.Constraints, ExpectedRevision: req.ExpectedRevision,
 	})
 	if err != nil {
@@ -716,7 +729,7 @@ func (s *Server) applyChangeSet(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) getChangeSet(w http.ResponseWriter, r *http.Request) {
-	cs, err := s.engine.GetChangeSet(r.Context(), chi.URLParam(r, "cid"))
+	cs, err := s.engine.GetChangeSet(r.Context(), pathParam(r, "cid"))
 	if err != nil {
 		writeEngineError(w, err)
 		return
@@ -775,7 +788,7 @@ func (s *Server) updatePackage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	meta := writeMetaFromRequest(r, "updatePackage", hashBody(body))
-	res, err := s.engine.UpdatePackage(r.Context(), meta, chi.URLParam(r, "code"), domain.UpdatePackageInput{
+	res, err := s.engine.UpdatePackage(r.Context(), meta, pathParam(r, "code"), domain.UpdatePackageInput{
 		IRIBase: req.IRIBase, Labels: req.Labels,
 	})
 	if err != nil {
@@ -806,7 +819,7 @@ func (s *Server) importPackageRDF(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	meta := writeMetaFromRequest(r, "importRDF", hashBody(body))
-	res, err := s.engine.ImportRDF(r.Context(), meta, chi.URLParam(r, "code"), domain.RDFImportInput{
+	res, err := s.engine.ImportRDF(r.Context(), meta, pathParam(r, "code"), domain.RDFImportInput{
 		NTriples: req.NTriples, DryRun: req.DryRun,
 	})
 	if err != nil {
@@ -902,7 +915,7 @@ func (s *Server) importRDFGlobal(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) getPackage(w http.ResponseWriter, r *http.Request) {
-	pkg, err := s.engine.GetPackage(r.Context(), chi.URLParam(r, "code"))
+	pkg, err := s.engine.GetPackage(r.Context(), pathParam(r, "code"))
 	if err != nil {
 		writeEngineError(w, err)
 		return
@@ -926,7 +939,7 @@ func (s *Server) publishRelease(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	meta := writeMetaFromRequest(r, "publishRelease", hashBody(body))
-	res, err := s.engine.PublishRelease(r.Context(), meta, chi.URLParam(r, "code"), domain.PublishReleaseInput{
+	res, err := s.engine.PublishRelease(r.Context(), meta, pathParam(r, "code"), domain.PublishReleaseInput{
 		Version: req.Version,
 	})
 	if err != nil {
@@ -937,7 +950,7 @@ func (s *Server) publishRelease(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) getRelease(w http.ResponseWriter, r *http.Request) {
-	rel, err := s.engine.GetRelease(r.Context(), chi.URLParam(r, "code"), chi.URLParam(r, "version"))
+	rel, err := s.engine.GetRelease(r.Context(), pathParam(r, "code"), pathParam(r, "version"))
 	if err != nil {
 		writeEngineError(w, err)
 		return
@@ -946,7 +959,7 @@ func (s *Server) getRelease(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) exportReleaseBundle(w http.ResponseWriter, r *http.Request) {
-	bundle, err := s.engine.ExportReleaseBundle(r.Context(), chi.URLParam(r, "code"), chi.URLParam(r, "version"))
+	bundle, err := s.engine.ExportReleaseBundle(r.Context(), pathParam(r, "code"), pathParam(r, "version"))
 	if err != nil {
 		writeEngineError(w, err)
 		return
@@ -955,7 +968,7 @@ func (s *Server) exportReleaseBundle(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) mutateRelease(w http.ResponseWriter, r *http.Request) {
-	err := s.engine.MutateRelease(r.Context(), chi.URLParam(r, "code"), chi.URLParam(r, "version"))
+	err := s.engine.MutateRelease(r.Context(), pathParam(r, "code"), pathParam(r, "version"))
 	if err != nil {
 		writeEngineError(w, err)
 		return
@@ -1038,6 +1051,7 @@ func entityDTO(e *domain.Entity) map[string]any {
 		"id": e.PublicID, "canonicalId": e.ID.String(), "status": e.Status,
 		"kind": kind, "revisionNo": e.RevisionNo,
 		"labels": e.Labels, "descriptions": e.Descriptions,
+		"displayId": datatype.PackageDisplayID(e.PackageCode, e.IRILocal, e.PublicID),
 		"createdAt": e.CreatedAt.UTC().Format(time.RFC3339Nano),
 		"updatedAt": e.UpdatedAt.UTC().Format(time.RFC3339Nano),
 	}
@@ -1076,6 +1090,7 @@ func propertyDTO(p *domain.Property) map[string]any {
 		"revisionNo": p.RevisionNo,
 		"labels":     p.Labels, "descriptions": p.Descriptions,
 		"constraints": p.Constraints,
+		"displayId":   datatype.PackageDisplayID(p.PackageCode, p.IRILocal, p.PublicID),
 		"createdAt":   p.CreatedAt.UTC().Format(time.RFC3339Nano),
 		"updatedAt":   p.UpdatedAt.UTC().Format(time.RFC3339Nano),
 	}
@@ -1093,7 +1108,8 @@ func statementDTO(st *domain.Statement) map[string]any {
 	out := map[string]any{
 		"id": st.PublicID, "canonicalId": st.ID.String(),
 		"subject": st.SubjectQID, "property": st.PropertyPID,
-		"status": st.Status, "revisionNo": st.RevisionNo, "value": st.Value,
+		"displayId": datatype.PackageDisplayID(st.PackageCode, "", st.PublicID),
+		"status":    st.Status, "revisionNo": st.RevisionNo, "value": st.Value,
 		"createdAt": st.CreatedAt.UTC().Format(time.RFC3339Nano),
 		"updatedAt": st.UpdatedAt.UTC().Format(time.RFC3339Nano),
 	}
@@ -1119,6 +1135,7 @@ func statementDTO(st *domain.Statement) map[string]any {
 func referenceDTO(ref *domain.Reference) map[string]any {
 	return map[string]any{
 		"id": ref.PublicID, "canonicalId": ref.ID.String(),
+		"displayId": datatype.PackageDisplayID("", "", ref.PublicID),
 		"fields":    ref.Fields,
 		"createdAt": ref.CreatedAt.UTC().Format(time.RFC3339Nano),
 	}
@@ -1136,7 +1153,8 @@ func changeSetDTO(cs *domain.ChangeSet) map[string]any {
 	}
 	return map[string]any{
 		"id": cs.PublicID, "canonicalId": cs.ID.String(),
-		"actor": cs.Actor, "operationType": cs.OperationType,
+		"displayId": datatype.PackageDisplayID("", "", cs.PublicID),
+		"actor":     cs.Actor, "operationType": cs.OperationType,
 		"committedAt": cs.CommittedAt.UTC().Format(time.RFC3339Nano),
 		"items":       items,
 	}

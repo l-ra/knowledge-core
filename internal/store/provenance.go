@@ -46,10 +46,8 @@ func (s *Store) CreateReference(ctx context.Context, meta domain.WriteMeta, in d
 	}
 
 	id := datatype.NewUUID()
-	publicID, err := s.nextPublicID(ctx, tx, "reference", "R")
-	if err != nil {
-		return nil, err
-	}
+	localID := generatedIRILocal("reference")
+	publicID := "urn:kc:reference:" + localID
 	now := time.Now().UTC()
 	fieldsJSON, err := json.Marshal(fields)
 	if err != nil {
@@ -249,6 +247,7 @@ func (s *Store) snapshotStatementProvenance(ctx context.Context, tx pgx.Tx, stat
 
 type querier interface {
 	Query(ctx context.Context, sql string, args ...any) (pgx.Rows, error)
+	QueryRow(ctx context.Context, sql string, args ...any) pgx.Row
 }
 
 func (s *Store) loadStatementProvenance(ctx context.Context, q querier, statementID uuid.UUID) ([]domain.Qualifier, []string, error) {
@@ -353,5 +352,14 @@ func (s *Store) enrichStatement(ctx context.Context, q querier, st *domain.State
 	}
 	st.Qualifiers = quals
 	st.ReferenceIDs = refs
+	var pkgCode string
+	if err := q.QueryRow(ctx, `
+		SELECT COALESCE(pkg.code, '')
+		FROM statement st
+		LEFT JOIN package pkg ON pkg.id = st.package_id
+		WHERE st.id = $1
+	`, st.ID).Scan(&pkgCode); err == nil {
+		st.PackageCode = pkgCode
+	}
 	return nil
 }

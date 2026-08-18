@@ -128,7 +128,7 @@ func (e *Engine) CreateReference(ctx context.Context, meta domain.WriteMeta, in 
 }
 
 func (e *Engine) GetReference(ctx context.Context, rid string) (*domain.Reference, error) {
-	if !strings.HasPrefix(rid, "R") {
+	if !datatype.IsIRI(rid) && !strings.HasPrefix(rid, "R") {
 		return nil, fmt.Errorf("%w: invalid reference id", ErrInvalid)
 	}
 	if err := e.authorizeGlobal(ctx, auth.OpRead); err != nil {

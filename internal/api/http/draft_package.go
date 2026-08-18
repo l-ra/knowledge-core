@@ -4,12 +4,11 @@ import (
 	"encoding/json"
 	"net/http"
 
-	"github.com/go-chi/chi/v5"
 	"github.com/l-ra/knowledge-core/internal/domain"
 )
 
 func (s *Server) listPackageReleases(w http.ResponseWriter, r *http.Request) {
-	items, err := s.engine.ListReleases(r.Context(), chi.URLParam(r, "code"))
+	items, err := s.engine.ListReleases(r.Context(), pathParam(r, "code"))
 	if err != nil {
 		writeEngineError(w, err)
 		return
@@ -22,7 +21,7 @@ func (s *Server) listPackageReleases(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) listPackageObjects(w http.ResponseWriter, r *http.Request) {
-	items, err := s.engine.ListPackageObjects(r.Context(), chi.URLParam(r, "code"))
+	items, err := s.engine.ListPackageObjects(r.Context(), pathParam(r, "code"))
 	if err != nil {
 		writeEngineError(w, err)
 		return
@@ -32,6 +31,7 @@ func (s *Server) listPackageObjects(w http.ResponseWriter, r *http.Request) {
 		out = append(out, map[string]any{
 			"objectType": o.ObjectType,
 			"publicId":   o.PublicID,
+			"displayId":  o.DisplayID,
 			"revisionNo": o.RevisionNo,
 			"labels":     o.Labels,
 		})
@@ -40,7 +40,7 @@ func (s *Server) listPackageObjects(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) listObjectReleases(w http.ResponseWriter, r *http.Request) {
-	items, err := s.engine.ListObjectReleases(r.Context(), chi.URLParam(r, "id"))
+	items, err := s.engine.ListObjectReleases(r.Context(), pathParam(r, "id"))
 	if err != nil {
 		writeEngineError(w, err)
 		return

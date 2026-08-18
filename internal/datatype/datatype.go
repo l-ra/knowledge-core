@@ -215,21 +215,33 @@ func NormalizeLabels(labels map[string]string) (map[string]string, error) {
 	return out, nil
 }
 
-// ParsePublicEntityID validates Q<n> form.
+// ParsePublicEntityID validates a legacy Q<n> or any accepted IRI.
 func ParsePublicEntityID(id string) (int64, error) {
+	if IsIRI(id) {
+		return 0, nil
+	}
 	return parsePrefixedID("Q", id)
 }
 
 func ParsePublicPropertyID(id string) (int64, error) {
+	if IsIRI(id) {
+		return 0, nil
+	}
 	return parsePrefixedID("P", id)
 }
 
 func ParsePublicClassID(id string) (int64, error) {
+	if IsIRI(id) {
+		return 0, nil
+	}
 	return parsePrefixedID("C", id)
 }
 
-// ParsePublicGraphID accepts Q*, P*, or C* (any named entity in the graph).
+// ParsePublicGraphID accepts Q*, P*, C*, or any accepted IRI.
 func ParsePublicGraphID(id string) (prefix string, n int64, err error) {
+	if IsIRI(id) {
+		return "IRI", 0, nil
+	}
 	switch {
 	case strings.HasPrefix(id, "Q"):
 		n, err = parsePrefixedID("Q", id)
@@ -246,6 +258,9 @@ func ParsePublicGraphID(id string) (prefix string, n int64, err error) {
 }
 
 func ParsePublicStatementID(id string) (int64, error) {
+	if IsIRI(id) {
+		return 0, nil
+	}
 	return parsePrefixedID("S", id)
 }
 

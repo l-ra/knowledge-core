@@ -5,19 +5,27 @@ import { apiFetch } from "../api";
 
 type Reference = {
   id: string;
+  displayId?: string;
   fields: Record<string, unknown>;
   createdAt?: string;
 };
 
 export function ReferencePage() {
-  const { rid = "" } = useParams();
+  const { rid: rawRid = "" } = useParams();
+  const rid = (() => {
+    try {
+      return decodeURIComponent(rawRid);
+    } catch {
+      return rawRid;
+    }
+  })();
   const { t } = useTranslation();
   const [reference, setReference] = useState<Reference | null>(null);
   const [error, setError] = useState("");
 
   useEffect(() => {
     setError("");
-    void apiFetch<Reference>(`/v1/references/${rid}`)
+    void apiFetch<Reference>(`/v1/references/${encodeURIComponent(rid)}`)
       .then(setReference)
       .catch((err) => setError(err instanceof Error ? err.message : t("common.error")));
   }, [rid, t]);
@@ -30,14 +38,14 @@ export function ReferencePage() {
         <Link to="/entities">{t("nav.entities")}</Link>
         <span>
           {" / "}
-          <strong>{rid}</strong>
+          <strong>{reference?.displayId || rid}</strong>
         </span>
       </nav>
       {error && <p className="error">{error}</p>}
       {reference && (
         <section className="panel stack">
           <h1>{t("reference.title")}</h1>
-          <p className="muted">{reference.id}</p>
+          <p className="muted">{reference.displayId || reference.id}</p>
           {reference.createdAt && (
             <p className="muted">
               {t("reference.createdAt")}: {reference.createdAt}

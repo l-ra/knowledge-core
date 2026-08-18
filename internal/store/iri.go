@@ -16,10 +16,42 @@ const (
 )
 
 func fallbackNSForPublicID(publicID string) string {
+	if datatype.IsIRI(publicID) {
+		return ""
+	}
 	if strings.HasPrefix(publicID, "P") {
 		return rdfNSProperty
 	}
 	return rdfNSEntity
+}
+
+func packageFallbackBase(packageCode string) string {
+	packageCode = strings.TrimSpace(packageCode)
+	if packageCode == "" {
+		return "urn:kc:resource:"
+	}
+	return "urn:kc:" + packageCode + ":"
+}
+
+func resolvePublicIRI(base, iriLocal, fallbackLocal, packageCode string) string {
+	local := strings.TrimSpace(iriLocal)
+	if local == "" {
+		local = strings.TrimSpace(fallbackLocal)
+	}
+	base = strings.TrimSpace(base)
+	if base != "" {
+		return datatype.ResolveIRI(base, local, fallbackLocal, "")
+	}
+	return packageFallbackBase(packageCode) + local
+}
+
+func (s *Store) packageIRIBaseByID(ctx context.Context, q pgx.Tx, packageID interface{}) (string, string, error) {
+	var code, base string
+	err := q.QueryRow(ctx, `SELECT code, COALESCE(iri_base,'') FROM package WHERE id = $1`, packageID).Scan(&code, &base)
+	if err != nil {
+		return "", "", err
+	}
+	return code, base, nil
 }
 
 func (s *Store) resolveEntityIRI(ctx context.Context, publicID string) (string, error) {
@@ -88,6 +120,23 @@ func (s *Store) loadEntityIRIAliases(ctx context.Context, entityID interface{}) 
 
 func normalizeOptionalIRILocal(raw string) (string, error) {
 	return datatype.NormalizeIRILocal(raw)
+}
+
+func generatedIRILocal(kind string) string {
+	switch strings.TrimSpace(kind) {
+	case "entity":
+		return datatype.NewFallbackIRILocal("e")
+	case "property":
+		return datatype.NewFallbackIRILocal("p")
+	case "class":
+		return datatype.NewFallbackIRILocal("c")
+	case "statement":
+		return datatype.NewFallbackIRILocal("s")
+	case "reference":
+		return datatype.NewFallbackIRILocal("r")
+	default:
+		return datatype.NewFallbackIRILocal("id")
+	}
 }
 
 func (s *Store) SetEntityIRIAliases(ctx context.Context, publicID string, aliases []domain.EntityIRIAlias) error {

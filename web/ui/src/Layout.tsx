@@ -14,8 +14,17 @@ export function Layout() {
   const [opsOpen, setOpsOpen] = useState(false);
   const [draftMsg, setDraftMsg] = useState("");
   const [draftError, setDraftError] = useState("");
+  const [hideObjectIds, setHideObjectIds] = useState(() => localStorage.getItem("kc.hideObjectIds") === "1");
   const displayName = session?.displayName || session?.subject || session?.mode || "—";
   const opCount = draft.operations?.length || 0;
+
+  function toggleObjectIds() {
+    setHideObjectIds((prev) => {
+      const next = !prev;
+      localStorage.setItem("kc.hideObjectIds", next ? "1" : "0");
+      return next;
+    });
+  }
 
   async function onOpen() {
     setDraftError("");
@@ -50,7 +59,7 @@ export function Layout() {
   }
 
   return (
-    <div className="app-shell">
+    <div className={`app-shell${hideObjectIds ? " ids-hidden" : ""}`}>
       <aside className="sidebar">
         <NavLink to="/" className="brand" end>
           {t("appName")}
@@ -139,6 +148,10 @@ export function Layout() {
               <option value="cs">CS</option>
               <option value="en">EN</option>
             </select>
+
+            <button type="button" className="topbar-btn" onClick={toggleObjectIds}>
+              {hideObjectIds ? t("common.showLocalIds") : t("common.hideLocalIds")}
+            </button>
 
             <div className="topbar-divider" />
 

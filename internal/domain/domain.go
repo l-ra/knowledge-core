@@ -55,22 +55,22 @@ type EntityIRIAlias struct {
 }
 
 type Entity struct {
-	ID           uuid.UUID
-	PublicID     string
-	Status       EntityStatus
-	Kind         EntityKind
-	PackageCode  string
-	IRILocal     string
-	IRI          string // computed canonical export IRI
-	IRIAliases   []EntityIRIAlias
-	Labels       map[string]string
-	Descriptions map[string]string
-	RevisionNo   int
-	PropertyProfile   *PropertyProfileInfo
-	ClassProfile      *ClassProfileInfo
-	EffectiveClasses  []string
-	CreatedAt         time.Time
-	UpdatedAt         time.Time
+	ID               uuid.UUID
+	PublicID         string
+	Status           EntityStatus
+	Kind             EntityKind
+	PackageCode      string
+	IRILocal         string
+	IRI              string // computed canonical export IRI
+	IRIAliases       []EntityIRIAlias
+	Labels           map[string]string
+	Descriptions     map[string]string
+	RevisionNo       int
+	PropertyProfile  *PropertyProfileInfo
+	ClassProfile     *ClassProfileInfo
+	EffectiveClasses []string
+	CreatedAt        time.Time
+	UpdatedAt        time.Time
 }
 
 type Property struct {
@@ -92,6 +92,7 @@ type Property struct {
 type Statement struct {
 	ID           uuid.UUID
 	PublicID     string
+	PackageCode  string
 	SubjectID    uuid.UUID
 	SubjectQID   string
 	PropertyID   uuid.UUID
@@ -126,23 +127,23 @@ type QualifierInput struct {
 }
 
 type WriteMeta struct {
-	Actor           string
-	IdempotencyKey  string
-	CorrelationID   string
-	OperationType   string
-	RequestHash     string
-	ValidationMode  ValidationMode
+	Actor          string
+	IdempotencyKey string
+	CorrelationID  string
+	OperationType  string
+	RequestHash    string
+	ValidationMode ValidationMode
 }
 
 type ChangeSet struct {
-	ID              uuid.UUID
-	PublicID        string
-	Actor           string
-	OperationType   string
-	CommittedAt     time.Time
-	IdempotencyKey  string
-	CorrelationID   string
-	Items           []ChangeSetItem
+	ID             uuid.UUID
+	PublicID       string
+	Actor          string
+	OperationType  string
+	CommittedAt    time.Time
+	IdempotencyKey string
+	CorrelationID  string
+	Items          []ChangeSetItem
 }
 
 type ChangeSetItem struct {
@@ -153,13 +154,13 @@ type ChangeSetItem struct {
 }
 
 type EntityRevision struct {
-	RevisionNo  int
-	Status      EntityStatus
-	Labels      map[string]string
+	RevisionNo   int
+	Status       EntityStatus
+	Labels       map[string]string
 	Descriptions map[string]string
-	Actor       string
-	ChangeSetID *uuid.UUID
-	CreatedAt   time.Time
+	Actor        string
+	ChangeSetID  *uuid.UUID
+	CreatedAt    time.Time
 }
 
 type StatementRevision struct {
@@ -236,15 +237,15 @@ type EntityGraph struct {
 }
 
 type ReviseStatementInput struct {
-	Value            *datatype.Value
-	Qualifiers       []QualifierInput
+	Value             *datatype.Value
+	Qualifiers        []QualifierInput
 	ReplaceQualifiers bool
-	ReferenceIDs     []string
+	ReferenceIDs      []string
 	ReplaceReferences bool
-	ValidFrom        *time.Time
-	ValidTo          *time.Time
-	ReplaceValidTime bool
-	ExpectedRevision int
+	ValidFrom         *time.Time
+	ValidTo           *time.Time
+	ReplaceValidTime  bool
+	ExpectedRevision  int
 }
 
 type CreateReferenceInput struct {
@@ -252,26 +253,26 @@ type CreateReferenceInput struct {
 }
 
 type ChangeOperation struct {
-	Op               string              `json:"op"`
-	ClientKey        string              `json:"clientKey,omitempty"`
-	PackageCode      string              `json:"packageCode,omitempty"`
-	Statement        string              `json:"statement,omitempty"`
-	Entity           string              `json:"entity,omitempty"`
-	Subject          string              `json:"subject,omitempty"`
-	Property         string              `json:"property,omitempty"`
-	Datatype         string              `json:"datatype,omitempty"`
+	Op               string               `json:"op"`
+	ClientKey        string               `json:"clientKey,omitempty"`
+	PackageCode      string               `json:"packageCode,omitempty"`
+	Statement        string               `json:"statement,omitempty"`
+	Entity           string               `json:"entity,omitempty"`
+	Subject          string               `json:"subject,omitempty"`
+	Property         string               `json:"property,omitempty"`
+	Datatype         string               `json:"datatype,omitempty"`
 	Constraints      *PropertyConstraints `json:"constraints,omitempty"`
-	SubClassOf       string              `json:"subClassOf,omitempty"`
-	Value            datatype.Value      `json:"value,omitempty"`
-	Qualifiers       []QualifierInput    `json:"qualifiers,omitempty"`
-	ReferenceIDs     []string            `json:"referenceIds,omitempty"`
-	ValidFrom        *time.Time          `json:"validFrom,omitempty"`
-	ValidTo          *time.Time          `json:"validTo,omitempty"`
-	Labels           map[string]string   `json:"labels,omitempty"`
-	Descriptions     map[string]string   `json:"descriptions,omitempty"`
-	IRILocal         string              `json:"iriLocal,omitempty"`
-	ExpectedRevision int                 `json:"expectedRevision,omitempty"`
-	Upsert           bool                `json:"upsert,omitempty"`
+	SubClassOf       string               `json:"subClassOf,omitempty"`
+	Value            datatype.Value       `json:"value,omitempty"`
+	Qualifiers       []QualifierInput     `json:"qualifiers,omitempty"`
+	ReferenceIDs     []string             `json:"referenceIds,omitempty"`
+	ValidFrom        *time.Time           `json:"validFrom,omitempty"`
+	ValidTo          *time.Time           `json:"validTo,omitempty"`
+	Labels           map[string]string    `json:"labels,omitempty"`
+	Descriptions     map[string]string    `json:"descriptions,omitempty"`
+	IRILocal         string               `json:"iriLocal,omitempty"`
+	ExpectedRevision int                  `json:"expectedRevision,omitempty"`
+	Upsert           bool                 `json:"upsert,omitempty"`
 }
 
 type ApplyChangeSetInput struct {
@@ -282,17 +283,18 @@ type ApplyChangeSetInput struct {
 
 // ChangeSetDraft is a per-user working document (not a committed ChangeSet).
 type ChangeSetDraft struct {
-	Open         bool              `json:"open"`
-	Title        string            `json:"title,omitempty"`
-	PackageCode  string            `json:"packageCode,omitempty"`
-	Operations   []ChangeOperation `json:"operations"`
-	UpdatedAt    string            `json:"updatedAt,omitempty"`
-	CreatedAt    string            `json:"createdAt,omitempty"`
+	Open        bool              `json:"open"`
+	Title       string            `json:"title,omitempty"`
+	PackageCode string            `json:"packageCode,omitempty"`
+	Operations  []ChangeOperation `json:"operations"`
+	UpdatedAt   string            `json:"updatedAt,omitempty"`
+	CreatedAt   string            `json:"createdAt,omitempty"`
 }
 
 type BundleClass struct {
 	PublicID     string            `json:"id"`
 	PackageCode  string            `json:"packageCode,omitempty"`
+	IRILocal     string            `json:"iriLocal,omitempty"`
 	RevisionNo   int               `json:"revisionNo"`
 	Status       PropertyStatus    `json:"status"`
 	Labels       map[string]string `json:"labels"`
@@ -347,6 +349,7 @@ type ReleaseObject struct {
 type PackageObject struct {
 	ObjectType string
 	PublicID   string
+	DisplayID  string
 	RevisionNo int
 	Labels     map[string]string
 }
@@ -378,17 +381,18 @@ type BundleShape struct {
 }
 
 type BundleManifest struct {
-	FormatVersion int                    `json:"formatVersion"`
-	Package       string                 `json:"package"`
-	Version       string                 `json:"version"`
-	PublishedAt   string                 `json:"publishedAt"`
-	Dependencies  []ReleaseDependency    `json:"dependencies"`
-	ObjectIndex   []ReleaseObject        `json:"objectIndex"`
+	FormatVersion int                 `json:"formatVersion"`
+	Package       string              `json:"package"`
+	Version       string              `json:"version"`
+	PublishedAt   string              `json:"publishedAt"`
+	Dependencies  []ReleaseDependency `json:"dependencies"`
+	ObjectIndex   []ReleaseObject     `json:"objectIndex"`
 }
 
 type BundleEntity struct {
 	PublicID     string            `json:"id"`
 	PackageCode  string            `json:"packageCode,omitempty"`
+	IRILocal     string            `json:"iriLocal,omitempty"`
 	RevisionNo   int               `json:"revisionNo"`
 	Status       EntityStatus      `json:"status"`
 	Labels       map[string]string `json:"labels"`
@@ -398,6 +402,7 @@ type BundleEntity struct {
 type BundleProperty struct {
 	PublicID     string            `json:"id"`
 	PackageCode  string            `json:"packageCode,omitempty"`
+	IRILocal     string            `json:"iriLocal,omitempty"`
 	RevisionNo   int               `json:"revisionNo"`
 	Datatype     datatype.Type     `json:"datatype"`
 	Status       PropertyStatus    `json:"status"`
@@ -465,11 +470,11 @@ type RDFImportResult struct {
 // RDFAnalyze / global import
 
 type RDFPrefixCandidate struct {
-	IRIBase         string   `json:"iriBase"`
-	SuggestedCode   string   `json:"suggestedCode"`
-	IRICount        int      `json:"iriCount"`
-	TripleCount     int      `json:"tripleCount"`
-	SampleIRIs      []string `json:"sampleIris,omitempty"`
+	IRIBase       string   `json:"iriBase"`
+	SuggestedCode string   `json:"suggestedCode"`
+	IRICount      int      `json:"iriCount"`
+	TripleCount   int      `json:"tripleCount"`
+	SampleIRIs    []string `json:"sampleIris,omitempty"`
 	// create | update | use
 	SuggestedAction string `json:"suggestedAction"`
 	ExistingCode    string `json:"existingPackageCode,omitempty"`
@@ -508,8 +513,8 @@ type PackageBrief struct {
 type RDFGlobalAssignment struct {
 	IRIBase     string `json:"iriBase"`
 	PackageCode string `json:"packageCode"`
-	Create      bool   `json:"create"`      // create package if missing
-	SetIRIBase  bool   `json:"setIriBase"`  // set/update package.iri_base
+	Create      bool   `json:"create"`     // create package if missing
+	SetIRIBase  bool   `json:"setIriBase"` // set/update package.iri_base
 	Label       string `json:"label,omitempty"`
 }
 
@@ -520,11 +525,11 @@ type RDFGlobalImportInput struct {
 }
 
 type RDFGlobalPackageResult struct {
-	IRIBase     string          `json:"iriBase"`
-	PackageCode string          `json:"packageCode"`
-	Action      string          `json:"action"` // create | update | use | skip
+	IRIBase     string           `json:"iriBase"`
+	PackageCode string           `json:"packageCode"`
+	Action      string           `json:"action"` // create | update | use | skip
 	Import      *RDFImportResult `json:"import,omitempty"`
-	Error       string          `json:"error,omitempty"`
+	Error       string           `json:"error,omitempty"`
 }
 
 type RDFGlobalImportResult struct {

@@ -79,7 +79,7 @@ paths:
           schema: { type: string }
         - name: instanceOf
           in: query
-          description: Class public id (C*)
+          description: Class IRI
           schema: { type: string }
         - name: includeSubclasses
           in: query
@@ -761,7 +761,7 @@ components:
             - Interval
         entityId:
           type: string
-          description: EntityReference — Q*/P*/C*
+          description: EntityReference — canonical IRI
         string:
           type: string
         langMap:
@@ -872,11 +872,16 @@ components:
             type: string
         iriLocal:
           type: string
+          description: Optional meaningful local identifier. If omitted, the server generates a stable fallback local ID.
     Entity:
       type: object
       properties:
         id:
           type: string
+          description: Canonical IRI
+        displayId:
+          type: string
+          description: Short UI alias such as packageCode:iriLocal
         canonicalId:
           type: string
           format: uuid
@@ -897,6 +902,7 @@ components:
           type: string
         iriLocal:
           type: string
+          description: Package-local identifier used to compose the canonical IRI.
         iri:
           type: string
         iriAliases:
@@ -952,6 +958,10 @@ components:
       properties:
         id:
           type: string
+          description: Canonical IRI
+        displayId:
+          type: string
+          description: Short UI alias such as packageCode:iriLocal
         canonicalId:
           type: string
           format: uuid
@@ -1040,11 +1050,16 @@ components:
           type: string
         iriLocal:
           type: string
+          description: Optional meaningful local identifier. If omitted, the server generates a stable fallback local ID.
     Class:
       type: object
       properties:
         id:
           type: string
+          description: Canonical IRI
+        displayId:
+          type: string
+          description: Short UI alias such as packageCode:iriLocal
         canonicalId:
           type: string
           format: uuid
@@ -1065,6 +1080,7 @@ components:
           type: string
         iriLocal:
           type: string
+          description: Package-local identifier used to compose the canonical IRI.
         iri:
           type: string
         effectiveClasses:
@@ -1109,11 +1125,16 @@ components:
           $ref: "#/components/schemas/PropertyConstraints"
         iriLocal:
           type: string
+          description: Optional meaningful local identifier. If omitted, the server generates a stable fallback local ID.
     Property:
       type: object
       properties:
         id:
           type: string
+          description: Canonical IRI
+        displayId:
+          type: string
+          description: Short UI alias such as packageCode:iriLocal
         canonicalId:
           type: string
           format: uuid
@@ -1135,6 +1156,7 @@ components:
           type: string
         iriLocal:
           type: string
+          description: Package-local identifier used to compose the canonical IRI.
         iri:
           type: string
         createdAt:

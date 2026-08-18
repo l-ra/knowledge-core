@@ -5,7 +5,7 @@ import (
 	"net/http"
 	"strconv"
 
-	"github.com/go-chi/chi/v5"
+	"github.com/l-ra/knowledge-core/internal/datatype"
 	"github.com/l-ra/knowledge-core/internal/domain"
 	"github.com/l-ra/knowledge-core/internal/validate"
 )
@@ -65,7 +65,7 @@ func (s *Server) createClass(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) getClass(w http.ResponseWriter, r *http.Request) {
-	c, err := s.engine.GetClass(r.Context(), chi.URLParam(r, "cid"))
+	c, err := s.engine.GetClass(r.Context(), pathParam(r, "cid"))
 	if err != nil {
 		writeEngineError(w, err)
 		return
@@ -115,7 +115,7 @@ func (s *Server) createShape(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) getShape(w http.ResponseWriter, r *http.Request) {
-	sh, err := s.engine.GetShape(r.Context(), chi.URLParam(r, "code"))
+	sh, err := s.engine.GetShape(r.Context(), pathParam(r, "code"))
 	if err != nil {
 		writeEngineError(w, err)
 		return
@@ -160,7 +160,7 @@ func (s *Server) putSchemaConfig(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) getEntityValidation(w http.ResponseWriter, r *http.Request) {
-	qid := chi.URLParam(r, "qid")
+	qid := pathParam(r, "qid")
 	res, err := s.engine.ValidateEntity(r.Context(), qid, validate.Options{})
 	if err != nil {
 		writeEngineError(w, err)
@@ -170,9 +170,9 @@ func (s *Server) getEntityValidation(w http.ResponseWriter, r *http.Request) {
 }
 
 type createValidationReportReq struct {
-	Scope      string   `json:"scope,omitempty"`
-	EntityIDs  []string `json:"entityIds"`
-	Persist    bool     `json:"persist"`
+	Scope     string   `json:"scope,omitempty"`
+	EntityIDs []string `json:"entityIds"`
+	Persist   bool     `json:"persist"`
 }
 
 func (s *Server) createValidationReport(w http.ResponseWriter, r *http.Request) {
@@ -198,7 +198,7 @@ func (s *Server) createValidationReport(w http.ResponseWriter, r *http.Request) 
 }
 
 func (s *Server) getValidationReport(w http.ResponseWriter, r *http.Request) {
-	rep, err := s.engine.GetValidationReport(r.Context(), chi.URLParam(r, "id"))
+	rep, err := s.engine.GetValidationReport(r.Context(), pathParam(r, "id"))
 	if err != nil {
 		writeEngineError(w, err)
 		return
@@ -209,8 +209,9 @@ func (s *Server) getValidationReport(w http.ResponseWriter, r *http.Request) {
 func classDTO(c *domain.ClassDefinition) map[string]any {
 	out := map[string]any{
 		"id": c.PublicID, "canonicalId": c.ID, "status": c.Status,
-		"labels": c.Labels, "descriptions": c.Descriptions,
-		"document": c.Document,
+		"displayId": datatype.PackageDisplayID(c.PackageCode, c.IRILocal, c.PublicID),
+		"labels":    c.Labels, "descriptions": c.Descriptions,
+		"document":  c.Document,
 		"createdAt": c.CreatedAt, "updatedAt": c.UpdatedAt,
 	}
 	if c.PackageCode != "" {
@@ -229,7 +230,7 @@ func classDTO(c *domain.ClassDefinition) map[string]any {
 func shapeDTO(sh *domain.ShapeProfile) map[string]any {
 	out := map[string]any{
 		"id": sh.ID, "code": sh.Code, "classId": sh.ClassPID,
-		"document": sh.Document,
+		"document":  sh.Document,
 		"createdAt": sh.CreatedAt, "updatedAt": sh.UpdatedAt,
 	}
 	if sh.PackageCode != "" {

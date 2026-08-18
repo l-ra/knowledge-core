@@ -220,10 +220,7 @@ func (s *Store) createEntityInTx(ctx context.Context, tx pgx.Tx, cs *changeSetTx
 		descs = map[string]string{}
 	}
 	id := datatype.NewUUID()
-	publicID, err := s.nextPublicID(ctx, tx, "entity", "Q")
-	if err != nil {
-		return nil, err
-	}
+	localID := generatedIRILocal("entity")
 	pkgID, err := s.resolvePackageIDRequired(ctx, tx, in.PackageCode)
 	if err != nil {
 		return nil, err
@@ -231,6 +228,14 @@ func (s *Store) createEntityInTx(ctx context.Context, tx pgx.Tx, cs *changeSetTx
 	iriLocal, err := normalizeOptionalIRILocal(in.IRILocal)
 	if err != nil {
 		return nil, err
+	}
+	pkgCode, iriBase, err := s.packageIRIBaseByID(ctx, tx, pkgID)
+	if err != nil {
+		return nil, err
+	}
+	publicID := resolvePublicIRI(iriBase, iriLocal, localID, pkgCode)
+	if iriLocal == "" {
+		iriLocal = localID
 	}
 	now := time.Now().UTC()
 	_, err = tx.Exec(ctx, `
@@ -283,10 +288,7 @@ func (s *Store) createPropertyInTx(ctx context.Context, tx pgx.Tx, cs *changeSet
 		descs = map[string]string{}
 	}
 	id := datatype.NewUUID()
-	publicID, err := s.nextPublicID(ctx, tx, "property", "P")
-	if err != nil {
-		return nil, err
-	}
+	localID := generatedIRILocal("property")
 	pkgID, err := s.resolvePackageIDRequired(ctx, tx, in.PackageCode)
 	if err != nil {
 		return nil, err
@@ -294,6 +296,14 @@ func (s *Store) createPropertyInTx(ctx context.Context, tx pgx.Tx, cs *changeSet
 	iriLocal, err := normalizeOptionalIRILocal(in.IRILocal)
 	if err != nil {
 		return nil, err
+	}
+	pkgCode, iriBase, err := s.packageIRIBaseByID(ctx, tx, pkgID)
+	if err != nil {
+		return nil, err
+	}
+	publicID := resolvePublicIRI(iriBase, iriLocal, localID, pkgCode)
+	if iriLocal == "" {
+		iriLocal = localID
 	}
 	now := time.Now().UTC()
 	constraintsJSON, _ := json.Marshal(in.Constraints)
@@ -352,10 +362,7 @@ func (s *Store) createClassInTx(ctx context.Context, tx pgx.Tx, cs *changeSetTx,
 		descs = map[string]string{}
 	}
 	id := datatype.NewUUID()
-	publicID, err := s.nextPublicID(ctx, tx, "class", "C")
-	if err != nil {
-		return nil, err
-	}
+	localID := generatedIRILocal("class")
 	pkgID, err := s.resolvePackageIDRequired(ctx, tx, in.PackageCode)
 	if err != nil {
 		return nil, err
@@ -383,6 +390,14 @@ func (s *Store) createClassInTx(ctx context.Context, tx pgx.Tx, cs *changeSetTx,
 	iriLocal, err := normalizeOptionalIRILocal(in.IRILocal)
 	if err != nil {
 		return nil, err
+	}
+	pkgCode, iriBase, err := s.packageIRIBaseByID(ctx, tx, pkgID)
+	if err != nil {
+		return nil, err
+	}
+	publicID := resolvePublicIRI(iriBase, iriLocal, localID, pkgCode)
+	if iriLocal == "" {
+		iriLocal = localID
 	}
 	now := time.Now().UTC()
 	_, err = tx.Exec(ctx, `
@@ -468,14 +483,16 @@ func (s *Store) createStatementInTx(ctx context.Context, tx pgx.Tx, cs *changeSe
 		}
 	}
 	id := datatype.NewUUID()
-	publicID, err := s.nextPublicID(ctx, tx, "statement", "S")
-	if err != nil {
-		return nil, err
-	}
+	localID := generatedIRILocal("statement")
 	pkgID, err := s.resolvePackageIDRequired(ctx, tx, in.PackageCode)
 	if err != nil {
 		return nil, err
 	}
+	pkgCode, iriBase, err := s.packageIRIBaseByID(ctx, tx, pkgID)
+	if err != nil {
+		return nil, err
+	}
+	publicID := resolvePublicIRI(iriBase, "statement/"+localID, "statement/"+localID, pkgCode)
 	now := time.Now().UTC()
 	_, err = tx.Exec(ctx, `
 		INSERT INTO statement (
@@ -539,22 +556,22 @@ func (s *Store) createStatementInTx(ctx context.Context, tx pgx.Tx, cs *changeSe
 	if err != nil {
 		return nil, err
 	}
-		if err := s.snapshotStatementProvenance(ctx, tx, id, 1); err != nil {
-			return nil, err
-		}
-		if err := cs.addItem(ctx, tx, "statement", id, publicID, "create", nil); err != nil {
-			return nil, err
-		}
-		st, err := s.getStatementTx(ctx, tx, publicID)
-		if err != nil {
-			return nil, err
-		}
-		st.RevisionNo = 1
-		if err := s.enrichStatement(ctx, tx, st); err != nil {
-			return nil, err
-		}
-		return st, nil
+	if err := s.snapshotStatementProvenance(ctx, tx, id, 1); err != nil {
+		return nil, err
 	}
+	if err := cs.addItem(ctx, tx, "statement", id, publicID, "create", nil); err != nil {
+		return nil, err
+	}
+	st, err := s.getStatementTx(ctx, tx, publicID)
+	if err != nil {
+		return nil, err
+	}
+	st.RevisionNo = 1
+	if err := s.enrichStatement(ctx, tx, st); err != nil {
+		return nil, err
+	}
+	return st, nil
+}
 
 func (s *Store) deprecateStatementInTx(ctx context.Context, tx pgx.Tx, cs *changeSetTx, meta domain.WriteMeta, publicID string, expectedRevision int) (*domain.Statement, error) {
 	var statementID uuid.UUID

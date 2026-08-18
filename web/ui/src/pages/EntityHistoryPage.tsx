@@ -6,14 +6,21 @@ import { EntityLink } from "../links";
 import { useEntityLookup } from "../useEntityLookup";
 
 export function EntityHistoryPage() {
-  const { qid = "" } = useParams();
+  const { qid: rawQid = "" } = useParams();
+  const qid = (() => {
+    try {
+      return decodeURIComponent(rawQid);
+    } catch {
+      return rawQid;
+    }
+  })();
   const { t, i18n } = useTranslation();
   const [revs, setRevs] = useState<unknown[]>([]);
   const [error, setError] = useState("");
   const entities = useEntityLookup([qid]);
 
   useEffect(() => {
-    apiFetch<{ revisions: unknown[] }>(`/v1/entities/${qid}/history`)
+    apiFetch<{ revisions: unknown[] }>(`/v1/entities/${encodeURIComponent(qid)}/history`)
       .then((r) => setRevs(r.revisions || []))
       .catch((err) => setError(err instanceof Error ? err.message : t("common.error")));
   }, [qid, t]);
@@ -23,7 +30,7 @@ export function EntityHistoryPage() {
       <nav className="breadcrumb muted">
         <Link to="/entities">{t("nav.entities")}</Link>
         {" / "}
-        <EntityLink id={qid} labels={entities[qid]?.labels} lang={i18n.language} />
+        <EntityLink id={qid} displayId={entities[qid]?.displayId} labels={entities[qid]?.labels} lang={i18n.language} />
         {" / "}
         {t("entity.history")}
       </nav>

@@ -27,9 +27,9 @@ Doménová pravidla (matice vazeb, enumy, mapování do XML) implementuje **klie
 ├─────────────────────────────────────────────────────────┤
 │ 3. Software — Go služba, lens engine, auth              │
 ├─────────────────────────────────────────────────────────┤
-│ 2. Model repository — packages, C*/P*, shapes, lenses   │
+│ 2. Model repository — packages, IRI resources, shapes, lenses │
 ├─────────────────────────────────────────────────────────┤
-│ 1. Knowledge graph — Q* entity, S* statements           │
+│ 1. Knowledge graph — IRI entities and statements        │
 └─────────────────────────────────────────────────────────┘
          Source of truth = PostgreSQL (vrstvy 1 + 2)
 ```
@@ -45,17 +45,20 @@ Klientská aplikace typicky:
 
 | Objekt | Public ID | Stabilní mezi instalacemi |
 |--------|-----------|---------------------------|
-| Entita | `Q<n>` | Ne — liší se per instalace |
-| Property | `P<n>` | Ne |
-| Class | `C<n>` | Ne |
-| Statement | `S<n>` | Ne |
-| Reference | `R<n>` | Ne |
+| Entita | plná IRI | Ano, pokud package namespace zůstává stejný |
+| Property | plná IRI | Ano |
+| Class | plná IRI | Ano |
+| Statement | plná IRI | Ano |
+| Reference | plná IRI | Ano |
 
-**Stabilní identita ve slovníku** = `iriLocal` v rámci package + `package.iriBase`.
+**Stabilní identita ve slovníku** = plná IRI.  
+Krátké zobrazení v UI je jen alias odvozený z `packageCode:iriLocal`.
 
 Kanonické IRI = `iriBase` + `iriLocal` (např. `https://example.org/my-model/ApplicationComponent`).
 
-> Veřejná ID (`Q12`, `P7`) se **nikdy nerecyklují**. Label není identita — je to prezentační metadata.
+Pokud klient nezadá významové `iriLocal`, KC vygeneruje stabilní fallback `iriLocal` ve tvaru `e_<snowflake>`, `p_<snowflake>`, `c_<snowflake>`, `s_<snowflake>`, `r_<snowflake>`.
+
+Label není identita — je to prezentační metadata.
 
 ## Entity, třídy a properties
 
@@ -63,11 +66,11 @@ Všechny tři druhy jsou **entity** v datastore. Rozdíl je v profilu:
 
 | Druh | Public ID | Profil | Typický účel |
 |------|-----------|--------|--------------|
-| Obyčejná entita | `Q*` | — | Instance doménových objektů |
-| Property | `P*` | `property_profile` | Datatype, constraints |
-| Class | `C*` | `class_profile` | Typ entity, `subClassOf` |
+| Obyčejná entita | IRI | — | Instance doménových objektů |
+| Property | IRI | `property_profile` | Datatype, constraints |
+| Class | IRI | `class_profile` | Typ entity, `subClassOf` |
 
-Typing instance: statement na property **`instanceOf`** (globální schema-config) → hodnota `EntityReference` na `C*`.
+Typing instance: statement na property **`instanceOf`** (globální schema-config) → hodnota `EntityReference` na IRI class entity.
 
 Schema kontrakt (datatype, `rangeClasses`, `subClassOf`) žije v **profilu**, ne v obyčejných statementech na entitě.
 
@@ -76,7 +79,7 @@ Schema kontrakt (datatype, `rangeClasses`, `subClassOf`) žije v **profilu**, ne
 First-class tvrzení:
 
 ```text
-subject (Q/P/C) + property (P*) + typed value + status
+subject (IRI) + property (IRI) + typed value + status
   + volitelně: qualifiers, references, validFrom/validTo, packageCode
 ```
 
@@ -106,7 +109,7 @@ Revision (optimistic lock na entitě) ≠ Release (verze metamodelu).
 ## Typická struktura packages
 
 ```text
-my-domain/          ← metamodel (třídy, P*, shapes, policy data)
+my-domain/          ← metamodel (třídy, properties, shapes, policy data)
 sys-crm/            ← instance jednoho systému
 sys-erp/
 platform/           ← sdílené závislosti (IdP, DNS, …)
@@ -180,8 +183,8 @@ sequenceDiagram
     Client->>KC: POST /v1/packages (metamodel)
     Client->>KC: POST /v1/classes, /v1/properties
     Client->>KC: PUT /v1/admin/schema-config (instanceOfProperty)
-    Client->>KC: POST /v1/entities (Q* instance)
-    Client->>KC: POST /v1/statements (instanceOf → C*)
+    Client->>KC: POST /v1/entities (IRI instance)
+    Client->>KC: POST /v1/statements (instanceOf → class IRI)
     Client->>KC: POST /v1/statements (atributy, vazby)
     KC->>PG: ChangeSet + canonical graph
     Client->>KC: GET /v1/entities/{qid}/graph

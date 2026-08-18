@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"net/http"
 
-	"github.com/go-chi/chi/v5"
 	"github.com/l-ra/knowledge-core/internal/auth"
 	"github.com/l-ra/knowledge-core/internal/engine"
 )
@@ -23,7 +22,7 @@ func (s *Server) listPolicies(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) getPolicy(w http.ResponseWriter, r *http.Request) {
-	p, err := s.engine.GetPolicy(r.Context(), chi.URLParam(r, "name"))
+	p, err := s.engine.GetPolicy(r.Context(), pathParam(r, "name"))
 	if err != nil {
 		writeEngineError(w, err)
 		return
@@ -50,7 +49,7 @@ func (s *Server) upsertPolicy(w http.ResponseWriter, r *http.Request) {
 	}
 	name := req.Name
 	if name == "" {
-		name = chi.URLParam(r, "name")
+		name = pathParam(r, "name")
 	}
 	p, err := s.engine.UpsertPolicy(r.Context(), engine.UpsertPolicyInput{
 		Name: name, Priority: req.Priority, Document: req.Document,
@@ -63,7 +62,7 @@ func (s *Server) upsertPolicy(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) deletePolicy(w http.ResponseWriter, r *http.Request) {
-	if err := s.engine.DeletePolicy(r.Context(), chi.URLParam(r, "name")); err != nil {
+	if err := s.engine.DeletePolicy(r.Context(), pathParam(r, "name")); err != nil {
 		writeEngineError(w, err)
 		return
 	}
