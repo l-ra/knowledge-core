@@ -2,6 +2,7 @@ import { FormEvent, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { apiFetch } from "../api";
+import { EntityLink } from "../links";
 
 type Property = {
   id: string;
@@ -26,7 +27,7 @@ const DATATYPES = [
 ];
 
 export function PropertiesPage() {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const [items, setItems] = useState<Property[]>([]);
   const [label, setLabel] = useState("");
   const [datatype, setDatatype] = useState("String");
@@ -97,8 +98,7 @@ export function PropertiesPage() {
       <table className="table">
         <thead>
           <tr>
-            <th>ID</th>
-            <th>Label</th>
+            <th>{t("entity.label")}</th>
             <th>Datatype</th>
             <th>{t("properties.constraints")}</th>
           </tr>
@@ -107,9 +107,8 @@ export function PropertiesPage() {
           {items.map((p) => (
             <tr key={p.id}>
               <td>
-                <Link to={`/entities/${p.id}`}>{p.id}</Link>
+                <EntityLink id={p.id} labels={p.labels} lang={i18n.language} />
               </td>
-              <td>{p.labels?.en}</td>
               <td>{p.datatype}</td>
               <td className="muted">{p.constraints ? JSON.stringify(p.constraints) : "—"}</td>
             </tr>

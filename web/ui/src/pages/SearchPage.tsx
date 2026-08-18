@@ -1,7 +1,8 @@
-import { FormEvent, useState } from "react";
-import { Link } from "react-router-dom";
+import { FormEvent, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { apiFetch } from "../api";
+import { EntityLink, StatementLink } from "../links";
+import { useEntityLookup } from "../useEntityLookup";
 
 type Hit = {
   objectType: string;
@@ -12,11 +13,21 @@ type Hit = {
 };
 
 export function SearchPage() {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const [q, setQ] = useState("");
   const [hits, setHits] = useState<Hit[]>([]);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+
+  const entityIds = useMemo(
+    () =>
+      hits
+        .filter((h) => h.objectType === "entity" || h.objectType === "property" || h.objectType === "class")
+        .map((h) => h.publicId)
+        .concat(hits.filter((h) => h.subjectQid).map((h) => h.subjectQid!)),
+    [hits],
+  );
+  const entities = useEntityLookup(entityIds);
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
@@ -61,10 +72,12 @@ export function SearchPage() {
             <tr key={`${h.objectType}:${h.publicId}`}>
               <td>{h.objectType}</td>
               <td>
-                {h.objectType === "entity" ? (
-                  <Link to={`/entities/${h.publicId}`}>{h.publicId}</Link>
+                {h.objectType === "entity" || h.objectType === "property" || h.objectType === "class" ? (
+                  <EntityLink id={h.publicId} labels={entities[h.publicId]?.labels} lang={i18n.language} />
+                ) : h.objectType === "statement" ? (
+                  <StatementLink id={h.publicId} text={h.searchText} />
                 ) : h.subjectQid ? (
-                  <Link to={`/entities/${h.subjectQid}`}>{h.publicId}</Link>
+                  <EntityLink id={h.subjectQid} labels={entities[h.subjectQid]?.labels} lang={i18n.language} />
                 ) : (
                   h.publicId
                 )}

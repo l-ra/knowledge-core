@@ -11,6 +11,8 @@ import { EntityPage } from "./pages/EntityPage";
 import { EntityHistoryPage } from "./pages/EntityHistoryPage";
 import { PackagesPage } from "./pages/PackagesPage";
 import { PackageDetailPage } from "./pages/PackageDetailPage";
+import { StatementPage } from "./pages/StatementPage";
+import { ReferencePage } from "./pages/ReferencePage";
 import { LensesPage } from "./pages/LensesPage";
 import { PoliciesPage } from "./pages/PoliciesPage";
 import { OpsPage } from "./pages/OpsPage";
@@ -49,6 +51,8 @@ export function App() {
         <Route path="entities/:qid/validation" element={<ValidationPage />} />
         <Route path="entities/:qid/history" element={<EntityHistoryPage />} />
         <Route path="entities/:qid" element={<EntityPage />} />
+        <Route path="statements/:sid" element={<StatementPage />} />
+        <Route path="references/:rid" element={<ReferencePage />} />
         <Route path="model/properties" element={<Navigate to="/entities?kind=property" replace />} />
         <Route path="model/classes" element={<Navigate to="/entities?kind=class" replace />} />
         <Route path="model/shapes" element={<ShapesPage />} />

@@ -5,6 +5,7 @@ import { apiFetch } from "../api";
 import { pickLabel } from "../labels";
 import { usePackage } from "../package";
 import { useChangeSetDraft } from "../changeset";
+import { EntityLink } from "../links";
 
 type Entity = {
   id: string;
@@ -322,9 +323,8 @@ export function EntitiesPage() {
       <table className="table">
         <thead>
           <tr>
-            <th>ID</th>
+            <th>{t("entity.label")}</th>
             <th>{t("entities.kind")}</th>
-            <th>Label</th>
             <th>Package</th>
           </tr>
         </thead>
@@ -332,12 +332,9 @@ export function EntitiesPage() {
           {items.map((it) => (
             <tr key={it.id}>
               <td>
-                <Link to={`/entities/${it.id}`} state={{ breadcrumb: [] }}>
-                  {it.id}
-                </Link>
+                <EntityLink id={it.id} labels={it.labels} lang={i18n.language} />
               </td>
               <td>{it.kind || "entity"}</td>
-              <td>{pickLabel(it.labels, i18n.language)}</td>
               <td>{it.packageCode || "—"}</td>
             </tr>
           ))}

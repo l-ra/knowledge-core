@@ -2,6 +2,8 @@ import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { apiFetch } from "../api";
+import { EntityLink } from "../links";
+import { useEntityLookup } from "../useEntityLookup";
 
 type Finding = {
   code: string;
@@ -19,10 +21,11 @@ type ValidationResult = {
 
 export function ValidationPage() {
   const { qid = "" } = useParams();
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const [result, setResult] = useState<ValidationResult | null>(null);
   const [reportId, setReportId] = useState("");
   const [error, setError] = useState("");
+  const entities = useEntityLookup([qid]);
 
   async function load() {
     setError("");
@@ -55,10 +58,13 @@ export function ValidationPage() {
 
   return (
     <div className="stack">
-      <p className="muted">
-        <Link to="/entities">{t("nav.entities")}</Link> /{" "}
-        <Link to={`/entities/${qid}`}>{qid}</Link> / {t("validation.title")}
-      </p>
+      <nav className="breadcrumb muted">
+        <Link to="/entities">{t("nav.entities")}</Link>
+        {" / "}
+        <EntityLink id={qid} labels={entities[qid]?.labels} lang={i18n.language} />
+        {" / "}
+        {t("validation.title")}
+      </nav>
       <h1>{t("validation.title")}</h1>
       {error && <p className="error">{error}</p>}
       {result && (

@@ -2,6 +2,8 @@ import { FormEvent, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { apiFetch } from "../api";
+import { pickLabel } from "../labels";
+import { EntityLink } from "../links";
 
 type Shape = {
   code: string;
@@ -15,11 +17,13 @@ type Shape = {
 };
 
 type ClassDef = { id: string; labels?: Record<string, string> };
+type PropDef = { id: string; labels?: Record<string, string> };
 
 export function ShapesPage() {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const [items, setItems] = useState<Shape[]>([]);
   const [classes, setClasses] = useState<ClassDef[]>([]);
+  const [properties, setProperties] = useState<PropDef[]>([]);
   const [code, setCode] = useState("");
   const [classId, setClassId] = useState("");
   const [required, setRequired] = useState("");
@@ -28,12 +32,14 @@ export function ShapesPage() {
 
   async function load() {
     try {
-      const [shapes, cls] = await Promise.all([
+      const [shapes, cls, props] = await Promise.all([
         apiFetch<{ items: Shape[] }>("/v1/shapes"),
         apiFetch<{ items: ClassDef[] }>("/v1/classes?limit=200"),
+        apiFetch<{ items: PropDef[] }>("/v1/properties?limit=500"),
       ]);
       setItems(shapes.items || []);
       setClasses(cls.items || []);
+      setProperties(props.items || []);
       if (!classId && cls.items?.[0]) setClassId(cls.items[0].id);
     } catch (err) {
       setError(err instanceof Error ? err.message : t("common.error"));
@@ -68,6 +74,9 @@ export function ShapesPage() {
     }
   }
 
+  const classById = new Map(classes.map((c) => [c.id, c]));
+  const propById = new Map(properties.map((p) => [p.id, p]));
+
   return (
     <div className="stack">
       <h1>{t("shapes.title")}</h1>
@@ -82,7 +91,7 @@ export function ShapesPage() {
             <select value={classId} onChange={(e) => setClassId(e.target.value)}>
               {classes.map((c) => (
                 <option key={c.id} value={c.id}>
-                  {c.id} — {c.labels?.en}
+                  {pickLabel(c.labels, i18n.language, c.id)} ({c.id})
                 </option>
               ))}
             </select>
@@ -112,8 +121,19 @@ export function ShapesPage() {
           {items.map((s) => (
             <tr key={s.code}>
               <td>{s.code}</td>
-              <td>{s.classId}</td>
-              <td>{(s.document?.requiredProperties || []).join(", ") || "—"}</td>
+              <td>
+                <EntityLink id={s.classId} labels={classById.get(s.classId)?.labels} lang={i18n.language} />
+              </td>
+              <td>
+                {(s.document?.requiredProperties || []).length > 0
+                  ? s.document!.requiredProperties!.map((pid, i) => (
+                      <span key={pid}>
+                        {i > 0 && ", "}
+                        <EntityLink id={pid} labels={propById.get(pid)?.labels} lang={i18n.language} />
+                      </span>
+                    ))
+                  : "—"}
+              </td>
               <td>{s.document?.closed ? "yes" : "no"}</td>
             </tr>
           ))}

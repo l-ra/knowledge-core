@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { apiFetch } from "./api";
 import { pickLabel } from "./labels";
+import { ObjectLabel } from "./links";
 
 export type ApiValue = Record<string, unknown>;
 
@@ -122,7 +123,7 @@ function EntityPicker({
                   setOpen(false);
                 }}
               >
-                <strong>{h.id}</strong> {pickLabel(h.labels, i18n.language)}
+                <ObjectLabel id={h.id} labels={h.labels} lang={i18n.language} />
                 {h.kind ? ` · ${h.kind}` : ""}
               </button>
             </li>

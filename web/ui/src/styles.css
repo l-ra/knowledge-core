@@ -66,7 +66,7 @@ h3 {
 
 .app-shell {
   display: grid;
-  grid-template-columns: 15rem 1fr;
+  grid-template-columns: 13rem 1fr;
   height: 100%;
   min-height: 100%;
   overflow: hidden;
@@ -119,9 +119,103 @@ h3 {
   background: color-mix(in oklab, var(--accent) 14%, transparent);
 }
 
+.main-area {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+}
+
+.topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.4rem 1rem;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-elevated);
+  flex-shrink: 0;
+  min-height: 2.6rem;
+  flex-wrap: wrap;
+}
+
+.topbar-group {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.topbar-select {
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--fg);
+  border-radius: var(--radius);
+  padding: 0.25rem 0.5rem;
+  font: inherit;
+  font-size: 0.85rem;
+}
+
+.topbar-select-sm {
+  max-width: 4rem;
+}
+
+.topbar-btn {
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--fg);
+  border-radius: var(--radius);
+  padding: 0.2rem 0.6rem;
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.82rem;
+}
+
+.topbar-btn.primary {
+  background: var(--accent);
+  border-color: transparent;
+  color: var(--accent-fg);
+}
+
+.topbar-btn.danger {
+  color: var(--danger);
+}
+
+.topbar-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.topbar-badge {
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--accent);
+}
+
+.topbar-muted {
+  font-size: 0.82rem;
+  color: var(--muted);
+}
+
+.topbar-user {
+  font-size: 0.82rem;
+  color: var(--fg);
+  max-width: 10rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.topbar-divider {
+  width: 1px;
+  height: 1.2rem;
+  background: var(--border);
+  flex-shrink: 0;
+}
+
 .main {
   padding: 1.5rem clamp(1rem, 3vw, 2.5rem) 3rem;
-  height: 100%;
+  flex: 1;
   overflow-y: auto;
   overscroll-behavior: contain;
 }
@@ -137,6 +231,10 @@ h3 {
     max-height: 40vh;
     border-right: none;
     border-bottom: 1px solid var(--border);
+  }
+
+  .topbar {
+    flex-wrap: wrap;
   }
 }
 
@@ -159,6 +257,11 @@ h3 {
   flex-wrap: wrap;
   gap: 0.75rem;
   align-items: center;
+}
+
+.row.compact,
+.stack.compact {
+  gap: 0.4rem;
 }
 
 label.field {
@@ -401,6 +504,51 @@ button.linkish {
   flex-wrap: wrap;
 }
 
+.tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.tab-bar {
+  display: flex;
+  gap: 0;
+  border-bottom: 2px solid var(--border);
+  margin-bottom: 0;
+}
+
+.tab-bar button {
+  border: none;
+  border-bottom: 2px solid transparent;
+  background: none;
+  color: var(--muted);
+  padding: 0.55rem 1rem;
+  margin-bottom: -2px;
+  cursor: pointer;
+  font-weight: 500;
+  font-size: 0.95rem;
+  border-radius: 0;
+  transition: color 0.15s, border-color 0.15s;
+}
+
+.tab-bar button:hover {
+  color: var(--fg);
+}
+
+.tab-bar button.tab-active {
+  color: var(--accent);
+  border-bottom-color: var(--accent);
+  font-weight: 600;
+}
+
+.tab-bar button.tab-inactive {
+  color: var(--muted);
+}
+
+.tab-content {
+  padding-top: 1rem;
+}
+
 .entity-header .profile-block {
   margin-top: 0.75rem;
   padding-top: 0.75rem;
@@ -482,5 +630,23 @@ button.linkish {
 
 .badge:hover {
   background: color-mix(in oklab, var(--accent) 18%, transparent);
+}
+
+.object-label {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+}
+
+.object-id {
+  font-size: 0.78em;
+  color: var(--muted);
+}
+
+.statement-fragment {
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
 }
 

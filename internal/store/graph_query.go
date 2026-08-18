@@ -2,7 +2,6 @@ package store
 
 import (
 	"context"
-	"fmt"
 	"strings"
 
 	"github.com/google/uuid"
@@ -119,42 +118,8 @@ func (s *Store) EntityEffectiveClasses(ctx context.Context, qid string) ([]strin
 }
 
 func (s *Store) ListStatementsByObject(ctx context.Context, qid string, propertyPID string) ([]domain.Statement, error) {
-	q := `
-		SELECT st.id, st.public_id, st.subject_id, sub.public_id, st.property_id, p.public_id, st.status,
-			st.value_type, st.value_bool, st.value_int64, st.value_numeric, st.value_date, st.value_timestamptz,
-			st.value_text, st.value_entity_id, st.value_json, st.valid_from, st.valid_to,
-			st.current_revision_no, st.created_at, st.updated_at
-		FROM statement_current sc
-		JOIN statement st ON st.id = sc.statement_id
-		JOIN entity sub ON sub.id = st.subject_id
-		JOIN entity obj ON obj.id = sc.value_entity_id
-		JOIN property_profile pp ON pp.entity_id = st.property_id
-		JOIN entity p ON p.id = pp.entity_id
-		WHERE obj.public_id = $1 AND st.status = 'active'
-	`
-	args := []any{qid}
-	if propertyPID != "" {
-		args = append(args, propertyPID)
-		q += fmt.Sprintf(` AND p.public_id = $%d`, len(args))
-	}
-	q += ` ORDER BY st.public_id`
-	rows, err := s.pool.Query(ctx, q, args...)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var out []domain.Statement
-	for rows.Next() {
-		st, err := scanStatement(rows)
-		if err != nil {
-			return nil, err
-		}
-		if err := s.enrichStatement(ctx, s.pool, st); err != nil {
-			return nil, err
-		}
-		out = append(out, *st)
-	}
-	return out, rows.Err()
+	out, _, err := s.ListStatements(ctx, StatementListOptions{Limit: 200, ObjectQID: qid, PropertyPID: propertyPID})
+	return out, err
 }
 
 func (s *Store) findDuplicateStatementTx(ctx context.Context, tx pgx.Tx, subjectID, propertyID uuid.UUID, sv storedValue) (string, error) {

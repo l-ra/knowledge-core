@@ -4,6 +4,7 @@ import { useTranslation } from "react-i18next";
 import { apiFetch } from "../api";
 import { pickLabel } from "../labels";
 import { useChangeSetDraft } from "../changeset";
+import { EntityLink, StatementLink } from "../links";
 
 type PkgDep = { dependsOnCode: string; versionRange: string };
 type Pkg = {
@@ -185,8 +186,7 @@ export function PackageDetailPage() {
           <thead>
             <tr>
               <th>{t("packages.objectType")}</th>
-              <th>ID</th>
-              <th>Label</th>
+              <th>{t("entity.label")}</th>
               <th>Rev</th>
             </tr>
           </thead>
@@ -196,18 +196,17 @@ export function PackageDetailPage() {
                 <td>{o.objectType}</td>
                 <td>
                   {o.objectType === "statement" ? (
-                    o.publicId
+                    <StatementLink id={o.publicId} />
                   ) : (
-                    <Link to={`/entities/${o.publicId}`}>{o.publicId}</Link>
+                    <EntityLink id={o.publicId} labels={o.labels} lang={i18n.language} />
                   )}
                 </td>
-                <td>{pickLabel(o.labels, i18n.language)}</td>
                 <td>{o.revisionNo}</td>
               </tr>
             ))}
             {objects.length === 0 && (
               <tr>
-                <td colSpan={4} className="muted">
+                <td colSpan={3} className="muted">
                   {t("packages.noObjects")}
                 </td>
               </tr>

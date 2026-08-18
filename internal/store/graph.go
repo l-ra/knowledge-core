@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -127,7 +129,7 @@ func (s *Store) CreateEntity(ctx context.Context, meta domain.WriteMeta, in doma
 		ID: id, PublicID: publicID, Status: domain.EntityActive,
 		Kind: domain.EntityKindEntity, PackageCode: in.PackageCode,
 		IRILocal: iriLocal,
-		Labels: labels, Descriptions: descs, RevisionNo: 1,
+		Labels:   labels, Descriptions: descs, RevisionNo: 1,
 		CreatedAt: now, UpdatedAt: now,
 	}
 	if err := s.fillEntityIRI(ctx, &ent); err != nil {
@@ -730,42 +732,81 @@ func (s *Store) GetStatementByPublicID(ctx context.Context, sid string) (*domain
 	return st, nil
 }
 
-func (s *Store) ListStatementsBySubject(ctx context.Context, qid string, propertyPID string) ([]domain.Statement, error) {
-	q := `
-		SELECT st.id, st.public_id, st.subject_id, e.public_id, st.property_id, p.public_id, st.status,
+type StatementListOptions struct {
+	Limit       int
+	Cursor      string
+	SubjectQID  string
+	PropertyPID string
+	ObjectQID   string
+}
+
+func (s *Store) ListStatements(ctx context.Context, opt StatementListOptions) ([]domain.Statement, string, error) {
+	if opt.Limit <= 0 {
+		opt.Limit = 50
+	}
+	if opt.Limit > 200 {
+		opt.Limit = 200
+	}
+	where := []string{`st.status = 'active'`}
+	args := []any{}
+	if qid := strings.TrimSpace(opt.SubjectQID); qid != "" {
+		args = append(args, qid)
+		where = append(where, `sub.public_id = $`+strconv.Itoa(len(args)))
+	}
+	if pid := strings.TrimSpace(opt.PropertyPID); pid != "" {
+		args = append(args, pid)
+		where = append(where, `p.public_id = $`+strconv.Itoa(len(args)))
+	}
+	if qid := strings.TrimSpace(opt.ObjectQID); qid != "" {
+		args = append(args, qid)
+		where = append(where, `obj.public_id = $`+strconv.Itoa(len(args)))
+	}
+	if cursor := strings.TrimSpace(opt.Cursor); cursor != "" {
+		args = append(args, cursor)
+		where = append(where, `st.public_id > $`+strconv.Itoa(len(args)))
+	}
+	args = append(args, opt.Limit+1)
+	limitArg := `$` + strconv.Itoa(len(args))
+	rows, err := s.pool.Query(ctx, `
+		SELECT st.id, st.public_id, st.subject_id, sub.public_id, st.property_id, p.public_id, st.status,
 			st.value_type, st.value_bool, st.value_int64, st.value_numeric, st.value_date, st.value_timestamptz,
 			st.value_text, st.value_entity_id, st.value_json, st.valid_from, st.valid_to,
 			st.current_revision_no, st.created_at, st.updated_at
 		FROM statement_current sc
 		JOIN statement st ON st.id = sc.statement_id
-		JOIN entity e ON e.id = st.subject_id
+		JOIN entity sub ON sub.id = st.subject_id
 		JOIN property_profile pp ON pp.entity_id = st.property_id
 		JOIN entity p ON p.id = pp.entity_id
-		WHERE e.public_id = $1
-	`
-	args := []any{qid}
-	if propertyPID != "" {
-		args = append(args, propertyPID)
-		q += ` AND p.public_id = $2`
-	}
-	q += ` ORDER BY st.public_id`
-	rows, err := s.pool.Query(ctx, q, args...)
+		LEFT JOIN entity obj ON obj.id = sc.value_entity_id
+		WHERE `+strings.Join(where, ` AND `)+`
+		ORDER BY st.public_id
+		LIMIT `+limitArg, args...)
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 	defer rows.Close()
-	var out []domain.Statement
+	out := make([]domain.Statement, 0, opt.Limit)
+	next := ""
 	for rows.Next() {
 		st, err := scanStatement(rows)
 		if err != nil {
-			return nil, err
+			return nil, "", err
 		}
 		if err := s.enrichStatement(ctx, s.pool, st); err != nil {
-			return nil, err
+			return nil, "", err
+		}
+		if len(out) == opt.Limit {
+			next = st.PublicID
+			break
 		}
 		out = append(out, *st)
 	}
-	return out, rows.Err()
+	return out, next, rows.Err()
+}
+
+func (s *Store) ListStatementsBySubject(ctx context.Context, qid string, propertyPID string) ([]domain.Statement, error) {
+	out, _, err := s.ListStatements(ctx, StatementListOptions{Limit: 200, SubjectQID: qid, PropertyPID: propertyPID})
+	return out, err
 }
 
 type scannable interface {

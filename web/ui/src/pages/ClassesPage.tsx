@@ -2,6 +2,7 @@ import { FormEvent, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { apiFetch } from "../api";
+import { EntityLink } from "../links";
 
 type ClassDef = {
   id: string;
@@ -10,7 +11,7 @@ type ClassDef = {
 };
 
 export function ClassesPage() {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const [items, setItems] = useState<ClassDef[]>([]);
   const [label, setLabel] = useState("");
   const [subClassOf, setSubClassOf] = useState("");
@@ -47,6 +48,8 @@ export function ClassesPage() {
     }
   }
 
+  const classById = new Map(items.map((c) => [c.id, c]));
+
   return (
     <div className="stack">
       <h1>{t("classes.title")}</h1>
@@ -65,8 +68,7 @@ export function ClassesPage() {
       <table className="table">
         <thead>
           <tr>
-            <th>ID</th>
-            <th>Label</th>
+            <th>{t("entity.label")}</th>
             <th>{t("classes.subClassOf")}</th>
           </tr>
         </thead>
@@ -74,10 +76,15 @@ export function ClassesPage() {
           {items.map((c) => (
             <tr key={c.id}>
               <td>
-                <Link to={`/entities/${c.id}`}>{c.id}</Link>
+                <EntityLink id={c.id} labels={c.labels} lang={i18n.language} />
               </td>
-              <td>{c.labels?.en}</td>
-              <td>{c.document?.subClassOf || "—"}</td>
+              <td>
+                {c.document?.subClassOf ? (
+                  <EntityLink id={c.document.subClassOf} labels={classById.get(c.document.subClassOf)?.labels} lang={i18n.language} />
+                ) : (
+                  "—"
+                )}
+              </td>
             </tr>
           ))}
         </tbody>

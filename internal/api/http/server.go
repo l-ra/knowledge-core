@@ -98,6 +98,7 @@ func New(eng *engine.Engine, st *store.Store, authn Authenticator, cfg config.Co
 		r.Post("/references", s.createReference)
 		r.Get("/references/{rid}", s.getReference)
 
+		r.Get("/statements", s.listStatements)
 		r.Post("/statements", s.createStatement)
 		r.Get("/statements/{sid}", s.getStatement)
 		r.Post("/statements/{sid}/revise", s.reviseStatement)
@@ -412,12 +413,12 @@ func (s *Server) createStatement(w http.ResponseWriter, r *http.Request) {
 }
 
 type reviseStatementReq struct {
-	ExpectedRevision int                     `json:"expectedRevision"`
-	Value            *datatype.Value         `json:"value,omitempty"`
+	ExpectedRevision int                      `json:"expectedRevision"`
+	Value            *datatype.Value          `json:"value,omitempty"`
 	Qualifiers       *[]domain.QualifierInput `json:"qualifiers,omitempty"`
-	ReferenceIDs     *[]string               `json:"referenceIds,omitempty"`
-	ValidFrom        *time.Time              `json:"validFrom,omitempty"`
-	ValidTo          *time.Time              `json:"validTo,omitempty"`
+	ReferenceIDs     *[]string                `json:"referenceIds,omitempty"`
+	ValidFrom        *time.Time               `json:"validFrom,omitempty"`
+	ValidTo          *time.Time               `json:"validTo,omitempty"`
 }
 
 type createReferenceReq struct {
@@ -516,8 +517,20 @@ func (s *Server) getStatementHistory(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"revisions": out})
 }
 
-func (s *Server) listEntityStatements(w http.ResponseWriter, r *http.Request) {
-	list, err := s.engine.ListEntityStatements(r.Context(), chi.URLParam(r, "qid"), r.URL.Query().Get("property"))
+func (s *Server) listStatements(w http.ResponseWriter, r *http.Request) {
+	limit := 50
+	if v := r.URL.Query().Get("limit"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 {
+			limit = n
+		}
+	}
+	list, next, err := s.engine.ListStatements(r.Context(), store.StatementListOptions{
+		Limit:       limit,
+		Cursor:      r.URL.Query().Get("cursor"),
+		SubjectQID:  r.URL.Query().Get("subject"),
+		PropertyPID: r.URL.Query().Get("property"),
+		ObjectQID:   r.URL.Query().Get("object"),
+	})
 	if err != nil {
 		writeEngineError(w, err)
 		return
@@ -526,11 +539,46 @@ func (s *Server) listEntityStatements(w http.ResponseWriter, r *http.Request) {
 	for i := range list {
 		out = append(out, statementDTO(&list[i]))
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"statements": out})
+	writeJSON(w, http.StatusOK, map[string]any{"items": out, "nextCursor": next})
+}
+
+func (s *Server) listEntityStatements(w http.ResponseWriter, r *http.Request) {
+	limit := 50
+	if v := r.URL.Query().Get("limit"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 {
+			limit = n
+		}
+	}
+	list, next, err := s.engine.ListStatements(r.Context(), store.StatementListOptions{
+		Limit:       limit,
+		Cursor:      r.URL.Query().Get("cursor"),
+		SubjectQID:  chi.URLParam(r, "qid"),
+		PropertyPID: r.URL.Query().Get("property"),
+	})
+	if err != nil {
+		writeEngineError(w, err)
+		return
+	}
+	out := make([]any, 0, len(list))
+	for i := range list {
+		out = append(out, statementDTO(&list[i]))
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"statements": out, "nextCursor": next})
 }
 
 func (s *Server) listIncomingStatements(w http.ResponseWriter, r *http.Request) {
-	list, err := s.engine.ListIncomingStatements(r.Context(), chi.URLParam(r, "qid"), r.URL.Query().Get("property"))
+	limit := 50
+	if v := r.URL.Query().Get("limit"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 {
+			limit = n
+		}
+	}
+	list, next, err := s.engine.ListStatements(r.Context(), store.StatementListOptions{
+		Limit:       limit,
+		Cursor:      r.URL.Query().Get("cursor"),
+		ObjectQID:   chi.URLParam(r, "qid"),
+		PropertyPID: r.URL.Query().Get("property"),
+	})
 	if err != nil {
 		writeEngineError(w, err)
 		return
@@ -539,7 +587,7 @@ func (s *Server) listIncomingStatements(w http.ResponseWriter, r *http.Request) 
 	for i := range list {
 		out = append(out, statementDTO(&list[i]))
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"statements": out})
+	writeJSON(w, http.StatusOK, map[string]any{"statements": out, "nextCursor": next})
 }
 
 func (s *Server) getEntityGraph(w http.ResponseWriter, r *http.Request) {
@@ -567,9 +615,9 @@ func (s *Server) getEntityGraph(w http.ResponseWriter, r *http.Request) {
 		inSt = append(inSt, statementDTO(&g.Incoming[i]))
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
-		"entity": entityDTO(&g.Entity),
-		"outgoing": outSt,
-		"incoming": inSt,
+		"entity":    entityDTO(&g.Entity),
+		"outgoing":  outSt,
+		"incoming":  inSt,
 		"neighbors": neighbors,
 	})
 }
@@ -946,10 +994,10 @@ func packageDTO(p *domain.Package) map[string]any {
 	}
 	out := map[string]any{
 		"code": p.Code, "lifecycle": p.Lifecycle, "labels": p.Labels,
-		"iriBase": p.IRIBase,
+		"iriBase":      p.IRIBase,
 		"dependencies": deps,
-		"createdAt": p.CreatedAt.UTC().Format(time.RFC3339Nano),
-		"updatedAt": p.UpdatedAt.UTC().Format(time.RFC3339Nano),
+		"createdAt":    p.CreatedAt.UTC().Format(time.RFC3339Nano),
+		"updatedAt":    p.UpdatedAt.UTC().Format(time.RFC3339Nano),
 	}
 	return out
 }
@@ -965,7 +1013,7 @@ func releaseDTO(rel *domain.Release) map[string]any {
 	}
 	return map[string]any{
 		"package": rel.PackageCode, "version": rel.Version,
-		"publishedAt": rel.PublishedAt.UTC().Format(time.RFC3339Nano),
+		"publishedAt":  rel.PublishedAt.UTC().Format(time.RFC3339Nano),
 		"dependencies": deps, "objects": objs,
 	}
 }
@@ -1026,10 +1074,10 @@ func propertyDTO(p *domain.Property) map[string]any {
 	out := map[string]any{
 		"id": p.PublicID, "canonicalId": p.ID.String(), "datatype": p.Datatype, "status": p.Status,
 		"revisionNo": p.RevisionNo,
-		"labels": p.Labels, "descriptions": p.Descriptions,
+		"labels":     p.Labels, "descriptions": p.Descriptions,
 		"constraints": p.Constraints,
-		"createdAt": p.CreatedAt.UTC().Format(time.RFC3339Nano),
-		"updatedAt": p.UpdatedAt.UTC().Format(time.RFC3339Nano),
+		"createdAt":   p.CreatedAt.UTC().Format(time.RFC3339Nano),
+		"updatedAt":   p.UpdatedAt.UTC().Format(time.RFC3339Nano),
 	}
 	if p.PackageCode != "" {
 		out["packageCode"] = p.PackageCode
@@ -1071,7 +1119,7 @@ func statementDTO(st *domain.Statement) map[string]any {
 func referenceDTO(ref *domain.Reference) map[string]any {
 	return map[string]any{
 		"id": ref.PublicID, "canonicalId": ref.ID.String(),
-		"fields": ref.Fields,
+		"fields":    ref.Fields,
 		"createdAt": ref.CreatedAt.UTC().Format(time.RFC3339Nano),
 	}
 }
@@ -1090,7 +1138,7 @@ func changeSetDTO(cs *domain.ChangeSet) map[string]any {
 		"id": cs.PublicID, "canonicalId": cs.ID.String(),
 		"actor": cs.Actor, "operationType": cs.OperationType,
 		"committedAt": cs.CommittedAt.UTC().Format(time.RFC3339Nano),
-		"items": items,
+		"items":       items,
 	}
 }
 
@@ -1098,7 +1146,7 @@ func entityRevisionDTO(rev *domain.EntityRevision) map[string]any {
 	return map[string]any{
 		"revisionNo": rev.RevisionNo, "status": rev.Status,
 		"labels": rev.Labels, "descriptions": rev.Descriptions,
-		"actor": rev.Actor,
+		"actor":     rev.Actor,
 		"createdAt": rev.CreatedAt.UTC().Format(time.RFC3339Nano),
 	}
 }
@@ -1106,7 +1154,7 @@ func entityRevisionDTO(rev *domain.EntityRevision) map[string]any {
 func statementRevisionDTO(rev *domain.StatementRevision) map[string]any {
 	out := map[string]any{
 		"revisionNo": rev.RevisionNo, "status": rev.Status, "value": rev.Value,
-		"actor": rev.Actor,
+		"actor":     rev.Actor,
 		"createdAt": rev.CreatedAt.UTC().Format(time.RFC3339Nano),
 	}
 	if len(rev.Qualifiers) > 0 {

@@ -1,11 +1,14 @@
 import { FormEvent, useEffect, useMemo, useState } from "react";
-import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
+import { Link, useLocation, useParams, useSearchParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { apiFetch } from "../api";
 import { pickLabel } from "../labels";
 import { usePackage } from "../package";
 import { useChangeSetDraft } from "../changeset";
 import { ApiValue, ValueEditor, displayValueText, emptyValue, valueFromApi } from "../ValueEditor";
+import { EntityLink, ReferenceLink } from "../links";
+import { useEntityLookup } from "../useEntityLookup";
+import { StatementList, type PropertyMeta, type StatementItem } from "../StatementList";
 
 type Finding = { code: string; severity: string; message: string };
 
@@ -22,20 +25,18 @@ type Entity = {
   status?: string;
   propertyProfile?: { datatype: string; constraints?: Record<string, unknown> };
   classProfile?: { subClassOf?: string };
+  effectiveClasses?: string[];
 };
 
-type Statement = {
+type Statement = StatementItem;
+type Property = PropertyMeta;
+type ClassItem = {
   id: string;
-  property: string;
-  revisionNo: number;
-  value: ApiValue;
-  qualifiers?: Array<{ property: string; value: ApiValue }>;
-  referenceIds?: string[];
-  validFrom?: string;
-  validTo?: string;
+  labels?: Record<string, string>;
+  packageCode?: string;
+  document?: { subClassOf?: string };
 };
-
-type Property = { id: string; datatype: string; labels?: Record<string, string> };
+type EntityListItem = { id: string; labels?: Record<string, string>; kind?: string; packageCode?: string };
 
 type ObjectRelease = { packageCode: string; version: string; revisionNo: number };
 
@@ -45,13 +46,15 @@ export function EntityPage() {
   const { qid = "" } = useParams();
   const { t, i18n } = useTranslation();
   const location = useLocation();
-  const nav = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const { packageCode } = usePackage();
   const { isOpen, runWrite } = useChangeSetDraft();
   const breadcrumb = (location.state as LocState | null)?.breadcrumb || [];
+  const tab = searchParams.get("tab") || "detail";
 
   const [entity, setEntity] = useState<Entity | null>(null);
   const [statements, setStatements] = useState<Statement[]>([]);
+  const [statementNext, setStatementNext] = useState("");
   const [properties, setProperties] = useState<Property[]>([]);
   const [modelProps, setModelProps] = useState<string[]>([]);
   const [releases, setReleases] = useState<ObjectRelease[]>([]);
@@ -59,7 +62,7 @@ export function EntityPage() {
   const [error, setError] = useState("");
   const [info, setInfo] = useState("");
   const [mode, setMode] = useState<"view" | "editLabels" | "addStatement" | string>("view");
-  const [labelEn, setLabelEn] = useState("");
+  const [labelsDraft, setLabelsDraft] = useState<Record<string, string>>({ en: "" });
   const [iriLocal, setIriLocal] = useState("");
   const [aliasDraft, setAliasDraft] = useState("");
   const [aliases, setAliases] = useState<Array<{ iri: string; kind: string }>>([]);
@@ -72,27 +75,35 @@ export function EntityPage() {
   const [validationMode, setValidationMode] = useState<"relaxed" | "strict" | "off">("relaxed");
   const [validationMsg, setValidationMsg] = useState<Finding[]>([]);
   const [reviseVal, setReviseVal] = useState<ApiValue | null>(null);
+  const [classes, setClasses] = useState<ClassItem[]>([]);
+
+  const instanceSubclass = searchParams.get("instanceSubclass") || "";
+  const instanceQuery = searchParams.get("instanceQ") || "";
+  const instancePackage = searchParams.get("instancePackage") || "";
+  const [instanceItems, setInstanceItems] = useState<EntityListItem[]>([]);
+  const [instanceNext, setInstanceNext] = useState("");
+  const [instanceError, setInstanceError] = useState("");
 
   async function reload() {
     setError("");
     try {
-      const [ent, sts, props, cfg, rels] = await Promise.all([
+      const [ent, props, cfg, rels, cls] = await Promise.all([
         apiFetch<Entity>(`/v1/entities/${qid}`),
-        apiFetch<{ statements: Statement[] }>(`/v1/entities/${qid}/statements`),
-        apiFetch<{ items: Property[] }>("/v1/properties?limit=200"),
+        apiFetch<{ items: Property[] }>("/v1/properties?limit=500"),
         apiFetch<{ modelProperties?: string[]; instanceOfProperty?: string }>("/v1/admin/schema-config").catch(() => ({
           modelProperties: [] as string[],
         })),
         apiFetch<{ items: ObjectRelease[] }>(`/v1/objects/${qid}/releases`).catch(() => ({ items: [] as ObjectRelease[] })),
+        apiFetch<{ items: ClassItem[] }>("/v1/classes?limit=1000").catch(() => ({ items: [] as ClassItem[] })),
       ]);
       setEntity(ent);
-      setLabelEn(ent.labels?.en || "");
+      setLabelsDraft(Object.keys(ent.labels || {}).length ? { ...(ent.labels || {}) } : { en: "" });
       setIriLocal(ent.iriLocal || "");
       setAliases(ent.iriAliases || []);
-      setStatements(sts.statements || []);
       setProperties(props.items || []);
       setModelProps(cfg.modelProperties || []);
       setReleases(rels.items || []);
+      setClasses(cls.items || []);
       if (!prop && props.items?.[0]) {
         setProp(props.items[0].id);
         setVal(emptyValue(props.items[0].datatype));
@@ -106,6 +117,25 @@ export function EntityPage() {
     setMode("view");
     setInfo("");
     void reload();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [qid]);
+
+  async function loadStatements(reset = false, cursor = "") {
+    try {
+      const sp = new URLSearchParams();
+      sp.set("subject", qid);
+      sp.set("limit", "20");
+      if (cursor) sp.set("cursor", cursor);
+      const res = await apiFetch<{ items: Statement[]; nextCursor?: string }>(`/v1/statements?${sp.toString()}`);
+      setStatements((prev) => (reset ? res.items || [] : [...prev, ...(res.items || [])]));
+      setStatementNext(res.nextCursor || "");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : t("common.error"));
+    }
+  }
+
+  useEffect(() => {
+    void loadStatements(true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [qid]);
 
@@ -125,18 +155,39 @@ export function EntityPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [statements, hideModel, modelProps, properties, i18n.language]);
 
+  const statementRelatedIds = useMemo(() => {
+    const ids: string[] = [...breadcrumb];
+    for (const st of visibleStatements) {
+      ids.push(st.subject, st.property);
+      if (st.value?.type === "EntityReference" && st.value.entityId) ids.push(String(st.value.entityId));
+      if (st.value?.type === "Quantity" && st.value.unitEntityId) ids.push(String(st.value.unitEntityId));
+      for (const q of st.qualifiers || []) {
+        ids.push(q.property);
+        if (q.value?.type === "EntityReference" && q.value.entityId) ids.push(String(q.value.entityId));
+      }
+    }
+    if (entity?.classProfile?.subClassOf) ids.push(entity.classProfile.subClassOf);
+    for (const id of entity?.effectiveClasses || []) ids.push(id);
+    return ids;
+  }, [entity, visibleStatements, breadcrumb]);
+  const relatedEntities = useEntityLookup(statementRelatedIds);
+
   const packageMismatch =
     !!entity?.packageCode && !!packageCode && entity.packageCode !== packageCode;
-
-  function goToEntity(id: string) {
-    nav(`/entities/${id}`, { state: { breadcrumb: [...breadcrumb, qid] } });
-  }
 
   async function saveLabels(e: FormEvent) {
     e.preventDefault();
     if (!entity) return;
     setInfo("");
-    const labels = { ...(entity.labels || {}), en: labelEn };
+    const labels = Object.fromEntries(
+      Object.entries(labelsDraft)
+        .map(([lang, text]) => [lang.trim().toLowerCase(), text.trim()])
+        .filter(([lang, text]) => lang && text),
+    );
+    if (!labels.en) {
+      setError(t("entity.labelEnRequired"));
+      return;
+    }
     const body: Record<string, unknown> = {
       labels,
       iriLocal,
@@ -233,6 +284,7 @@ export function EntityPage() {
           setValidTo("");
           setMode("view");
           await reload();
+          await loadStatements(true);
         },
         {
           op: "createStatement",
@@ -277,6 +329,7 @@ export function EntityPage() {
           setMode("view");
           setReviseVal(null);
           await reload();
+          await loadStatements(true);
         },
         {
           op: "reviseStatement",
@@ -299,13 +352,109 @@ export function EntityPage() {
     if (v?.type === "EntityReference" && v.entityId) {
       const id = String(v.entityId);
       return (
-        <button type="button" className="linkish" onClick={() => goToEntity(id)}>
-          {displayValueText(v, i18n.language)}
-        </button>
+        <EntityLink id={id} labels={relatedEntities[id]?.labels} lang={i18n.language} breadcrumb={[...breadcrumb, qid]} />
+      );
+    }
+    if (v?.type === "Quantity" && v.unitEntityId) {
+      const id = String(v.unitEntityId);
+      return (
+        <span>
+          {String(v.quantityValue ?? "")}{" "}
+          <EntityLink id={id} labels={relatedEntities[id]?.labels} lang={i18n.language} breadcrumb={[...breadcrumb, qid]} />
+        </span>
       );
     }
     return <span>{displayValueText(v, i18n.language)}</span>;
   }
+
+  function setTab(nextTab: string) {
+    const next = new URLSearchParams(searchParams);
+    next.set("tab", nextTab);
+    setSearchParams(next);
+  }
+
+  function updateInstanceFilters(update: Record<string, string>) {
+    const next = new URLSearchParams(searchParams);
+    for (const [key, value] of Object.entries(update)) {
+      if (value) next.set(key, value);
+      else next.delete(key);
+    }
+    next.set("tab", "instances");
+    setSearchParams(next);
+  }
+
+  async function loadInstances(reset = false, cursor = "") {
+    if (!entity) return;
+    setInstanceError("");
+    try {
+      const sp = new URLSearchParams();
+      sp.set("limit", "20");
+      sp.set("instanceOf", instanceSubclass || qid);
+      sp.set("includeSubclasses", instanceSubclass ? "false" : "true");
+      if (instanceQuery) sp.set("q", instanceQuery);
+      if (instancePackage) sp.set("package", instancePackage);
+      if (cursor) sp.set("cursor", cursor);
+      const res = await apiFetch<{ items: EntityListItem[]; nextCursor?: string }>(`/v1/entities?${sp.toString()}`);
+      setInstanceItems((prev) => (reset ? res.items || [] : [...prev, ...(res.items || [])]));
+      setInstanceNext(res.nextCursor || "");
+    } catch (err) {
+      setInstanceError(err instanceof Error ? err.message : t("common.error"));
+    }
+  }
+
+  useEffect(() => {
+    if (tab === "instances" && entity?.classProfile) void loadInstances(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tab, qid, instanceSubclass, instanceQuery, instancePackage, entity?.classProfile]);
+
+  const childClasses = useMemo(
+    () => classes.filter((item) => item.document?.subClassOf === qid),
+    [classes, qid],
+  );
+  const descendantClasses = useMemo(() => {
+    const children = new Map<string, ClassItem[]>();
+    for (const item of classes) {
+      const parent = item.document?.subClassOf;
+      if (!parent) continue;
+      children.set(parent, [...(children.get(parent) || []), item]);
+    }
+    const out: ClassItem[] = [];
+    const walk = (id: string) => {
+      for (const item of children.get(id) || []) {
+        out.push(item);
+        walk(item.id);
+      }
+    };
+    walk(qid);
+    return out;
+  }, [classes, qid]);
+  const classLineage = useMemo(() => {
+    const byId = new Map(classes.map((item) => [item.id, item]));
+    const chain: ClassItem[] = [];
+    let current = entity?.classProfile?.subClassOf || "";
+    while (current && byId.has(current)) {
+      const item = byId.get(current)!;
+      chain.unshift(item);
+      current = item.document?.subClassOf || "";
+    }
+    return chain;
+  }, [classes, entity?.classProfile?.subClassOf]);
+
+  const tabItems = useMemo(() => {
+    const tabs: Array<{ key: string; label: string }> = [
+      { key: "detail", label: t("entity.detailTab") },
+      { key: "statements", label: t("entity.statements") },
+      { key: "references", label: t("entity.referencesTab") },
+    ];
+    if (entity?.classProfile) {
+      tabs.push({ key: "hierarchy", label: t("entity.hierarchy") });
+      tabs.push({ key: "instances", label: t("entity.instances") });
+    }
+    if (entity?.propertyProfile) {
+      tabs.push({ key: "uses", label: t("entity.uses") });
+    }
+    return tabs;
+  }, [entity, t]);
 
   if (!entity && !error) return <p>{t("common.loading")}</p>;
 
@@ -319,17 +468,18 @@ export function EntityPage() {
           <span key={id}>
             {" / "}
             <Link to={`/entities/${id}`} state={{ breadcrumb: breadcrumb.slice(0, breadcrumb.indexOf(id)) }}>
-              {id}
+              {pickLabel(relatedEntities[id]?.labels, i18n.language, id)}
             </Link>
           </span>
         ))}
         <span>
           {" / "}
-          <strong>{qid}</strong>
+          <strong>{pickLabel(entity?.labels, i18n.language, qid)}</strong>
+          <span className="object-id" style={{ marginLeft: "0.4rem" }}>{qid}</span>
         </span>
       </nav>
 
-      <header className="panel entity-header">
+      <header className="entity-header">
         <div className="row" style={{ justifyContent: "space-between", alignItems: "flex-start" }}>
           <div>
             <h1>{pickLabel(entity?.labels, i18n.language, qid)}</h1>
@@ -340,28 +490,9 @@ export function EntityPage() {
               {entity?.packageCode ? ` · ${entity.packageCode}` : ""}
               {entity ? ` · rev ${entity.revisionNo}` : ""}
             </p>
-            {entity?.iri && (
-              <p className="muted mono" title={t("entity.iriHint")}>
-                {t("entity.iri")}: {entity.iri}
-              </p>
-            )}
-            {entity?.descriptions?.en && <p>{entity.descriptions.en}</p>}
-            {releases.length > 0 && (
-              <div className="row release-badges">
-                {releases.map((r) => (
-                  <Link
-                    key={`${r.packageCode}@${r.version}`}
-                    className="badge"
-                    to={`/model/packages/${encodeURIComponent(r.packageCode)}`}
-                  >
-                    {t("entity.inRelease", { pkg: r.packageCode, version: r.version })}
-                  </Link>
-                ))}
-              </div>
-            )}
           </div>
           <div className="row">
-            <button type="button" disabled={!packageCode} onClick={() => setMode("editLabels")}>
+            <button type="button" disabled={!packageCode} onClick={() => { setTab("detail"); setMode("editLabels"); }}>
               {t("entity.editLabels")}
             </button>
             <button
@@ -369,6 +500,7 @@ export function EntityPage() {
               className="primary"
               disabled={!packageCode}
               onClick={() => {
+                setTab("statements");
                 setMode("addStatement");
                 if (selected) setVal(emptyValue(selected.datatype));
               }}
@@ -377,34 +509,20 @@ export function EntityPage() {
             </button>
           </div>
         </div>
-
-        {entity?.propertyProfile && (
-          <div className="profile-block">
-            <h3>{t("entity.propertyProfile")}</h3>
-            <p>
-              <strong>{t("properties.datatype")}:</strong> {entity.propertyProfile.datatype}
-            </p>
-            {entity.propertyProfile.constraints && Object.keys(entity.propertyProfile.constraints).length > 0 && (
-              <pre className="muted">{JSON.stringify(entity.propertyProfile.constraints, null, 2)}</pre>
-            )}
-          </div>
-        )}
-        {entity?.classProfile && (
-          <div className="profile-block">
-            <h3>{t("entity.classProfile")}</h3>
-            <p>
-              <strong>{t("classes.subClassOf")}:</strong>{" "}
-              {entity.classProfile.subClassOf ? (
-                <button type="button" className="linkish" onClick={() => goToEntity(entity.classProfile!.subClassOf!)}>
-                  {entity.classProfile.subClassOf}
-                </button>
-              ) : (
-                "—"
-              )}
-            </p>
-          </div>
-        )}
       </header>
+
+      <div className="tab-bar">
+        {tabItems.map(({ key, label }) => (
+          <button
+            key={key}
+            type="button"
+            className={tab === key ? "tab-active" : "tab-inactive"}
+            onClick={() => setTab(key)}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
 
       {info && <p className="muted">{info}</p>}
       {error && <p className="error">{error}</p>}
@@ -422,240 +540,457 @@ export function EntityPage() {
         </div>
       )}
 
-      {mode === "editLabels" && entity && (
-        <form className="panel stack" onSubmit={saveLabels}>
-          <label className="field">
-            {t("entities.labelEn")}
-            <input value={labelEn} onChange={(e) => setLabelEn(e.target.value)} required />
-          </label>
-          <label className="field">
-            {t("entity.iriLocal")}
-            <input value={iriLocal} onChange={(e) => setIriLocal(e.target.value)} placeholder={qid} />
-            <span className="muted">{t("entity.iriLocalHint")}</span>
-          </label>
-          <div className="row">
-            <button className="primary" type="submit" disabled={!packageCode}>
-              {t("entity.saveLabels")}
-            </button>
-            <button type="button" onClick={() => setMode("view")}>
-              {t("common.cancel")}
-            </button>
-          </div>
-        </form>
-      )}
+      <div className="tab-content">
 
-      {entity && (
-        <section className="panel stack">
-          <h3>{t("entity.iriAliases")}</h3>
-          <p className="muted">{t("entity.iriAliasesHint")}</p>
-          <ul>
-            {aliases.map((a) => (
-              <li key={a.iri} className="row" style={{ justifyContent: "space-between" }}>
-                <span className="mono">
-                  {a.kind}: {a.iri}
-                </span>
-                <button type="button" onClick={() => setAliases((prev) => prev.filter((x) => x.iri !== a.iri))}>
-                  {t("common.remove")}
+        {/* ── Detail tab ── */}
+        {tab === "detail" && entity && (
+          <section className="stack">
+            {entity.iri && (
+              <p className="muted mono" title={t("entity.iriHint")}>
+                {t("entity.iri")}: {entity.iri}
+              </p>
+            )}
+            {pickLabel(entity.descriptions, i18n.language, "").trim() && (
+              <p>{pickLabel(entity.descriptions, i18n.language, "")}</p>
+            )}
+            {releases.length > 0 && (
+              <div className="row release-badges">
+                {releases.map((r) => (
+                  <Link
+                    key={`${r.packageCode}@${r.version}`}
+                    className="badge"
+                    to={`/model/packages/${encodeURIComponent(r.packageCode)}`}
+                  >
+                    {t("entity.inRelease", { pkg: r.packageCode, version: r.version })}
+                  </Link>
+                ))}
+              </div>
+            )}
+
+            {entity.propertyProfile && (
+              <div className="panel stack">
+                <h3>{t("entity.propertyProfile")}</h3>
+                <p>
+                  <strong>{t("properties.datatype")}:</strong> {entity.propertyProfile.datatype}
+                </p>
+                {entity.propertyProfile.constraints && Object.keys(entity.propertyProfile.constraints).length > 0 && (
+                  <pre className="muted">{JSON.stringify(entity.propertyProfile.constraints, null, 2)}</pre>
+                )}
+              </div>
+            )}
+            {entity.classProfile && (
+              <div className="panel stack">
+                <h3>{t("entity.classProfile")}</h3>
+                <p>
+                  <strong>{t("classes.subClassOf")}:</strong>{" "}
+                  {entity.classProfile.subClassOf ? (
+                    <EntityLink
+                      id={entity.classProfile.subClassOf}
+                      labels={relatedEntities[entity.classProfile.subClassOf]?.labels}
+                      lang={i18n.language}
+                    />
+                  ) : (
+                    "—"
+                  )}
+                </p>
+              </div>
+            )}
+
+            {mode === "editLabels" && (
+              <form className="panel stack" onSubmit={saveLabels}>
+                <h3>{t("entity.labels")}</h3>
+                {Object.entries(labelsDraft).map(([lang, text]) => (
+                  <div className="row" key={lang}>
+                    <label className="field" style={{ maxWidth: "8rem", flex: "0 0 8rem" }}>
+                      {t("common.language")}
+                      <input
+                        value={lang}
+                        onChange={(e) => {
+                          const nextLang = e.target.value.toLowerCase();
+                          setLabelsDraft((prev) => {
+                            const next = { ...prev };
+                            delete next[lang];
+                            next[nextLang || "en"] = text;
+                            return next;
+                          });
+                        }}
+                      />
+                    </label>
+                    <label className="field">
+                      {t("entity.label")}
+                      <input
+                        value={text}
+                        onChange={(e) => setLabelsDraft((prev) => ({ ...prev, [lang]: e.target.value }))}
+                        required={lang === "en"}
+                      />
+                    </label>
+                    {lang !== "en" && (
+                      <button type="button" onClick={() => setLabelsDraft((prev) => Object.fromEntries(Object.entries(prev).filter(([key]) => key !== lang)))}>
+                        {t("common.remove")}
+                      </button>
+                    )}
+                  </div>
+                ))}
+                <button type="button" onClick={() => setLabelsDraft((prev) => ({ ...prev, [`l${Object.keys(prev).length}`]: "" }))}>
+                  {t("entity.addLang")}
                 </button>
-              </li>
-            ))}
-          </ul>
-          <form
-            className="row"
-            onSubmit={(e) => {
-              e.preventDefault();
-              const iri = aliasDraft.trim();
-              if (!iri) return;
-              setAliases((prev) => [...prev.filter((x) => x.iri !== iri), { iri, kind: "sameAs" }]);
-              setAliasDraft("");
-            }}
-          >
-            <label className="field" style={{ flex: 1 }}>
-              {t("entity.addAlias")}
-              <input
-                value={aliasDraft}
-                onChange={(e) => setAliasDraft(e.target.value)}
-                placeholder="https://www.wikidata.org/entity/Q42"
-              />
-            </label>
-            <button type="submit">{t("common.add")}</button>
-          </form>
-          <button type="button" className="primary" disabled={!packageCode} onClick={(e) => void saveAliases(e)}>
-            {t("entity.saveAliases")}
-          </button>
-        </section>
-      )}
+                <label className="field">
+                  {t("entity.iriLocal")}
+                  <input value={iriLocal} onChange={(e) => setIriLocal(e.target.value)} placeholder={qid} />
+                  <span className="muted">{t("entity.iriLocalHint")}</span>
+                </label>
+                <div className="row">
+                  <button className="primary" type="submit" disabled={!packageCode}>
+                    {t("entity.saveLabels")}
+                  </button>
+                  <button type="button" onClick={() => setMode("view")}>
+                    {t("common.cancel")}
+                  </button>
+                </div>
+              </form>
+            )}
 
-      {mode === "addStatement" && (
-        <section className="panel stack">
-          <h2>{t("entity.addStatement")}</h2>
-          {packageMismatch && (
-            <p className="error">
-              {t("entity.packageMismatch", { entityPkg: entity?.packageCode, activePkg: packageCode })}
+            <div className="panel stack">
+              <h3>{t("entity.iriAliases")}</h3>
+              <p className="muted">{t("entity.iriAliasesHint")}</p>
+              <ul>
+                {aliases.map((a) => (
+                  <li key={a.iri} className="row" style={{ justifyContent: "space-between" }}>
+                    <span className="mono">
+                      {a.kind}: {a.iri}
+                    </span>
+                    <button type="button" onClick={() => setAliases((prev) => prev.filter((x) => x.iri !== a.iri))}>
+                      {t("common.remove")}
+                    </button>
+                  </li>
+                ))}
+              </ul>
+              <form
+                className="row"
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  const iri = aliasDraft.trim();
+                  if (!iri) return;
+                  setAliases((prev) => [...prev.filter((x) => x.iri !== iri), { iri, kind: "sameAs" }]);
+                  setAliasDraft("");
+                }}
+              >
+                <label className="field" style={{ flex: 1 }}>
+                  {t("entity.addAlias")}
+                  <input
+                    value={aliasDraft}
+                    onChange={(e) => setAliasDraft(e.target.value)}
+                    placeholder="https://www.wikidata.org/entity/Q42"
+                  />
+                </label>
+                <button type="submit">{t("common.add")}</button>
+              </form>
+              <button type="button" className="primary" disabled={!packageCode} onClick={(e) => void saveAliases(e)}>
+                {t("entity.saveAliases")}
+              </button>
+            </div>
+
+            <p>
+              <Link to={`/entities/${qid}/history`}>{t("entity.history")}</Link>
+              {" · "}
+              <Link to={`/entities/${qid}/validation`}>{t("validation.title")}</Link>
             </p>
-          )}
-          <form className="stack" onSubmit={addStatement}>
+          </section>
+        )}
+
+        {/* ── Statements tab ── */}
+        {tab === "statements" && (
+          <section className="stack">
+            {mode === "addStatement" && (
+              <div className="panel stack">
+                {packageMismatch && (
+                  <p className="error">
+                    {t("entity.packageMismatch", { entityPkg: entity?.packageCode, activePkg: packageCode })}
+                  </p>
+                )}
+                <form className="stack" onSubmit={addStatement}>
+                  <div className="row">
+                    <label className="field">
+                      {t("entity.property")}
+                      <select
+                        value={prop}
+                        onChange={(e) => {
+                          const id = e.target.value;
+                          setProp(id);
+                          const p = properties.find((x) => x.id === id);
+                          setVal(emptyValue(p?.datatype || "String"));
+                        }}
+                      >
+                        {properties.map((p) => (
+                          <option key={p.id} value={p.id}>
+                            {pickLabel(p.labels, i18n.language, p.id)} ({p.id})
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    <label className="field">
+                      {t("entity.value")}
+                      <ValueEditor
+                        datatype={selected?.datatype || "String"}
+                        value={val}
+                        onChange={setVal}
+                      />
+                    </label>
+                  </div>
+                  <details className="advanced">
+                    <summary>{t("entity.advanced")}</summary>
+                    <div className="stack" style={{ marginTop: "0.75rem" }}>
+                      <label className="field">
+                        {t("validation.mode")}
+                        <select value={validationMode} onChange={(e) => setValidationMode(e.target.value as typeof validationMode)}>
+                          <option value="relaxed">{t("validation.relaxed")}</option>
+                          <option value="strict">{t("validation.strict")}</option>
+                          <option value="off">{t("validation.off")}</option>
+                        </select>
+                      </label>
+                      <label className="field">
+                        {t("entity.qualifiers")}
+                        <textarea rows={3} value={qualJSON} onChange={(e) => setQualJSON(e.target.value)} />
+                      </label>
+                      <label className="field">
+                        {t("entity.references")}
+                        <input value={refs} onChange={(e) => setRefs(e.target.value)} />
+                      </label>
+                      <div className="row">
+                        <label className="field">
+                          {t("entity.validFrom")}
+                          <input type="datetime-local" value={validFrom} onChange={(e) => setValidFrom(e.target.value)} />
+                        </label>
+                        <label className="field">
+                          {t("entity.validTo")}
+                          <input type="datetime-local" value={validTo} onChange={(e) => setValidTo(e.target.value)} />
+                        </label>
+                      </div>
+                    </div>
+                  </details>
+                  <div className="row">
+                    <button className="primary" type="submit" disabled={!packageCode}>
+                      {t("common.save")}
+                    </button>
+                    <button type="button" onClick={() => setMode("view")}>
+                      {t("common.cancel")}
+                    </button>
+                  </div>
+                </form>
+              </div>
+            )}
+
+            <div className="row" style={{ justifyContent: "flex-end" }}>
+              <label className="row" style={{ gap: "0.4rem" }}>
+                <input type="checkbox" checked={hideModel} onChange={(e) => setHideModel(e.target.checked)} />
+                {t("entity.hideModel")}
+              </label>
+            </div>
+            {visibleStatements.map((st) => {
+              const editing = mode === `revise:${st.id}`;
+              const p = properties.find((x) => x.id === st.property);
+              return (
+                <div className="statement" key={st.id}>
+                  <div className="row" style={{ justifyContent: "space-between" }}>
+                    <strong>
+                      <EntityLink id={st.property} labels={p?.labels} lang={i18n.language} breadcrumb={[...breadcrumb, qid]} />
+                    </strong>
+                    <span className="muted">
+                      <Link to={`/statements/${st.id}`}>{st.id}</Link> · rev {st.revisionNo}
+                    </span>
+                  </div>
+                  {!editing && (
+                    <div className="row" style={{ justifyContent: "space-between" }}>
+                      <div>{renderValue(st.value)}</div>
+                      <button
+                        type="button"
+                        disabled={!packageCode}
+                        onClick={() => {
+                          setMode(`revise:${st.id}`);
+                          setReviseVal(valueFromApi(p?.datatype || "String", st.value));
+                        }}
+                      >
+                        {t("entity.revise")}
+                      </button>
+                    </div>
+                  )}
+                  {editing && reviseVal && (
+                    <form
+                      className="stack"
+                      onSubmit={(e) => {
+                        e.preventDefault();
+                        void revise(st);
+                      }}
+                    >
+                      <ValueEditor datatype={p?.datatype || "String"} value={reviseVal} onChange={setReviseVal} />
+                      <div className="row">
+                        <button className="primary" type="submit">
+                          {t("common.save")}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setMode("view");
+                            setReviseVal(null);
+                          }}
+                        >
+                          {t("common.cancel")}
+                        </button>
+                      </div>
+                    </form>
+                  )}
+                  <details className="advanced">
+                    <summary>{t("entity.advanced")}</summary>
+                    <div className="stack compact">
+                      {(st.qualifiers?.length || 0) > 0 && (
+                        <div className="stack compact">
+                          <strong>{t("statement.qualifiers")}</strong>
+                          {st.qualifiers!.map((q, index) => (
+                            <div key={`${q.property}:${index}`} className="row compact">
+                              <EntityLink id={q.property} labels={relatedEntities[q.property]?.labels} lang={i18n.language} />:
+                              {renderValue(q.value)}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                      {(st.referenceIds?.length || 0) > 0 && (
+                        <div className="stack compact">
+                          <strong>{t("statement.references")}</strong>
+                          <div className="row compact">
+                            {st.referenceIds!.map((id) => (
+                              <ReferenceLink key={id} id={id} />
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                      {(st.validFrom || st.validTo) && (
+                        <p className="muted">
+                          {t("statement.validity")}: {st.validFrom || "—"} - {st.validTo || "—"}
+                        </p>
+                      )}
+                    </div>
+                  </details>
+                </div>
+              );
+            })}
+            {statementNext && (
+              <button type="button" onClick={() => void loadStatements(false, statementNext)}>
+                {t("common.next")}
+              </button>
+            )}
+          </section>
+        )}
+
+        {/* ── References tab ── */}
+        {tab === "references" && (
+          <section className="stack">
+            <StatementList
+              query={new URLSearchParams({ object: qid }).toString()}
+              properties={properties}
+              emptyText={t("entity.noReferences")}
+              subjectBreadcrumb={[...breadcrumb, qid]}
+            />
+          </section>
+        )}
+
+        {/* ── Uses tab (property only) ── */}
+        {tab === "uses" && entity?.propertyProfile && (
+          <section className="stack">
+            <StatementList query={new URLSearchParams({ property: qid }).toString()} emptyText={t("entity.noUses")} />
+          </section>
+        )}
+
+        {/* ── Hierarchy tab (class only) ── */}
+        {tab === "hierarchy" && entity?.classProfile && (
+          <section className="stack">
+            <div className="panel stack">
+              <div>
+                <strong>{t("entity.ancestors")}:</strong>{" "}
+                {classLineage.length > 0 ? (
+                  <span className="row compact">
+                    {classLineage.map((item) => (
+                      <EntityLink key={item.id} id={item.id} labels={item.labels} lang={i18n.language} />
+                    ))}
+                  </span>
+                ) : (
+                  "—"
+                )}
+              </div>
+              <div>
+                <strong>{t("classes.subClassOf")}:</strong>{" "}
+                {entity.classProfile.subClassOf ? (
+                  <EntityLink
+                    id={entity.classProfile.subClassOf}
+                    labels={relatedEntities[entity.classProfile.subClassOf]?.labels}
+                    lang={i18n.language}
+                  />
+                ) : (
+                  "—"
+                )}
+              </div>
+            </div>
+            <div className="panel stack">
+              <h3>{t("entity.directSubclasses")}</h3>
+              {childClasses.length === 0 ? (
+                <p className="muted">{t("entity.noSubclasses")}</p>
+              ) : (
+                <div className="stack compact">
+                  {childClasses.map((item) => (
+                    <EntityLink key={item.id} id={item.id} labels={item.labels} lang={i18n.language} />
+                  ))}
+                </div>
+              )}
+            </div>
+          </section>
+        )}
+
+        {/* ── Instances tab (class only) ── */}
+        {tab === "instances" && entity?.classProfile && (
+          <section className="stack">
             <div className="row">
               <label className="field">
-                {t("entity.property")}
-                <select
-                  value={prop}
-                  onChange={(e) => {
-                    const id = e.target.value;
-                    setProp(id);
-                    const p = properties.find((x) => x.id === id);
-                    setVal(emptyValue(p?.datatype || "String"));
-                  }}
-                >
-                  {properties.map((p) => (
-                    <option key={p.id} value={p.id}>
-                      {pickLabel(p.labels, i18n.language, p.id)} ({p.id})
+                {t("search.placeholder")}
+                <input value={instanceQuery} onChange={(e) => updateInstanceFilters({ instanceQ: e.target.value })} />
+              </label>
+              <label className="field">
+                {t("entity.subclassFilter")}
+                <select value={instanceSubclass} onChange={(e) => updateInstanceFilters({ instanceSubclass: e.target.value })}>
+                  <option value="">{t("entity.allSubclasses")}</option>
+                  <option value={qid}>{pickLabel(entity.labels, i18n.language, qid)}</option>
+                  {descendantClasses.map((item) => (
+                    <option key={item.id} value={item.id}>
+                      {pickLabel(item.labels, i18n.language, item.id)}
                     </option>
                   ))}
                 </select>
               </label>
               <label className="field">
-                {t("entity.value")}
-                <ValueEditor
-                  datatype={selected?.datatype || "String"}
-                  value={val}
-                  onChange={setVal}
-                />
+                {t("package.current")}
+                <input value={instancePackage} onChange={(e) => updateInstanceFilters({ instancePackage: e.target.value })} />
               </label>
             </div>
-            <details className="advanced">
-              <summary>{t("entity.advanced")}</summary>
-              <div className="stack" style={{ marginTop: "0.75rem" }}>
-                <label className="field">
-                  {t("validation.mode")}
-                  <select value={validationMode} onChange={(e) => setValidationMode(e.target.value as typeof validationMode)}>
-                    <option value="relaxed">{t("validation.relaxed")}</option>
-                    <option value="strict">{t("validation.strict")}</option>
-                    <option value="off">{t("validation.off")}</option>
-                  </select>
-                </label>
-                <label className="field">
-                  {t("entity.qualifiers")}
-                  <textarea rows={3} value={qualJSON} onChange={(e) => setQualJSON(e.target.value)} />
-                </label>
-                <label className="field">
-                  {t("entity.references")}
-                  <input value={refs} onChange={(e) => setRefs(e.target.value)} />
-                </label>
-                <div className="row">
-                  <label className="field">
-                    {t("entity.validFrom")}
-                    <input type="datetime-local" value={validFrom} onChange={(e) => setValidFrom(e.target.value)} />
-                  </label>
-                  <label className="field">
-                    {t("entity.validTo")}
-                    <input type="datetime-local" value={validTo} onChange={(e) => setValidTo(e.target.value)} />
-                  </label>
-                </div>
-              </div>
-            </details>
-            <div className="row">
-              <button className="primary" type="submit" disabled={!packageCode}>
-                {t("common.save")}
-              </button>
-              <button type="button" onClick={() => setMode("view")}>
-                {t("common.cancel")}
-              </button>
-            </div>
-          </form>
-        </section>
-      )}
-
-      <section className="stack">
-        <div className="row" style={{ justifyContent: "space-between" }}>
-          <h2>{t("entity.statements")}</h2>
-          <label className="row" style={{ gap: "0.4rem" }}>
-            <input type="checkbox" checked={hideModel} onChange={(e) => setHideModel(e.target.checked)} />
-            {t("entity.hideModel")}
-          </label>
-        </div>
-        {visibleStatements.map((st) => {
-          const editing = mode === `revise:${st.id}`;
-          const p = properties.find((x) => x.id === st.property);
-          return (
-            <div className="statement" key={st.id}>
-              <div className="row" style={{ justifyContent: "space-between" }}>
-                <strong>
-                  <button type="button" className="linkish" onClick={() => goToEntity(st.property)}>
-                    {propLabel(st.property)}
-                  </button>
-                  <span className="muted"> ({st.property})</span>
-                </strong>
-                <span className="muted">
-                  {st.id} · rev {st.revisionNo}
-                </span>
-              </div>
-              {!editing && (
-                <div className="row" style={{ justifyContent: "space-between" }}>
-                  <div>{renderValue(st.value)}</div>
-                  <button
-                    type="button"
-                    disabled={!packageCode}
-                    onClick={() => {
-                      setMode(`revise:${st.id}`);
-                      setReviseVal(valueFromApi(p?.datatype || "String", st.value));
-                    }}
-                  >
-                    {t("entity.revise")}
-                  </button>
-                </div>
-              )}
-              {editing && reviseVal && (
-                <form
-                  className="stack"
-                  onSubmit={(e) => {
-                    e.preventDefault();
-                    void revise(st);
-                  }}
-                >
-                  <ValueEditor datatype={p?.datatype || "String"} value={reviseVal} onChange={setReviseVal} />
-                  <div className="row">
-                    <button className="primary" type="submit">
-                      {t("common.save")}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setMode("view");
-                        setReviseVal(null);
-                      }}
-                    >
-                      {t("common.cancel")}
-                    </button>
+            {instanceError && <p className="error">{instanceError}</p>}
+            {instanceItems.length === 0 ? (
+              <p className="muted">{t("entity.noInstances")}</p>
+            ) : (
+              <div className="stack compact">
+                {instanceItems.map((item) => (
+                  <div key={item.id} className="panel">
+                    <EntityLink id={item.id} labels={item.labels} lang={i18n.language} />
+                    <p className="muted">{item.packageCode || "—"}</p>
                   </div>
-                </form>
-              )}
-              <details className="advanced">
-                <summary>{t("entity.advanced")}</summary>
-                <pre className="muted" style={{ whiteSpace: "pre-wrap" }}>
-                  {JSON.stringify(
-                    {
-                      qualifiers: st.qualifiers || [],
-                      referenceIds: st.referenceIds || [],
-                      validFrom: st.validFrom,
-                      validTo: st.validTo,
-                      value: st.value,
-                    },
-                    null,
-                    2,
-                  )}
-                </pre>
-              </details>
-            </div>
-          );
-        })}
-      </section>
+                ))}
+              </div>
+            )}
+            {instanceNext && (
+              <button type="button" onClick={() => void loadInstances(false, instanceNext)}>
+                {t("common.next")}
+              </button>
+            )}
+          </section>
+        )}
 
-      <p>
-        <Link to={`/entities/${qid}/history`}>{t("entity.history")}</Link>
-        {" · "}
-        <Link to={`/entities/${qid}/validation`}>{t("validation.title")}</Link>
-      </p>
+      </div>
     </div>
   );
 }

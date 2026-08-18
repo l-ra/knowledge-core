@@ -252,6 +252,58 @@ func (e *Engine) ListEntityStatements(ctx context.Context, qid, propertyPID stri
 	return e.filterStatements(ctx, qid, out)
 }
 
+func (e *Engine) ListStatements(ctx context.Context, opt store.StatementListOptions) ([]domain.Statement, string, error) {
+	if opt.SubjectQID != "" {
+		if _, _, err := datatype.ParsePublicGraphID(opt.SubjectQID); err != nil {
+			return nil, "", fmt.Errorf("%w: %v", ErrInvalid, err)
+		}
+		if err := e.authorizeEntity(ctx, auth.OpDiscover, opt.SubjectQID); err != nil {
+			return nil, "", err
+		}
+	}
+	if opt.ObjectQID != "" {
+		if _, _, err := datatype.ParsePublicGraphID(opt.ObjectQID); err != nil {
+			return nil, "", fmt.Errorf("%w: %v", ErrInvalid, err)
+		}
+		if err := e.authorizeEntity(ctx, auth.OpDiscover, opt.ObjectQID); err != nil {
+			return nil, "", err
+		}
+	}
+	if opt.PropertyPID != "" {
+		if _, err := datatype.ParsePublicPropertyID(opt.PropertyPID); err != nil {
+			return nil, "", fmt.Errorf("%w: %v", ErrInvalid, err)
+		}
+	}
+	list, next, err := e.store.ListStatements(ctx, opt)
+	if err != nil {
+		return nil, "", mapErr(err)
+	}
+	var ownerQID string
+	if opt.SubjectQID != "" {
+		ownerQID = opt.SubjectQID
+	}
+	out := make([]domain.Statement, 0, len(list))
+	for i := range list {
+		qid := ownerQID
+		if qid == "" {
+			qid = list[i].SubjectQID
+		}
+		if qid == "" {
+			continue
+		}
+		st, err := e.presentStatement(ctx, &list[i])
+		if err != nil {
+			return nil, "", err
+		}
+		filtered, err := e.filterStatements(ctx, qid, []domain.Statement{*st})
+		if err != nil || len(filtered) == 0 {
+			continue
+		}
+		out = append(out, filtered[0])
+	}
+	return out, next, nil
+}
+
 func (e *Engine) ApplyChangeSet(ctx context.Context, meta domain.WriteMeta, in domain.ApplyChangeSetInput) (*domain.WriteResult[domain.ChangeSet], error) {
 	if err := e.authorizeChangeSet(ctx, in); err != nil {
 		return nil, err

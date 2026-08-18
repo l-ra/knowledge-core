@@ -76,11 +76,17 @@ export function Layout() {
           <NavLink to="/admin/schema">{t("nav.schema")}</NavLink>
           <NavLink to="/admin/ops">{t("nav.ops")}</NavLink>
         </div>
+      </aside>
 
-        <div style={{ marginTop: "auto" }} className="stack">
-          <label className="field">
-            {t("package.current")}
-            <select value={packageCode} onChange={(e) => setPackageCode(e.target.value)} required>
+      <div className="main-area">
+        <header className="topbar">
+          <div className="topbar-group">
+            <select
+              className="topbar-select"
+              value={packageCode}
+              onChange={(e) => setPackageCode(e.target.value)}
+              title={t("package.current")}
+            >
               {packages.length === 0 && <option value="">{t("package.none")}</option>}
               {packages.map((p) => (
                 <option key={p.code} value={p.code}>
@@ -88,58 +94,65 @@ export function Layout() {
                 </option>
               ))}
             </select>
-          </label>
-          <label className="field">
-            {t("common.language")}
+
+            <div className="topbar-divider" />
+
+            {isOpen ? (
+              <>
+                <span className="topbar-badge">
+                  {t("changeset.openStatus", { count: opCount })}
+                </span>
+                <button type="button" className="topbar-btn primary" onClick={() => void onComplete()} disabled={opCount === 0}>
+                  {t("changeset.complete")}
+                </button>
+                <button type="button" className="topbar-btn danger" onClick={() => void onCancel()}>
+                  {t("changeset.cancel")}
+                </button>
+                <button type="button" className="topbar-btn" onClick={() => setOpsOpen((v) => !v)}>
+                  {opsOpen ? t("changeset.hideOps") : t("changeset.showOps")}
+                </button>
+              </>
+            ) : (
+              <>
+                <button type="button" className="topbar-btn" onClick={() => void onOpen()}>
+                  {t("changeset.open")}
+                </button>
+                {lastCommittedId && (
+                  <span className="topbar-muted">
+                    {t("changeset.lastCommitted")}: <code>{lastCommittedId}</code>
+                  </span>
+                )}
+              </>
+            )}
+          </div>
+
+          <div className="topbar-group">
             <select
+              className="topbar-select topbar-select-sm"
               value={i18n.language.startsWith("cs") ? "cs" : "en"}
               onChange={(e) => {
                 void i18n.changeLanguage(e.target.value);
                 localStorage.setItem("kc.lang", e.target.value);
               }}
+              title={t("common.language")}
             >
-              <option value="cs">Čeština</option>
-              <option value="en">English</option>
+              <option value="cs">CS</option>
+              <option value="en">EN</option>
             </select>
-          </label>
-          <div className="pill">
-            {t("common.you")}: {displayName}
-          </div>
-          <button type="button" onClick={() => setSession(null)}>
-            {t("nav.logout")}
-          </button>
-        </div>
-      </aside>
-      <main className="main">
-        <div className="draft-banner panel row" style={{ marginBottom: "1rem" }}>
-          {isOpen ? (
-            <>
-              <span className="pill draft-pill">
-                {t("changeset.openStatus", { count: opCount })}
-              </span>
-              <button type="button" className="primary" onClick={() => void onComplete()} disabled={opCount === 0}>
-                {t("changeset.complete")}
-              </button>
-              <button type="button" className="danger" onClick={() => void onCancel()}>
-                {t("changeset.cancel")}
-              </button>
-              <button type="button" onClick={() => setOpsOpen((v) => !v)}>
-                {opsOpen ? t("changeset.hideOps") : t("changeset.showOps")}
-              </button>
-            </>
-          ) : (
-            <button type="button" onClick={() => void onOpen()}>
-              {t("changeset.open")}
-            </button>
-          )}
-          {lastCommittedId && !isOpen && (
-            <span className="muted">
-              {t("changeset.lastCommitted")}: <code>{lastCommittedId}</code>
+
+            <div className="topbar-divider" />
+
+            <span className="topbar-user" title={displayName}>
+              {displayName}
             </span>
-          )}
-        </div>
+            <button type="button" className="topbar-btn" onClick={() => setSession(null)}>
+              {t("nav.logout")}
+            </button>
+          </div>
+        </header>
+
         {opsOpen && isOpen && (
-          <div className="panel stack" style={{ marginBottom: "1rem" }}>
+          <div className="panel stack" style={{ margin: "0 clamp(1rem, 3vw, 2.5rem)", marginBottom: "0.5rem" }}>
             <h3>{t("changeset.operations")}</h3>
             {opCount === 0 ? (
               <p className="muted">{t("changeset.noOps")}</p>
@@ -159,10 +172,13 @@ export function Layout() {
             )}
           </div>
         )}
-        {draftMsg && <p className="muted">{draftMsg}</p>}
-        {draftError && <p className="error">{draftError}</p>}
-        <Outlet />
-      </main>
+        {draftMsg && <p className="muted" style={{ padding: "0 clamp(1rem, 3vw, 2.5rem)" }}>{draftMsg}</p>}
+        {draftError && <p className="error" style={{ padding: "0 clamp(1rem, 3vw, 2.5rem)" }}>{draftError}</p>}
+
+        <main className="main">
+          <Outlet />
+        </main>
+      </div>
     </div>
   );
 }
