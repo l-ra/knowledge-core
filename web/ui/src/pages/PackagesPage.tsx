@@ -76,7 +76,7 @@ function candidateToRow(c: RDFCandidate): RDFAssignmentRow {
 
 export function PackagesPage() {
   const { t } = useTranslation();
-  const { reload: reloadPackages, setPackageCode } = usePackage();
+  const { reload: reloadPackages, setPackageCode, packageCode } = usePackage();
   const [items, setItems] = useState<Pkg[]>([]);
   const [code, setCode] = useState("");
   const [label, setLabel] = useState("");
@@ -122,6 +122,21 @@ export function PackagesPage() {
       setCode("");
       setLabel("");
       setIriBase("");
+      await load();
+      await reloadPackages();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : t("common.error"));
+    }
+  }
+
+  async function removePackage(code: string) {
+    setError("");
+    if (!window.confirm(t("packages.deleteConfirm", { code }))) return;
+    try {
+      await apiFetch(`/v1/packages/${encodeURIComponent(code)}`, { method: "DELETE" });
+      if (packageCode === code) {
+        setPackageCode("");
+      }
       await load();
       await reloadPackages();
     } catch (err) {
@@ -561,6 +576,7 @@ export function PackagesPage() {
             <th>Label</th>
             <th>{t("packages.iriBase")}</th>
             <th>Lifecycle</th>
+            <th />
           </tr>
         </thead>
         <tbody>
@@ -572,6 +588,11 @@ export function PackagesPage() {
               <td>{p.labels?.en}</td>
               <td className="mono muted">{p.iriBase || "—"}</td>
               <td>{p.lifecycle}</td>
+              <td>
+                <button type="button" className="danger" onClick={() => void removePackage(p.code)}>
+                  {t("packages.delete")}
+                </button>
+              </td>
             </tr>
           ))}
         </tbody>

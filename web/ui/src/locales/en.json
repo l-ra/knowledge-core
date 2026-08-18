@@ -81,6 +81,8 @@
   "packages.releases": "Releases",
   "packages.version": "Version",
   "packages.publish": "Publish release",
+  "packages.delete": "Delete package",
+  "packages.deleteConfirm": "Delete package {{code}} and all its data from the database?",
   "packages.publishedAt": "Published",
   "packages.exportBundle": "Export bundle",
   "packages.noReleases": "No releases yet",

@@ -377,6 +377,30 @@ paths:
       responses:
         "200":
           description: OK
+    patch:
+      summary: Update package
+      tags: [packages]
+      parameters:
+        - name: code
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: OK
+    delete:
+      summary: Delete package and owned graph data
+      tags: [packages]
+      parameters:
+        - name: code
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Deleted
   /v1/packages/{code}/releases:
     post:
       summary: Publish release

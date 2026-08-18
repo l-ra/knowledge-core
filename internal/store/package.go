@@ -194,6 +194,115 @@ func (s *Store) UpdatePackage(ctx context.Context, meta domain.WriteMeta, code s
 	return &domain.WriteResult[domain.Package]{Value: *pkg, ChangeSet: s.changeSetDomain(cs, meta)}, nil
 }
 
+func (s *Store) DeletePackage(ctx context.Context, meta domain.WriteMeta, code string) (*domain.WriteResult[domain.Package], error) {
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback(ctx)
+
+	var pkg domain.Package
+	var labelsJSON []byte
+	if err := tx.QueryRow(ctx, `
+		SELECT id, code, lifecycle, labels, COALESCE(iri_base,''), created_at, updated_at
+		FROM package
+		WHERE code = $1
+	`, code).Scan(&pkg.ID, &pkg.Code, &pkg.Lifecycle, &labelsJSON, &pkg.IRIBase, &pkg.CreatedAt, &pkg.UpdatedAt); err != nil {
+		return nil, err
+	}
+	_ = json.Unmarshal(labelsJSON, &pkg.Labels)
+
+	depRows, err := tx.Query(ctx, `
+		SELECT depends_on_code, version_range FROM package_dependency WHERE package_id = $1
+	`, pkg.ID)
+	if err != nil {
+		return nil, err
+	}
+	for depRows.Next() {
+		var d domain.PackageDependency
+		if err := depRows.Scan(&d.DependsOnCode, &d.VersionRange); err != nil {
+			depRows.Close()
+			return nil, err
+		}
+		pkg.Dependencies = append(pkg.Dependencies, d)
+	}
+	if err := depRows.Err(); err != nil {
+		depRows.Close()
+		return nil, err
+	}
+	depRows.Close()
+
+	cs, err := s.beginChangeSetTx(ctx, tx, meta)
+	if err != nil {
+		return nil, err
+	}
+
+	statementRows, err := tx.Query(ctx, `
+		WITH pkg_entities AS (
+			SELECT id FROM entity WHERE package_id = $1
+		)
+		SELECT DISTINCT st.id
+		FROM statement st
+		LEFT JOIN statement_qualifier sq ON sq.statement_id = st.id
+		WHERE st.package_id = $1
+		   OR st.subject_id IN (SELECT id FROM pkg_entities)
+		   OR st.property_id IN (SELECT id FROM pkg_entities)
+		   OR st.value_entity_id IN (SELECT id FROM pkg_entities)
+		   OR sq.property_id IN (SELECT id FROM pkg_entities)
+		   OR sq.value_entity_id IN (SELECT id FROM pkg_entities)
+	`, pkg.ID)
+	if err != nil {
+		return nil, err
+	}
+	statementIDs := make([]uuid.UUID, 0)
+	for statementRows.Next() {
+		var id uuid.UUID
+		if err := statementRows.Scan(&id); err != nil {
+			statementRows.Close()
+			return nil, err
+		}
+		statementIDs = append(statementIDs, id)
+	}
+	if err := statementRows.Err(); err != nil {
+		statementRows.Close()
+		return nil, err
+	}
+	statementRows.Close()
+	if len(statementIDs) > 0 {
+		if _, err := tx.Exec(ctx, `DELETE FROM statement WHERE id = ANY($1)`, statementIDs); err != nil {
+			return nil, err
+		}
+	}
+
+	if _, err := tx.Exec(ctx, `DELETE FROM package_dependency WHERE depends_on_code = $1`, pkg.Code); err != nil {
+		return nil, err
+	}
+	if _, err := tx.Exec(ctx, `DELETE FROM entity WHERE package_id = $1`, pkg.ID); err != nil {
+		return nil, err
+	}
+	if _, err := tx.Exec(ctx, `
+		DELETE FROM reference r
+		WHERE NOT EXISTS (SELECT 1 FROM statement_reference sr WHERE sr.reference_id = r.id)
+		  AND NOT EXISTS (SELECT 1 FROM statement_revision_reference srr WHERE srr.reference_id = r.id)
+	`); err != nil {
+		return nil, err
+	}
+	if _, err := tx.Exec(ctx, `DELETE FROM package WHERE id = $1`, pkg.ID); err != nil {
+		return nil, err
+	}
+
+	if err := cs.addItem(ctx, tx, "package", pkg.ID, pkg.Code, "delete", nil); err != nil {
+		return nil, err
+	}
+	if err := s.finalizeChangeSet(ctx, tx, cs, pkg); err != nil {
+		return nil, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return nil, err
+	}
+	return &domain.WriteResult[domain.Package]{Value: pkg, ChangeSet: s.changeSetDomain(cs, meta)}, nil
+}
+
 func (s *Store) findMatchingRelease(ctx context.Context, tx pgx.Tx, depCode, rangeSpec string) (string, error) {
 	rows, err := tx.Query(ctx, `
 		SELECT r.version FROM release r

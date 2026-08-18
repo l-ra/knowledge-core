@@ -82,6 +82,7 @@ func New(eng *engine.Engine, st *store.Store, authn Authenticator, cfg config.Co
 		r.Post("/packages", s.createPackage)
 		r.Get("/packages/{code}", s.getPackage)
 		r.Patch("/packages/{code}", s.updatePackage)
+		r.Delete("/packages/{code}", s.deletePackage)
 		r.Post("/packages/{code}/rdf/import", s.importPackageRDF)
 		r.Get("/packages/{code}/objects", s.listPackageObjects)
 		r.Get("/packages/{code}/releases", s.listPackageReleases)
@@ -791,6 +792,16 @@ func (s *Server) updatePackage(w http.ResponseWriter, r *http.Request) {
 	res, err := s.engine.UpdatePackage(r.Context(), meta, pathParam(r, "code"), domain.UpdatePackageInput{
 		IRIBase: req.IRIBase, Labels: req.Labels,
 	})
+	if err != nil {
+		writeEngineError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, writeResponse(packageDTO(&res.Value), res.ChangeSet))
+}
+
+func (s *Server) deletePackage(w http.ResponseWriter, r *http.Request) {
+	meta := writeMetaFromRequest(r, "deletePackage", "")
+	res, err := s.engine.DeletePackage(r.Context(), meta, pathParam(r, "code"))
 	if err != nil {
 		writeEngineError(w, err)
 		return

@@ -81,6 +81,8 @@
   "packages.releases": "Releases",
   "packages.version": "Verze",
   "packages.publish": "Publikovat release",
+  "packages.delete": "Smazat package",
+  "packages.deleteConfirm": "Smazat package {{code}} a všechna jeho data z databáze?",
   "packages.publishedAt": "Publikováno",
   "packages.exportBundle": "Exportovat bundle",
   "packages.noReleases": "Zatím žádné releases",

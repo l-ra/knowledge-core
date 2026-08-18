@@ -875,6 +875,42 @@ func TestAcceptanceIRIFirstIdentityBundle(t *testing.T) {
 	}
 }
 
+func TestAcceptanceDeletePackagePurgesOwnedGraph(t *testing.T) {
+	h := setupTestHandler(t)
+
+	createPkg(t, h, "pkg-a", nil)
+	createPkg(t, h, "pkg-b", nil)
+
+	qid := createEntityWithPkg(t, h, "pkg-a", "Owned entity")
+	pid := createPropertyWithPkg(t, h, "pkg-b", "External prop")
+	sid := createStatementWithPkg(t, h, "pkg-b", qid, pid, "linked")
+
+	del := doJSON(t, h, http.MethodDelete, "/v1/packages/pkg-a", nil, nil)
+	if del.StatusCode != http.StatusOK {
+		t.Fatalf("delete package: %d %s", del.StatusCode, del.Body)
+	}
+
+	pkg := doJSON(t, h, http.MethodGet, "/v1/packages/pkg-a", nil, nil)
+	if pkg.StatusCode != http.StatusNotFound {
+		t.Fatalf("deleted package should 404, got %d %s", pkg.StatusCode, pkg.Body)
+	}
+
+	ent := doJSON(t, h, http.MethodGet, "/v1/entities/"+url.PathEscape(qid), nil, nil)
+	if ent.StatusCode != http.StatusNotFound {
+		t.Fatalf("deleted package entity should 404, got %d %s", ent.StatusCode, ent.Body)
+	}
+
+	st := doJSON(t, h, http.MethodGet, "/v1/statements/"+url.PathEscape(sid), nil, nil)
+	if st.StatusCode != http.StatusNotFound {
+		t.Fatalf("statement referencing deleted package should 404, got %d %s", st.StatusCode, st.Body)
+	}
+
+	prop := doJSON(t, h, http.MethodGet, "/v1/properties/"+url.PathEscape(pid), nil, nil)
+	if prop.StatusCode != http.StatusOK {
+		t.Fatalf("other package property should remain, got %d %s", prop.StatusCode, prop.Body)
+	}
+}
+
 func TestAcceptanceA4A5A6(t *testing.T) {
 	h := setupTestHandler(t)
 	admin := adminHeaders()

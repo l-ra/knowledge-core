@@ -40,6 +40,17 @@ func (e *Engine) GetPackage(ctx context.Context, code string) (*domain.Package, 
 	return p, nil
 }
 
+func (e *Engine) DeletePackage(ctx context.Context, meta domain.WriteMeta, code string) (*domain.WriteResult[domain.Package], error) {
+	if err := e.authorizePackage(ctx, auth.OpManage, code); err != nil {
+		return nil, err
+	}
+	res, err := e.store.DeletePackage(ctx, meta, code)
+	if err != nil {
+		return nil, mapErr(err)
+	}
+	return res, nil
+}
+
 func (e *Engine) PublishRelease(ctx context.Context, meta domain.WriteMeta, code string, in domain.PublishReleaseInput) (*domain.WriteResult[domain.Release], error) {
 	if err := e.authorizePackage(ctx, auth.OpManage, code); err != nil {
 		return nil, err
