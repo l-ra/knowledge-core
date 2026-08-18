@@ -1,6 +1,7 @@
 # Ignore
 bin/
 dist/
+tmp/
 .tmp/
 *.exe
 .idea/

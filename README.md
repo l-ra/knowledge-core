@@ -23,7 +23,7 @@ docker compose -f deploy/docker-compose.yml up -d postgres pocket-id
 # App (lokálně) — začni bootstrapem, OIDC napoj v Admin UI
 export KC_DATABASE_URL='postgres://kc:kc@localhost:5433/knowledge_core?sslmode=disable'
 export KC_AUTH_MODE=bootstrap
-go run ./cmd/knowledge-core
+make dev   # Vite HMR + Go live-reload; UI: http://localhost:5173/ui/
 # heslo: log / KC_BOOTSTRAP_PASSWORD_FILE
 
 # nebo celý stack
@@ -33,7 +33,7 @@ docker compose -f deploy/docker-compose.yml up --build
 ### OIDC (Pocket ID first)
 
 1. Pocket ID: http://pocket-id.localhost:1411/setup → vytvoř **public PKCE** klienta (client_id nech auto-generovat; po vytvoření ho nelze změnit).
-2. Redirect URI: `http://localhost:8080/ui/callback`
+2. Redirect URI: `http://localhost:8080/ui/callback` (produkce / embed). Pro lokální Vite HMR přidej i `http://localhost:5173/ui/callback`.
 3. Knowledge Core UI → **Admin → OIDC / IdP** → vlož issuer + client_id z Pocket ID → Save.
 4. Odhlásí tě a přihlášení probíhá přes OIDC.
 5. **První OIDC uživatel typicky dostane `403 forbidden`** — nemá roli `admin`.  
@@ -41,7 +41,8 @@ docker compose -f deploy/docker-compose.yml up --build
 
 | Služba | URL |
 |--------|-----|
-| App / UI | http://localhost:8080/ui/ |
+| App / UI (produkční embed) | http://localhost:8080/ui/ |
+| App / UI (lokální vývoj, HMR) | http://localhost:5173/ui/ |
 | Pocket ID | http://pocket-id.localhost:1411 |
 | Postgres | localhost:5433 |
 | pgAdmin | http://localhost:5050 (admin@example.com / admin) |
@@ -61,10 +62,38 @@ Vestavěné SPA (React) na `/ui`:
 - **Admin:** outbox / projection rebuild, OIDC napojení
 - Po OIDC: práva pro zápis dat — [docs/ops/post-install.md](docs/ops/post-install.md)
 
+### Lokální vývoj (doporučeno)
+
+Vite HMR pro UI + Air (restart Go při změně `.go` / migrací). **Otevři UI na `:5173`**, ne embed na `:8080`.
+
+```bash
+docker compose -f deploy/docker-compose.yml up -d postgres pocket-id
+export KC_DATABASE_URL='postgres://kc:kc@localhost:5433/knowledge_core?sslmode=disable'
+export KC_AUTH_MODE=bootstrap
+make dev
+```
+
+UI: http://localhost:5173/ui/  
+API: http://localhost:8080 (`/v1`, `/healthz` proxyuje Vite)
+
+Stejné dva procesy zvlášť:
+
+```bash
+make api-dev   # Go + Air
+make ui-dev    # Vite HMR
+make clean-dev # ukončí dev procesy, uvolní :5173/:8080, smaže tmp/ a .tmp/
+```
+
+Změny v `web/ui/src` se projeví okamžitě (HMR). Změny v Go restartují backend. Produkční embed (`go:embed dist`) se při tomto režimu nepřestavuje; `make dev` vždy přepíše `web/ui/dist/index.html` dev stubem, aby na `:8080/ui/` nebyl vidět starý build.
+
+### Produkční preview (embed)
+
 ```bash
 make ui-build   # npm build → web/ui/dist (embed)
 make run
 ```
+
+UI: http://localhost:8080/ui/
 
 
 ## API (Fáze 1–7)
