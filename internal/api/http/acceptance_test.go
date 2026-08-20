@@ -731,6 +731,220 @@ func TestAcceptanceImportPromotion(t *testing.T) {
 	}
 }
 
+func TestAcceptancePackageUpgradeCompat(t *testing.T) {
+	h := setupTestHandler(t)
+
+	createPkg(t, h, "meta-pkg", nil)
+	qid := createEntityWithPkg(t, h, "meta-pkg", "Policy Entity")
+	pid := doJSON(t, h, http.MethodPost, "/v1/properties", map[string]any{
+		"packageCode": "meta-pkg",
+		"datatype":    "String",
+		"iriLocal":    "note",
+		"labels":      map[string]string{"en": "note"},
+		"constraints": map[string]any{"minCount": 0, "maxCount": 1},
+	}, nil)
+	if pid.StatusCode != http.StatusCreated {
+		t.Fatalf("create property: %d %s", pid.StatusCode, pid.Body)
+	}
+	propID := parseDataID(t, pid.Body)
+	sid := createStatementWithPkg(t, h, "meta-pkg", qid, propID, "v1")
+
+	pub := doJSON(t, h, http.MethodPost, "/v1/packages/meta-pkg/releases", map[string]any{"version": "1.0.0"}, nil)
+	if pub.StatusCode != http.StatusCreated {
+		t.Fatalf("publish 1.0.0: %d %s", pub.StatusCode, pub.Body)
+	}
+	bundleRes := doJSON(t, h, http.MethodGet, "/v1/packages/meta-pkg/releases/1.0.0/bundle", nil, nil)
+	if bundleRes.StatusCode != http.StatusOK {
+		t.Fatalf("export: %d %s", bundleRes.StatusCode, bundleRes.Body)
+	}
+
+	var bundle map[string]any
+	if err := json.Unmarshal([]byte(bundleRes.Body), &bundle); err != nil {
+		t.Fatal(err)
+	}
+
+	truncateTestDB(t)
+
+	imp := doJSON(t, h, http.MethodPost, "/v1/releases/import", bundle, nil)
+	if imp.StatusCode != http.StatusCreated {
+		t.Fatalf("import 1.0.0: %d %s", imp.StatusCode, imp.Body)
+	}
+
+	// Additive upgrade 1.1.0: new property + bump statement revision (metadata value change).
+	up := cloneJSONMap(t, bundle)
+	up["manifest"].(map[string]any)["version"] = "1.1.0"
+	if releases, ok := up["releases"].([]any); ok && len(releases) > 0 {
+		releases[0].(map[string]any)["version"] = "1.1.0"
+	}
+	newProp := map[string]any{
+		"id":           "urn:kc:meta-pkg:p_extra_upgrade",
+		"packageCode":  "meta-pkg",
+		"iriLocal":     "extra",
+		"revisionNo":   1,
+		"datatype":     "String",
+		"status":       "active",
+		"labels":       map[string]any{"en": "extra"},
+		"descriptions": map[string]any{},
+	}
+	props := up["properties"].([]any)
+	up["properties"] = append(props, newProp)
+	stmts := up["statements"].([]any)
+	for i, raw := range stmts {
+		st := raw.(map[string]any)
+		if st["id"] == sid {
+			st["revisionNo"] = 2
+			st["value"] = map[string]any{"type": "String", "string": "v1.1"}
+			stmts[i] = st
+		}
+	}
+	up["statements"] = stmts
+	idx := up["manifest"].(map[string]any)["objectIndex"].([]any)
+	idx = append(idx, map[string]any{
+		"objectType": "property", "objectPublicId": newProp["id"], "revisionNo": 1,
+	})
+	for i, raw := range idx {
+		o := raw.(map[string]any)
+		if o["objectPublicId"] == sid {
+			o["revisionNo"] = 2
+			idx[i] = o
+		}
+	}
+	up["manifest"].(map[string]any)["objectIndex"] = idx
+	if releases, ok := up["releases"].([]any); ok && len(releases) > 0 {
+		releases[0].(map[string]any)["objectIndex"] = idx
+		releases[0].(map[string]any)["version"] = "1.1.0"
+	}
+
+	imp2 := doJSON(t, h, http.MethodPost, "/v1/releases/import", up, nil)
+	if imp2.StatusCode != http.StatusCreated {
+		t.Fatalf("import 1.1.0 additive: %d %s", imp2.StatusCode, imp2.Body)
+	}
+	gotSt := doJSON(t, h, http.MethodGet, "/v1/statements/"+url.PathEscape(sid), nil, nil)
+	if gotSt.StatusCode != http.StatusOK {
+		t.Fatalf("statement after upgrade: %d %s", gotSt.StatusCode, gotSt.Body)
+	}
+	var stBody map[string]any
+	_ = json.Unmarshal([]byte(gotSt.Body), &stBody)
+	if rev, _ := stBody["revisionNo"].(float64); int(rev) != 2 {
+		t.Fatalf("expected statement rev 2, got %v body=%s", stBody["revisionNo"], gotSt.Body)
+	}
+
+	// Breaking upgrade: tighten minCount on existing property.
+	brk := cloneJSONMap(t, up)
+	brk["manifest"].(map[string]any)["version"] = "1.2.0"
+	if releases, ok := brk["releases"].([]any); ok && len(releases) > 0 {
+		releases[0].(map[string]any)["version"] = "1.2.0"
+	}
+	for i, raw := range brk["properties"].([]any) {
+		p := raw.(map[string]any)
+		if p["id"] == propID {
+			p["revisionNo"] = float64(2)
+			p["constraints"] = map[string]any{"minCount": 1, "maxCount": 1}
+			brk["properties"].([]any)[i] = p
+		}
+	}
+	imp3 := doJSON(t, h, http.MethodPost, "/v1/releases/import", brk, nil)
+	if imp3.StatusCode != http.StatusConflict {
+		t.Fatalf("breaking import: want 409, got %d %s", imp3.StatusCode, imp3.Body)
+	}
+	if !strings.Contains(imp3.Body, "compat_breaking") {
+		t.Fatalf("expected compat_breaking code, got %s", imp3.Body)
+	}
+
+	dup := doJSON(t, h, http.MethodPost, "/v1/releases/import", up, nil)
+	if dup.StatusCode != http.StatusConflict {
+		t.Fatalf("duplicate 1.1.0 import: want 409, got %d %s", dup.StatusCode, dup.Body)
+	}
+}
+
+func TestAcceptancePublishCompatBreaking(t *testing.T) {
+	h := setupTestHandler(t)
+	createPkg(t, h, "pub-pkg", nil)
+	createPkg(t, h, "other-pkg", nil)
+	_ = createEntityWithPkg(t, h, "pub-pkg", "Keep")
+	moved := createEntityWithPkg(t, h, "pub-pkg", "WillMove")
+
+	pub1 := doJSON(t, h, http.MethodPost, "/v1/packages/pub-pkg/releases", map[string]any{"version": "1.0.0"}, nil)
+	if pub1.StatusCode != http.StatusCreated {
+		t.Fatalf("publish 1.0.0: %d %s", pub1.StatusCode, pub1.Body)
+	}
+
+	mv := doJSON(t, h, http.MethodPost, "/v1/entities/"+url.PathEscape(moved)+"/move", map[string]any{
+		"packageCode": "other-pkg",
+	}, nil)
+	if mv.StatusCode != http.StatusOK {
+		t.Fatalf("move entity out of package: %d %s", mv.StatusCode, mv.Body)
+	}
+
+	pub2 := doJSON(t, h, http.MethodPost, "/v1/packages/pub-pkg/releases", map[string]any{"version": "1.1.0"}, nil)
+	if pub2.StatusCode != http.StatusConflict {
+		t.Fatalf("publish breaking: want 409, got %d %s", pub2.StatusCode, pub2.Body)
+	}
+	if !strings.Contains(pub2.Body, "compat_breaking") {
+		t.Fatalf("expected compat_breaking, got %s", pub2.Body)
+	}
+
+	// Additive publish: move entity back, add property, publish.
+	mvBack := doJSON(t, h, http.MethodPost, "/v1/entities/"+url.PathEscape(moved)+"/move", map[string]any{
+		"packageCode": "pub-pkg",
+	}, nil)
+	if mvBack.StatusCode != http.StatusOK {
+		t.Fatalf("move back: %d %s", mvBack.StatusCode, mvBack.Body)
+	}
+	add := doJSON(t, h, http.MethodPost, "/v1/properties", map[string]any{
+		"packageCode": "pub-pkg",
+		"datatype":    "String",
+		"iriLocal":    "extra",
+		"labels":      map[string]string{"en": "extra"},
+	}, nil)
+	if add.StatusCode != http.StatusCreated {
+		t.Fatalf("add property: %d %s", add.StatusCode, add.Body)
+	}
+	pub3 := doJSON(t, h, http.MethodPost, "/v1/packages/pub-pkg/releases", map[string]any{"version": "1.1.0"}, nil)
+	if pub3.StatusCode != http.StatusCreated {
+		t.Fatalf("publish additive 1.1.0: %d %s", pub3.StatusCode, pub3.Body)
+	}
+
+	clean := doJSON(t, h, http.MethodGet, "/v1/packages", nil, nil)
+	if clean.StatusCode != http.StatusOK {
+		t.Fatalf("list packages: %d %s", clean.StatusCode, clean.Body)
+	}
+	if !strings.Contains(clean.Body, `"code":"pub-pkg"`) || !strings.Contains(clean.Body, `"latestReleaseVersion":"1.1.0"`) {
+		t.Fatalf("expected pub-pkg@1.1.0 in list: %s", clean.Body)
+	}
+	if strings.Contains(clean.Body, `"modifiedAfterRelease":true`) {
+		t.Fatalf("just-published package should be clean: %s", clean.Body)
+	}
+
+	extra2 := doJSON(t, h, http.MethodPost, "/v1/entities", map[string]any{
+		"packageCode": "pub-pkg",
+		"labels":      map[string]string{"en": "AfterRelease"},
+	}, nil)
+	if extra2.StatusCode != http.StatusCreated {
+		t.Fatalf("create entity after release: %d %s", extra2.StatusCode, extra2.Body)
+	}
+	dirty := doJSON(t, h, http.MethodGet, "/v1/packages", nil, nil)
+	if dirty.StatusCode != http.StatusOK {
+		t.Fatalf("list packages dirty: %d %s", dirty.StatusCode, dirty.Body)
+	}
+	if !strings.Contains(dirty.Body, `"modifiedAfterRelease":true`) {
+		t.Fatalf("expected modifiedAfterRelease after new entity: %s", dirty.Body)
+	}
+}
+
+func cloneJSONMap(t *testing.T, in map[string]any) map[string]any {
+	t.Helper()
+	raw, err := json.Marshal(in)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var out map[string]any
+	if err := json.Unmarshal(raw, &out); err != nil {
+		t.Fatal(err)
+	}
+	return out
+}
+
 func TestAcceptanceIRIFirstIdentityBundle(t *testing.T) {
 	h := setupTestHandler(t)
 

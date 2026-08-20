@@ -11,9 +11,37 @@ import (
 )
 
 func (s *Store) ResolveEntityPublicID(ctx context.Context, idOrPublic string) (string, error) {
+	return resolveEntityPublicID(ctx, s.pool, idOrPublic)
+}
+
+func resolveEntityPublicID(ctx context.Context, q querier, idOrPublic string) (string, error) {
 	var publicID string
-	err := s.pool.QueryRow(ctx, `SELECT public_id FROM entity WHERE id::text = $1 OR public_id = $1`, idOrPublic).Scan(&publicID)
+	err := q.QueryRow(ctx, `SELECT public_id FROM entity WHERE id::text = $1 OR public_id = $1`, idOrPublic).Scan(&publicID)
 	return publicID, err
+}
+
+// publicizeValue rewrites EntityReference / Quantity unit refs from internal UUIDs to public IDs
+// so bundle export and revision matching compare stable portable identities.
+func publicizeValue(ctx context.Context, q querier, v datatype.Value) (datatype.Value, error) {
+	switch v.Type {
+	case datatype.EntityReference:
+		if v.EntityID != nil && *v.EntityID != "" {
+			pub, err := resolveEntityPublicID(ctx, q, *v.EntityID)
+			if err != nil {
+				return v, err
+			}
+			v.EntityID = &pub
+		}
+	case datatype.Quantity:
+		if v.UnitEntityID != nil && *v.UnitEntityID != "" {
+			pub, err := resolveEntityPublicID(ctx, q, *v.UnitEntityID)
+			if err != nil {
+				return v, err
+			}
+			v.UnitEntityID = &pub
+		}
+	}
+	return v, nil
 }
 
 func (s *Store) classDescendants(ctx context.Context, rootPublicID string) ([]string, error) {

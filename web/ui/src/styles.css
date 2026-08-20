@@ -645,6 +645,65 @@ button.linkish {
   background: color-mix(in oklab, var(--accent) 12%, transparent);
 }
 
+.pkg-release-cell {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.pkg-dirty-icon {
+  display: inline-flex;
+  color: var(--warning, #b45309);
+  line-height: 0;
+}
+
+.chip-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.15rem 0.45rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg-elevated, #f8f8f8);
+  font-size: 0.9em;
+  max-width: 100%;
+}
+
+.chip-remove {
+  border: none;
+  background: transparent;
+  padding: 0 0.15rem;
+  cursor: pointer;
+  line-height: 1;
+  color: var(--muted, #666);
+}
+
+.constraints-fieldset {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 0.75rem 1rem 1rem;
+  margin: 0;
+}
+
+.constraints-fieldset legend {
+  padding: 0 0.35rem;
+  font-weight: 600;
+}
+
+.constraints-form textarea[readonly] {
+  background: color-mix(in oklab, var(--fg) 4%, transparent);
+  color: var(--muted, #444);
+}
+
 .draft-banner {
   align-items: center;
   gap: 0.6rem;

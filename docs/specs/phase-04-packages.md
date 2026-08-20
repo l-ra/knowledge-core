@@ -1,6 +1,6 @@
 # Zadání — Fáze 4: Model lifecycle (Packages / Releases)
 
-**Status:** hotovo včetně importu bundle (A12), classes v release, UI package detail / publish / export / import.
+**Status:** hotovo včetně importu bundle (A12), classes v release, UI package detail / publish / export / import, **upgrade import + BC** ([phase-package-upgrade-compat.md](phase-package-upgrade-compat.md)).
 
 ## Cíl
 
@@ -14,16 +14,18 @@ Packages s ownership, SemVer dependencies, immutable releases, portable bundle e
 - `release`, `release_object`, `release_dependency`
 - SemVer ranges (`exact`, `^`, `~`, `>= … < …`)
 - `POST /v1/packages`, publish release, list/get release, export bundle
-- `POST /v1/releases/import` — promotion immutable bundle do cílového prostředí
+- `POST /v1/releases/import` — promotion immutable bundle do cílového prostředí; **upgrade** vyšší verze s apply revizí + BC gate
+- `POST /v1/packages/{code}/releases` — BC gate vůči předchozímu release
 - `POST /v1/packages/{code}/releases/{version}/mutate` — explicit reject immutable release
 - Classes (`C*`) v publish/export/import jako `objectType: "class"`
 - UI: package detail, owned objects, publish, export/import
-- Acceptance A11, A12, A13 + import promotion + class-in-release
+- Acceptance A11, A12, A13 + import promotion + class-in-release + package upgrade compat
 
 **Deferred:**
 
-- Package move (přeřazení objektu mezi packages)
-- Draft release / release diff API
+- Package move API polish (přeřazení je dostupné; full productization)
+- Draft release / release diff preview API
+- `force` breaking import
 
 ## Acceptance
 

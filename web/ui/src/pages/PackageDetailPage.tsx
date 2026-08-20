@@ -29,6 +29,7 @@ type Release = {
   publishedAt: string;
   dependencies?: Array<{ dependencyCode: string; dependencyVersion: string }>;
   objects?: Array<{ objectType: string; publicId: string; revisionNo: number }>;
+  objectCount?: number;
 };
 
 export function PackageDetailPage() {
@@ -182,41 +183,6 @@ export function PackageDetailPage() {
       {error && <p className="error">{error}</p>}
 
       <section className="stack">
-        <h2>{t("packages.objects")}</h2>
-        <table className="table">
-          <thead>
-            <tr>
-              <th>{t("packages.objectType")}</th>
-              <th>{t("entity.label")}</th>
-              <th>Rev</th>
-            </tr>
-          </thead>
-          <tbody>
-            {objects.map((o) => (
-              <tr key={`${o.objectType}:${o.publicId}`}>
-                <td>{o.objectType}</td>
-                <td>
-                  {o.objectType === "statement" ? (
-                    <StatementLink id={o.publicId} displayId={o.displayId} />
-                  ) : (
-                    <EntityLink id={o.publicId} displayId={o.displayId} labels={o.labels} lang={i18n.language} />
-                  )}
-                </td>
-                <td>{o.revisionNo}</td>
-              </tr>
-            ))}
-            {objects.length === 0 && (
-              <tr>
-                <td colSpan={3} className="muted">
-                  {t("packages.noObjects")}
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
-      </section>
-
-      <section className="stack">
         <h2>{t("packages.releases")}</h2>
         <form className="panel row" onSubmit={publish}>
           <label className="field">
@@ -246,7 +212,7 @@ export function PackageDetailPage() {
               <tr key={r.version}>
                 <td>{r.version}</td>
                 <td className="muted">{r.publishedAt}</td>
-                <td>{r.objects?.length ?? 0}</td>
+                <td>{r.objectCount ?? r.objects?.length ?? 0}</td>
                 <td>
                   <button type="button" onClick={() => void exportBundle(r.version)}>
                     {t("packages.exportBundle")}
@@ -258,6 +224,41 @@ export function PackageDetailPage() {
               <tr>
                 <td colSpan={4} className="muted">
                   {t("packages.noReleases")}
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </section>
+
+      <section className="stack">
+        <h2>{t("packages.objects")}</h2>
+        <table className="table">
+          <thead>
+            <tr>
+              <th>{t("packages.objectType")}</th>
+              <th>{t("entity.label")}</th>
+              <th>Rev</th>
+            </tr>
+          </thead>
+          <tbody>
+            {objects.map((o) => (
+              <tr key={`${o.objectType}:${o.publicId}`}>
+                <td>{o.objectType}</td>
+                <td>
+                  {o.objectType === "statement" ? (
+                    <StatementLink id={o.publicId} displayId={o.displayId} />
+                  ) : (
+                    <EntityLink id={o.publicId} displayId={o.displayId} labels={o.labels} lang={i18n.language} />
+                  )}
+                </td>
+                <td>{o.revisionNo}</td>
+              </tr>
+            ))}
+            {objects.length === 0 && (
+              <tr>
+                <td colSpan={3} className="muted">
+                  {t("packages.noObjects")}
                 </td>
               </tr>
             )}

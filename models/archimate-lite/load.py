@@ -3,7 +3,7 @@
 
 Does not modify knowledge-core source. Idempotent: skips existing package
 objects matched by iriLocal, existing shapes matched by code, and upserts
-policy statements (class annotations, allowed pairs, enums, exchange-spec).
+policy statements (class annotations, usage guidance, allowed pairs, enums, exchange-spec).
 
 Auth (first match):
   KC_TOKEN          Bearer token (bootstrap password or OIDC access token)
@@ -51,6 +51,11 @@ def unwrap(body: dict) -> dict:
     return body
 
 
+def id_path(public_id: str) -> str:
+    """Encode a public id (often a full IRI) for use in a single URL path segment."""
+    return urllib.parse.quote(public_id, safe="")
+
+
 class KC:
     def __init__(self, base: str):
         self.base = base.rstrip("/")
@@ -89,11 +94,13 @@ class KC:
         return self.req("PATCH", path, payload)
 
 
-def list_package_entities(kc: KC, code: str) -> list[dict]:
+def list_package_entities(kc: KC, code: str, kind: str = "") -> list[dict]:
     items: list[dict] = []
     cursor = ""
     while True:
         q = {"package": code, "limit": "200"}
+        if kind:
+            q["kind"] = kind
         if cursor:
             q["cursor"] = cursor
         status, body = kc.get("/v1/entities", **q)
@@ -149,7 +156,16 @@ def constraints_payload(prop: dict, class_ids: dict[str, str]) -> dict:
 def ensure_package(kc: KC, pkg: dict) -> None:
     status, body = kc.get(f"/v1/packages/{pkg['code']}")
     if status == 200:
-        print(f"package {pkg['code']} exists")
+        data = unwrap(body) if isinstance(body, dict) else body
+        existing_base = (data.get("iriBase") or "").strip()
+        want_base = (pkg.get("iriBase") or "").strip()
+        if want_base and not existing_base:
+            st, b = kc.patch(f"/v1/packages/{pkg['code']}", {"iriBase": want_base})
+            if st not in (200, 201):
+                raise SystemExit(f"set package iriBase: {st} {b}")
+            print(f"package {pkg['code']} exists; set iriBase={want_base}")
+        else:
+            print(f"package {pkg['code']} exists")
         return
     status, body = kc.post("/v1/packages", {
         "code": pkg["code"],
@@ -230,7 +246,7 @@ def ensure_upsert_statement(kc: KC, code: str, subject: str, prop: str, value: d
 
 
 def ensure_singleton_statement(kc: KC, code: str, subject: str, prop: str, value: dict) -> None:
-    st, body = kc.get(f"/v1/entities/{subject}/statements", property=prop)
+    st, body = kc.get(f"/v1/entities/{id_path(subject)}/statements", property=prop)
     if st != 200:
         raise SystemExit(f"list statements {subject} {prop}: {st} {body}")
     stmts = body.get("statements") or []
@@ -241,7 +257,7 @@ def ensure_singleton_statement(kc: KC, code: str, subject: str, prop: str, value
         ensure_upsert_statement(kc, code, subject, prop, value)
         return
     s0 = stmts[0]
-    status, body = kc.post(f"/v1/statements/{s0['id']}/revise", {
+    status, body = kc.post(f"/v1/statements/{id_path(s0['id'])}/revise", {
         "expectedRevision": s0.get("revisionNo") or 1,
         "value": value,
     })
@@ -275,6 +291,25 @@ def ensure_typed_entity(
     return qid
 
 
+def load_usage_annotations(
+    kc: KC,
+    code: str,
+    subjects: list[tuple[str, dict]],
+    prop_ids: dict[str, str],
+) -> None:
+    guidance_p = prop_ids.get("usageGuidance")
+    examples_p = prop_ids.get("usageExamples")
+    if not guidance_p and not examples_p:
+        return
+    for subject_id, spec in subjects:
+        if not subject_id:
+            continue
+        if guidance_p and spec.get("usageGuidance"):
+            ensure_singleton_statement(kc, code, subject_id, guidance_p, str_value(spec["usageGuidance"]))
+        if examples_p and spec.get("usageExamples"):
+            ensure_singleton_statement(kc, code, subject_id, examples_p, str_value(spec["usageExamples"]))
+
+
 def load_class_annotations(
     kc: KC, cat: dict, code: str, class_ids: dict[str, str], prop_ids: dict[str, str],
 ) -> None:
@@ -291,7 +326,25 @@ def load_class_annotations(
             ensure_singleton_statement(kc, code, cid, overlay_p, str_value(cls["overlay"]))
         if xtype_p and cls.get("exchangeType"):
             ensure_singleton_statement(kc, code, cid, xtype_p, str_value(cls["exchangeType"]))
+    load_usage_annotations(
+        kc, code,
+        [(class_ids.get(cls["iriLocal"], ""), cls) for cls in cat["classes"]],
+        prop_ids,
+    )
     print("class annotations loaded")
+
+
+def load_property_usage_annotations(
+    kc: KC, cat: dict, code: str, prop_ids: dict[str, str],
+) -> None:
+    subjects: list[tuple[str, dict]] = []
+    for prop in cat["properties"]:
+        subjects.append((prop_ids.get(prop["iriLocal"], ""), prop))
+    instance_of = cat.get("instanceOf") or {}
+    if instance_of.get("iriLocal"):
+        subjects.append((prop_ids.get(instance_of["iriLocal"], ""), instance_of))
+    load_usage_annotations(kc, code, subjects, prop_ids)
+    print("property usage annotations loaded")
 
 
 def load_allowed_relationships(
@@ -409,9 +462,10 @@ def main() -> int:
         print(f"warning: {base}/healthz -> {st}", file=sys.stderr)
 
     ensure_package(kc, pkg)
+    # Public IDs are full IRIs (iriBase + iriLocal); classify by kind, not Q/C/P prefixes.
+    class_ids = index_by_iri(list_package_entities(kc, code, kind="class"))
+    prop_ids = index_by_iri(list_package_entities(kc, code, kind="property"))
     by_iri = index_by_iri(list_package_entities(kc, code))
-    class_ids = {k: v for k, v in by_iri.items() if str(v).startswith("C")}
-    prop_ids = {k: v for k, v in by_iri.items() if str(v).startswith("P")}
 
     for cls in cat["classes"]:
         iri = cls["iriLocal"]
@@ -444,7 +498,7 @@ def main() -> int:
         if iri in prop_ids:
             cons = constraints_payload(prop, class_ids)
             if cons:
-                st, body = kc.patch(f"/v1/properties/{prop_ids[iri]}", {"constraints": cons})
+                st, body = kc.patch(f"/v1/properties/{id_path(prop_ids[iri])}", {"constraints": cons})
                 if st not in (200, 201):
                     raise SystemExit(f"patch property {iri}: {st} {body}")
             print(f"property {iri} exists {prop_ids[iri]}")
@@ -506,6 +560,7 @@ def main() -> int:
 
     by_iri = index_by_iri(list_package_entities(kc, code))
     load_class_annotations(kc, cat, code, class_ids, prop_ids)
+    load_property_usage_annotations(kc, cat, code, prop_ids)
     load_allowed_relationships(kc, cat, code, class_ids, prop_ids, by_iri, instance_of)
     load_enums(kc, cat, code, class_ids, prop_ids, by_iri, instance_of)
     load_exchange_spec(kc, cat, code, class_ids, prop_ids, by_iri, instance_of)

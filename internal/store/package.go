@@ -12,6 +12,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/l-ra/knowledge-core/internal/datatype"
 	"github.com/l-ra/knowledge-core/internal/domain"
+	"github.com/l-ra/knowledge-core/internal/pkgcompat"
 	"github.com/l-ra/knowledge-core/internal/pkgversion"
 	"github.com/shopspring/decimal"
 )
@@ -140,7 +141,22 @@ func (s *Store) GetPackageByCode(ctx context.Context, code string) (*domain.Pack
 		}
 		pkg.Dependencies = append(pkg.Dependencies, d)
 	}
-	return &pkg, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	ver, ok, err := s.latestPackageReleaseVersion(ctx, code)
+	if err != nil {
+		return nil, err
+	}
+	if ok {
+		pkg.LatestReleaseVersion = ver
+		dirty, err := s.packageModifiedAfterRelease(ctx, pkg.ID, ver)
+		if err != nil {
+			return nil, err
+		}
+		pkg.ModifiedAfterRelease = dirty
+	}
+	return &pkg, nil
 }
 
 func (s *Store) UpdatePackage(ctx context.Context, meta domain.WriteMeta, code string, in domain.UpdatePackageInput) (*domain.WriteResult[domain.Package], error) {
@@ -342,10 +358,15 @@ func (s *Store) PublishRelease(ctx context.Context, meta domain.WriteMeta, packa
 	defer tx.Rollback(ctx)
 
 	var packageID uuid.UUID
-	err = tx.QueryRow(ctx, `SELECT id FROM package WHERE code = $1`, packageCode).Scan(&packageID)
+	var pkgIRIBase, pkgLifecycle string
+	var pkgLabelsJSON []byte
+	err = tx.QueryRow(ctx, `
+		SELECT id, COALESCE(iri_base,''), lifecycle, labels FROM package WHERE code = $1
+	`, packageCode).Scan(&packageID, &pkgIRIBase, &pkgLifecycle, &pkgLabelsJSON)
 	if err != nil {
 		return nil, err
 	}
+	pkgLabels, _ := jsonToLabels(pkgLabelsJSON)
 
 	var exists bool
 	err = tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM release WHERE package_id = $1 AND version = $2)`, packageID, in.Version).Scan(&exists)
@@ -354,6 +375,24 @@ func (s *Store) PublishRelease(ctx context.Context, meta domain.WriteMeta, packa
 	}
 	if exists {
 		return nil, fmt.Errorf("%w: release %s@%s already exists", ErrReleaseImmutable, packageCode, in.Version)
+	}
+
+	// BC vs previous release (if any): live current must be backward-compatible with last published snapshot.
+	if prevVer, ok, err := s.latestPackageReleaseVersion(ctx, packageCode); err != nil {
+		return nil, err
+	} else if ok {
+		prevBundle, err := s.ExportReleaseBundle(ctx, packageCode, prevVer)
+		if err != nil {
+			return nil, err
+		}
+		live, err := s.livePackageSnapshot(ctx, packageCode)
+		if err != nil {
+			return nil, err
+		}
+		old := pkgcompat.SnapshotFromBundle(*prevBundle)
+		if err := s.ensureBackwardCompatible(fmt.Sprintf("publish %s@%s from %s", packageCode, in.Version, prevVer), old, live); err != nil {
+			return nil, err
+		}
 	}
 
 	// Resolve dependencies
@@ -483,6 +522,9 @@ func (s *Store) PublishRelease(ctx context.Context, meta domain.WriteMeta, packa
 		Package:       packageCode,
 		Version:       in.Version,
 		PublishedAt:   now.UTC().Format(time.RFC3339Nano),
+		IRIBase:       pkgIRIBase,
+		Lifecycle:     domain.PackageLifecycle(pkgLifecycle),
+		Labels:        pkgLabels,
 		Dependencies:  deps,
 		ObjectIndex:   objects,
 	}
@@ -588,23 +630,28 @@ func (s *Store) ExportReleaseBundle(ctx context.Context, packageCode, version st
 		return nil, err
 	}
 
+	var pkgIRIBase, pkgLifecycle string
+	var pkgLabelsJSON []byte
+	_ = s.pool.QueryRow(ctx, `
+		SELECT COALESCE(iri_base,''), lifecycle, labels FROM package WHERE code = $1
+	`, packageCode).Scan(&pkgIRIBase, &pkgLifecycle, &pkgLabelsJSON)
+	pkgLabels, _ := jsonToLabels(pkgLabelsJSON)
+
+	mainManifest := domain.BundleManifest{
+		FormatVersion: 1,
+		Package:       rel.PackageCode,
+		Version:       rel.Version,
+		PublishedAt:   rel.PublishedAt.UTC().Format(time.RFC3339Nano),
+		IRIBase:       pkgIRIBase,
+		Lifecycle:     domain.PackageLifecycle(pkgLifecycle),
+		Labels:        pkgLabels,
+		Dependencies:  rel.Dependencies,
+		ObjectIndex:   rel.Objects,
+	}
+
 	bundle := &domain.Bundle{
-		Manifest: domain.BundleManifest{
-			FormatVersion: 1,
-			Package:       rel.PackageCode,
-			Version:       rel.Version,
-			PublishedAt:   rel.PublishedAt.UTC().Format(time.RFC3339Nano),
-			Dependencies:  rel.Dependencies,
-			ObjectIndex:   rel.Objects,
-		},
-		Releases: []domain.BundleManifest{{
-			FormatVersion: 1,
-			Package:       rel.PackageCode,
-			Version:       rel.Version,
-			PublishedAt:   rel.PublishedAt.UTC().Format(time.RFC3339Nano),
-			Dependencies:  rel.Dependencies,
-			ObjectIndex:   rel.Objects,
-		}},
+		Manifest: mainManifest,
+		Releases: []domain.BundleManifest{mainManifest},
 	}
 
 	// Include dependency closure objects
@@ -614,11 +661,20 @@ func (s *Store) ExportReleaseBundle(ctx context.Context, packageCode, version st
 		if err != nil {
 			return nil, err
 		}
+		var depBase, depLife string
+		var depLabelsJSON []byte
+		_ = s.pool.QueryRow(ctx, `
+			SELECT COALESCE(iri_base,''), lifecycle, labels FROM package WHERE code = $1
+		`, dep.DependencyCode).Scan(&depBase, &depLife, &depLabelsJSON)
+		depLabels, _ := jsonToLabels(depLabelsJSON)
 		bundle.Releases = append(bundle.Releases, domain.BundleManifest{
 			FormatVersion: 1,
 			Package:       depRel.PackageCode,
 			Version:       depRel.Version,
 			PublishedAt:   depRel.PublishedAt.UTC().Format(time.RFC3339Nano),
+			IRIBase:       depBase,
+			Lifecycle:     domain.PackageLifecycle(depLife),
+			Labels:        depLabels,
 			Dependencies:  depRel.Dependencies,
 			ObjectIndex:   depRel.Objects,
 		})
@@ -724,18 +780,18 @@ func (s *Store) exportPropertyAtRevision(ctx context.Context, pid string, rev in
 	var bp domain.BundleProperty
 	bp.PublicID = pid
 	bp.RevisionNo = rev
-	var labelsJSON, descJSON []byte
+	var labelsJSON, descJSON, constraintsJSON []byte
 	var dt string
 	var pkgCode *string
 	var iriLocal string
 	err := s.pool.QueryRow(ctx, `
-		SELECT er.status, pp.datatype, er.labels, er.descriptions, pkg.code, COALESCE(e.iri_local,'')
+		SELECT er.status, pp.datatype, er.labels, er.descriptions, pkg.code, COALESCE(e.iri_local,''), pp.constraints
 		FROM entity_revision er
 		JOIN entity e ON e.id = er.entity_id
 		JOIN property_profile pp ON pp.entity_id = e.id
 		LEFT JOIN package pkg ON pkg.id = e.package_id
 		WHERE e.public_id = $1 AND er.revision_no = $2
-	`, pid, rev).Scan(&bp.Status, &dt, &labelsJSON, &descJSON, &pkgCode, &iriLocal)
+	`, pid, rev).Scan(&bp.Status, &dt, &labelsJSON, &descJSON, &pkgCode, &iriLocal, &constraintsJSON)
 	if err != nil {
 		return nil, err
 	}
@@ -746,6 +802,9 @@ func (s *Store) exportPropertyAtRevision(ctx context.Context, pid string, rev in
 		bp.PackageCode = *pkgCode
 	}
 	bp.IRILocal = iriLocal
+	if len(constraintsJSON) > 0 {
+		_ = json.Unmarshal(constraintsJSON, &bp.Constraints)
+	}
 	return &bp, nil
 }
 
@@ -815,6 +874,10 @@ func (s *Store) exportStatementAtRevision(ctx context.Context, sid string, rev i
 	if err != nil {
 		return nil, err
 	}
+	val, err = publicizeValue(ctx, s.pool, val)
+	if err != nil {
+		return nil, err
+	}
 	bs.Value = val
 	if pkgCode != nil {
 		bs.PackageCode = *pkgCode
@@ -846,10 +909,11 @@ func (s *Store) ListReleases(ctx context.Context, packageCode string) ([]domain.
 		return nil, err
 	}
 	rows, err := s.pool.Query(ctx, `
-		SELECT id, version, published_at
-		FROM release
-		WHERE package_id = $1
-		ORDER BY published_at DESC, version DESC
+		SELECT r.id, r.version, r.published_at,
+			(SELECT COUNT(*) FROM release_object ro WHERE ro.release_id = r.id)
+		FROM release r
+		WHERE r.package_id = $1
+		ORDER BY r.published_at DESC, r.version DESC
 	`, packageID)
 	if err != nil {
 		return nil, err
@@ -860,7 +924,7 @@ func (s *Store) ListReleases(ctx context.Context, packageCode string) ([]domain.
 	for rows.Next() {
 		var rel domain.Release
 		rel.PackageCode = packageCode
-		if err := rows.Scan(&rel.ID, &rel.Version, &rel.PublishedAt); err != nil {
+		if err := rows.Scan(&rel.ID, &rel.Version, &rel.PublishedAt, &rel.ObjectCount); err != nil {
 			return nil, err
 		}
 		out = append(out, rel)

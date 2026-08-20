@@ -310,14 +310,16 @@ const (
 )
 
 type Package struct {
-	ID           uuid.UUID
-	Code         string
-	Lifecycle    PackageLifecycle
-	IRIBase      string
-	Labels       map[string]string
-	Dependencies []PackageDependency
-	CreatedAt    time.Time
-	UpdatedAt    time.Time
+	ID                   uuid.UUID
+	Code                 string
+	Lifecycle            PackageLifecycle
+	IRIBase              string
+	Labels               map[string]string
+	Dependencies         []PackageDependency
+	LatestReleaseVersion string // highest SemVer release, empty if none
+	ModifiedAfterRelease bool   // live objects differ from LatestReleaseVersion pins
+	CreatedAt            time.Time
+	UpdatedAt            time.Time
 }
 
 type PackageDependency struct {
@@ -332,17 +334,19 @@ type Release struct {
 	PublishedAt  time.Time
 	Dependencies []ReleaseDependency
 	Objects      []ReleaseObject
+	// ObjectCount is set by list endpoints that omit Objects; otherwise equals len(Objects).
+	ObjectCount int
 }
 
 type ReleaseDependency struct {
-	DependencyCode    string
-	DependencyVersion string
+	DependencyCode    string `json:"dependencyCode"`
+	DependencyVersion string `json:"dependencyVersion"`
 }
 
 type ReleaseObject struct {
-	ObjectType     string
-	ObjectPublicID string
-	RevisionNo     int
+	ObjectType     string `json:"objectType"`
+	ObjectPublicID string `json:"objectPublicId"`
+	RevisionNo     int    `json:"revisionNo"`
 }
 
 // PackageObject is a current object owned by a package (for listing).
@@ -385,6 +389,9 @@ type BundleManifest struct {
 	Package       string              `json:"package"`
 	Version       string              `json:"version"`
 	PublishedAt   string              `json:"publishedAt"`
+	IRIBase       string              `json:"iriBase,omitempty"`
+	Lifecycle     PackageLifecycle    `json:"lifecycle,omitempty"`
+	Labels        map[string]string   `json:"labels,omitempty"`
 	Dependencies  []ReleaseDependency `json:"dependencies"`
 	ObjectIndex   []ReleaseObject     `json:"objectIndex"`
 }
@@ -400,14 +407,15 @@ type BundleEntity struct {
 }
 
 type BundleProperty struct {
-	PublicID     string            `json:"id"`
-	PackageCode  string            `json:"packageCode,omitempty"`
-	IRILocal     string            `json:"iriLocal,omitempty"`
-	RevisionNo   int               `json:"revisionNo"`
-	Datatype     datatype.Type     `json:"datatype"`
-	Status       PropertyStatus    `json:"status"`
-	Labels       map[string]string `json:"labels"`
-	Descriptions map[string]string `json:"descriptions"`
+	PublicID     string                     `json:"id"`
+	PackageCode  string                     `json:"packageCode,omitempty"`
+	IRILocal     string                     `json:"iriLocal,omitempty"`
+	RevisionNo   int                        `json:"revisionNo"`
+	Datatype     datatype.Type              `json:"datatype"`
+	Status       PropertyStatus             `json:"status"`
+	Labels       map[string]string          `json:"labels"`
+	Descriptions map[string]string          `json:"descriptions"`
+	Constraints  PropertyConstraints        `json:"constraints,omitempty"`
 }
 
 type BundleStatement struct {

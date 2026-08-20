@@ -19,6 +19,7 @@ import (
 	"github.com/l-ra/knowledge-core/internal/domain"
 	"github.com/l-ra/knowledge-core/internal/engine"
 	"github.com/l-ra/knowledge-core/internal/metrics"
+	"github.com/l-ra/knowledge-core/internal/pkgcompat"
 	"github.com/l-ra/knowledge-core/internal/store"
 	"github.com/l-ra/knowledge-core/web/ui"
 )
@@ -1023,6 +1024,12 @@ func packageDTO(p *domain.Package) map[string]any {
 		"createdAt":    p.CreatedAt.UTC().Format(time.RFC3339Nano),
 		"updatedAt":    p.UpdatedAt.UTC().Format(time.RFC3339Nano),
 	}
+	if p.LatestReleaseVersion != "" {
+		out["latestReleaseVersion"] = p.LatestReleaseVersion
+	}
+	if p.ModifiedAfterRelease {
+		out["modifiedAfterRelease"] = true
+	}
 	return out
 }
 
@@ -1035,10 +1042,14 @@ func releaseDTO(rel *domain.Release) map[string]any {
 	for _, d := range rel.Dependencies {
 		deps = append(deps, map[string]string{"dependencyCode": d.DependencyCode, "dependencyVersion": d.DependencyVersion})
 	}
+	objectCount := len(rel.Objects)
+	if objectCount == 0 {
+		objectCount = rel.ObjectCount
+	}
 	return map[string]any{
 		"package": rel.PackageCode, "version": rel.Version,
 		"publishedAt":  rel.PublishedAt.UTC().Format(time.RFC3339Nano),
-		"dependencies": deps, "objects": objs,
+		"dependencies": deps, "objects": objs, "objectCount": objectCount,
 	}
 }
 
@@ -1205,6 +1216,30 @@ func writeEngineError(w http.ResponseWriter, err error) {
 		writeJSON(w, http.StatusUnprocessableEntity, map[string]any{
 			"error":      map[string]any{"code": "validation", "message": vf.Error()},
 			"validation": validationDTO(&vf.Result),
+		})
+		return
+	}
+	var br *pkgcompat.BreakingError
+	if errors.As(err, &br) {
+		findings := make([]map[string]any, 0, len(br.Findings))
+		for _, f := range br.Findings {
+			if f.Kind != pkgcompat.KindBreaking {
+				continue
+			}
+			findings = append(findings, map[string]any{
+				"kind":           f.Kind,
+				"reasonCode":     f.ReasonCode,
+				"objectType":     f.ObjectType,
+				"objectPublicId": f.ObjectPublicID,
+				"detail":         f.Detail,
+			})
+		}
+		writeJSON(w, http.StatusConflict, map[string]any{
+			"error": map[string]any{
+				"code":    "compat_breaking",
+				"message": br.Error(),
+			},
+			"findings": findings,
 		})
 		return
 	}

@@ -275,6 +275,8 @@ POST /v1/packages/my-domain/releases
 { "version": "1.0.0" }
 ```
 
+Pokud package už má starší release, publish **odmítne breaking** změny (409 `compat_breaking`). Povolené jsou additive/metadata změny vůči předchozímu release.
+
 ### Export bundle
 
 ```http
@@ -288,7 +290,13 @@ POST /v1/releases/import
 { …bundle JSON… }
 ```
 
+- První import (greenfield) — OK.
+- Import **nové verze** téhož package — OK, pokud je zpětně kompatibilní; vyšší `revisionNo` se aplikují.
+- Stejná verze znovu / breaking změny / downgrade revize — **409**.
+
 Published release je **immutable** — mutace vrátí **409**.
+
+Podrobnosti BC matice: [phase-package-upgrade-compat.md](../specs/phase-package-upgrade-compat.md).
 
 ---
 

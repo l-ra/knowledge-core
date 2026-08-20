@@ -29,7 +29,7 @@ Tento dokument nahrazuje „aktuální vývojové zadání“ v [docs/README.md]
 | 1 | [phase-01-canonical-graph.md](specs/phase-01-canonical-graph.md) | Entity, Property, Statement, datatypes, current state | A1, A2, A14 |
 | 2 | [phase-02-history.md](specs/phase-02-history.md) | Revisions, ChangeSet, optimistic lock, idempotency | A7, A8, A9 |
 | 3 | [phase-03-provenance.md](specs/phase-03-provenance.md) | Qualifiers, References, valid time | A10 |
-| 4 | [phase-04-packages.md](specs/phase-04-packages.md) | Packages, SemVer, releases, bundle export/import | A11, A12, A13 + import |
+| 4 | [phase-04-packages.md](specs/phase-04-packages.md) | Packages, SemVer, releases, bundle export/import + [upgrade/BC](specs/phase-package-upgrade-compat.md) | A11, A12, A13 + import + upgrade |
 | 5 | [phase-05-authorization.md](specs/phase-05-authorization.md) | RBAC/ABAC, dev/OIDC/bootstrap auth, read filter | A4, A5, A6 |
 | 6 | [phase-06-lenses.md](specs/phase-06-lenses.md) | Lens DSL, REST read/patch, GraphQL adapter | A3 |
 | 7 | [phase-07-projections.md](specs/phase-07-projections.md) | Outbox, search projection, rebuild | A15 |

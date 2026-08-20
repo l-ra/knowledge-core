@@ -286,6 +286,7 @@ func (s *Store) ListPackages(ctx context.Context) ([]domain.Package, error) {
 	}
 	defer rows.Close()
 	var out []domain.Package
+	var ids []uuid.UUID
 	for rows.Next() {
 		var p domain.Package
 		var labelsJSON []byte
@@ -311,7 +312,26 @@ func (s *Store) ListPackages(ctx context.Context) ([]domain.Package, error) {
 		if err := depRows.Err(); err != nil {
 			return nil, err
 		}
+		ids = append(ids, p.ID)
 		out = append(out, p)
 	}
-	return out, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	latest, err := s.latestReleaseVersionsByPackageID(ctx, ids)
+	if err != nil {
+		return nil, err
+	}
+	for i := range out {
+		out[i].LatestReleaseVersion = latest[out[i].ID]
+		if out[i].LatestReleaseVersion == "" {
+			continue
+		}
+		dirty, err := s.packageModifiedAfterRelease(ctx, out[i].ID, out[i].LatestReleaseVersion)
+		if err != nil {
+			return nil, err
+		}
+		out[i].ModifiedAfterRelease = dirty
+	}
+	return out, nil
 }

@@ -6,12 +6,14 @@ import (
 	"errors"
 	"fmt"
 	"reflect"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/l-ra/knowledge-core/internal/datatype"
 	"github.com/l-ra/knowledge-core/internal/domain"
+	"github.com/l-ra/knowledge-core/internal/pkgcompat"
 	"github.com/l-ra/knowledge-core/internal/pkgversion"
 	"github.com/shopspring/decimal"
 )
@@ -21,6 +23,17 @@ var ErrImportCollision = errors.New("import identity collision")
 func (s *Store) ImportReleaseBundle(ctx context.Context, meta domain.WriteMeta, bundle domain.Bundle) (*domain.WriteResult[domain.Release], error) {
 	if err := validateImportBundle(&bundle); err != nil {
 		return nil, err
+	}
+
+	// Backward-compat gate against installed release / live objects (before mutating).
+	pkgCode := bundle.Manifest.Package
+	if baseline, ok, err := s.baselineSnapshotForUpgrade(ctx, pkgCode); err != nil {
+		return nil, err
+	} else if ok {
+		neu := pkgcompat.SnapshotFromBundle(bundle)
+		if err := s.ensureBackwardCompatible(fmt.Sprintf("import %s@%s", pkgCode, bundle.Manifest.Version), baseline, neu); err != nil {
+			return nil, err
+		}
 	}
 
 	tx, err := s.pool.Begin(ctx)
@@ -49,7 +62,7 @@ func (s *Store) ImportReleaseBundle(ctx context.Context, meta domain.WriteMeta, 
 
 	releaseManifests := orderReleaseManifests(collectReleaseManifests(&bundle))
 	for _, rm := range releaseManifests {
-		if err := s.ensureImportPackage(ctx, tx, rm.Package); err != nil {
+		if err := s.ensureImportPackage(ctx, tx, rm); err != nil {
 			return nil, err
 		}
 	}
@@ -158,21 +171,60 @@ func orderReleaseManifests(manifests []domain.BundleManifest) []domain.BundleMan
 	return ordered
 }
 
-func (s *Store) ensureImportPackage(ctx context.Context, tx pgx.Tx, code string) error {
-	var exists bool
-	if err := tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM package WHERE code = $1)`, code).Scan(&exists); err != nil {
+func (s *Store) ensureImportPackage(ctx context.Context, tx pgx.Tx, m domain.BundleManifest) error {
+	code := strings.TrimSpace(m.Package)
+	if code == "" {
+		return fmt.Errorf("manifest package required")
+	}
+
+	labels := m.Labels
+	if labels == nil || labels["en"] == "" {
+		if labels == nil {
+			labels = map[string]string{}
+		}
+		labels["en"] = code
+	}
+	labelsJSON, _ := json.Marshal(labels)
+	lifecycle := m.Lifecycle
+	if lifecycle == "" {
+		lifecycle = domain.PackageReleased
+	}
+	wantBase := strings.TrimSpace(m.IRIBase)
+	if wantBase != "" {
+		normalized, nerr := datatype.NormalizeIRIBase(wantBase)
+		if nerr != nil {
+			return fmt.Errorf("package %s iriBase: %w", code, nerr)
+		}
+		wantBase = normalized
+	}
+	now := time.Now().UTC()
+
+	var pkgID uuid.UUID
+	var iriBase string
+	err := tx.QueryRow(ctx, `SELECT id, COALESCE(iri_base,'') FROM package WHERE code = $1`, code).Scan(&pkgID, &iriBase)
+	if errors.Is(err, pgx.ErrNoRows) {
+		id := datatype.NewUUID()
+		_, err = tx.Exec(ctx, `
+			INSERT INTO package (id, code, lifecycle, iri_base, labels, created_at, updated_at)
+			VALUES ($1,$2,$3,$4,$5,$6,$6)
+		`, id, code, string(lifecycle), wantBase, labelsJSON, now)
 		return err
 	}
-	if exists {
-		return nil
+	if err != nil {
+		return err
 	}
-	id := datatype.NewUUID()
-	now := time.Now().UTC()
-	labelsJSON, _ := json.Marshal(map[string]string{"en": code})
-	_, err := tx.Exec(ctx, `
-		INSERT INTO package (id, code, lifecycle, labels, created_at, updated_at)
-		VALUES ($1,$2,'released',$3,$4,$4)
-	`, id, code, labelsJSON, now)
+
+	// Fill missing iriBase / refresh labels when provided by the bundle.
+	if wantBase != "" && iriBase == "" {
+		_, err = tx.Exec(ctx, `
+			UPDATE package SET iri_base = $2, labels = $3, updated_at = $4 WHERE id = $1
+		`, pkgID, wantBase, labelsJSON, now)
+		return err
+	}
+	if wantBase != "" && iriBase != "" && wantBase != iriBase {
+		return fmt.Errorf("%w: package %s iriBase %q conflicts with bundle %q", ErrImportCollision, code, iriBase, wantBase)
+	}
+	_, err = tx.Exec(ctx, `UPDATE package SET labels = $2, updated_at = $3 WHERE id = $1`, pkgID, labelsJSON, now)
 	return err
 }
 
@@ -212,25 +264,6 @@ func parsePublicIDNumber(prefix, publicID string) (int64, error) {
 	default:
 		return 0, fmt.Errorf("unknown public id prefix %q", prefix)
 	}
-}
-
-func (s *Store) importEntity(ctx context.Context, tx pgx.Tx, be domain.BundleEntity, cs *changeSetTx) error {
-	var entityID uuid.UUID
-	err := tx.QueryRow(ctx, `SELECT id FROM entity WHERE public_id = $1`, be.PublicID).Scan(&entityID)
-	if errors.Is(err, pgx.ErrNoRows) {
-		return s.insertImportedEntity(ctx, tx, be, cs)
-	}
-	if err != nil {
-		return err
-	}
-	ok, err := s.entityRevisionMatches(ctx, tx, be.PublicID, be.RevisionNo, be)
-	if err != nil {
-		return err
-	}
-	if !ok {
-		return fmt.Errorf("%w: entity %s revision %d", ErrImportCollision, be.PublicID, be.RevisionNo)
-	}
-	return nil
 }
 
 func (s *Store) insertImportedEntity(ctx context.Context, tx pgx.Tx, be domain.BundleEntity, cs *changeSetTx) error {
@@ -300,25 +333,6 @@ func (s *Store) entityRevisionMatches(ctx context.Context, tx pgx.Tx, publicID s
 	return status == string(be.Status) && mapsEqual(labels, be.Labels) && mapsEqual(descs, be.Descriptions), nil
 }
 
-func (s *Store) importProperty(ctx context.Context, tx pgx.Tx, bp domain.BundleProperty, cs *changeSetTx) error {
-	var propertyID uuid.UUID
-	err := tx.QueryRow(ctx, `SELECT e.id FROM property_profile pp JOIN entity e ON e.id = pp.entity_id WHERE e.public_id = $1`, bp.PublicID).Scan(&propertyID)
-	if errors.Is(err, pgx.ErrNoRows) {
-		return s.insertImportedProperty(ctx, tx, bp, cs)
-	}
-	if err != nil {
-		return err
-	}
-	ok, err := s.propertyRevisionMatches(ctx, tx, bp.PublicID, bp.RevisionNo, bp)
-	if err != nil {
-		return err
-	}
-	if !ok {
-		return fmt.Errorf("%w: property %s revision %d", ErrImportCollision, bp.PublicID, bp.RevisionNo)
-	}
-	return nil
-}
-
 func (s *Store) insertImportedProperty(ctx context.Context, tx pgx.Tx, bp domain.BundleProperty, cs *changeSetTx) error {
 	if err := s.reservePublicID(ctx, tx, "property", "P", bp.PublicID); err != nil {
 		return err
@@ -344,10 +358,11 @@ func (s *Store) insertImportedProperty(ctx context.Context, tx pgx.Tx, bp domain
 	if err != nil {
 		return err
 	}
+	constraintsJSON, _ := json.Marshal(bp.Constraints)
 	_, err = tx.Exec(ctx, `
 		INSERT INTO property_profile (entity_id, datatype, constraints)
-		VALUES ($1,$2,'{}')
-	`, id, string(bp.Datatype))
+		VALUES ($1,$2,$3)
+	`, id, string(bp.Datatype), constraintsJSON)
 	if err != nil {
 		return err
 	}
@@ -375,14 +390,14 @@ func (s *Store) insertImportedProperty(ctx context.Context, tx pgx.Tx, bp domain
 
 func (s *Store) propertyRevisionMatches(ctx context.Context, tx pgx.Tx, publicID string, rev int, bp domain.BundleProperty) (bool, error) {
 	var status, dt string
-	var labelsJSON, descJSON []byte
+	var labelsJSON, descJSON, constraintsJSON []byte
 	err := tx.QueryRow(ctx, `
-		SELECT er.status, pp.datatype, er.labels, er.descriptions
+		SELECT er.status, pp.datatype, er.labels, er.descriptions, pp.constraints
 		FROM entity_revision er
 		JOIN entity e ON e.id = er.entity_id
 		JOIN property_profile pp ON pp.entity_id = e.id
 		WHERE e.public_id = $1 AND er.revision_no = $2
-	`, publicID, rev).Scan(&status, &dt, &labelsJSON, &descJSON)
+	`, publicID, rev).Scan(&status, &dt, &labelsJSON, &descJSON, &constraintsJSON)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return false, nil
 	}
@@ -391,66 +406,15 @@ func (s *Store) propertyRevisionMatches(ctx context.Context, tx pgx.Tx, publicID
 	}
 	labels, _ := jsonToLabels(labelsJSON)
 	descs, _ := jsonToLabels(descJSON)
+	var cons domain.PropertyConstraints
+	if len(constraintsJSON) > 0 {
+		_ = json.Unmarshal(constraintsJSON, &cons)
+	}
+	wantCons, _ := json.Marshal(bp.Constraints)
+	haveCons, _ := json.Marshal(cons)
 	return status == string(bp.Status) && dt == string(bp.Datatype) &&
-		mapsEqual(labels, bp.Labels) && mapsEqual(descs, bp.Descriptions), nil
-}
-
-func (s *Store) importClass(ctx context.Context, tx pgx.Tx, bc domain.BundleClass, cs *changeSetTx) error {
-	var classID uuid.UUID
-	err := tx.QueryRow(ctx, `SELECT e.id FROM class_profile cp JOIN entity e ON e.id = cp.entity_id WHERE e.public_id = $1`, bc.PublicID).Scan(&classID)
-	if errors.Is(err, pgx.ErrNoRows) {
-		return s.insertImportedClass(ctx, tx, bc, cs)
-	}
-	if err != nil {
-		return err
-	}
-	ok, err := s.classRevisionMatches(ctx, tx, bc.PublicID, bc.RevisionNo, bc)
-	if err != nil {
-		return err
-	}
-	if !ok {
-		return fmt.Errorf("%w: class %s revision %d", ErrImportCollision, bc.PublicID, bc.RevisionNo)
-	}
-	return nil
-}
-
-func (s *Store) importShape(ctx context.Context, tx pgx.Tx, bs domain.BundleShape) error {
-	if bs.Code == "" || bs.ClassID == "" {
-		return fmt.Errorf("shape code and classId required")
-	}
-	var exists bool
-	err := tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM shape_profile WHERE code = $1)`, bs.Code).Scan(&exists)
-	if err != nil {
-		return err
-	}
-	if exists {
-		return nil
-	}
-	var classUUID string
-	err = tx.QueryRow(ctx, `
-		SELECT e.id FROM class_profile cp JOIN entity e ON e.id = cp.entity_id
-		WHERE e.public_id = $1 AND e.status <> 'deleted'
-	`, bs.ClassID).Scan(&classUUID)
-	if err != nil {
-		return fmt.Errorf("shape class %s: %w", bs.ClassID, err)
-	}
-	var pkgID any
-	if bs.PackageCode != "" {
-		id, err := s.resolvePackageIDRequired(ctx, tx, bs.PackageCode)
-		if err != nil {
-			return err
-		}
-		pkgID = id
-	}
-	docJSON, err := json.Marshal(bs.Document)
-	if err != nil {
-		return err
-	}
-	_, err = tx.Exec(ctx, `
-		INSERT INTO shape_profile (id, code, class_id, document, package_id, created_at, updated_at)
-		VALUES ($1,$2,$3,$4,$5,now(),now())
-	`, datatype.NewUUID(), bs.Code, classUUID, docJSON, pkgID)
-	return err
+		mapsEqual(labels, bp.Labels) && mapsEqual(descs, bp.Descriptions) &&
+		string(wantCons) == string(haveCons), nil
 }
 
 func (s *Store) insertImportedClass(ctx context.Context, tx pgx.Tx, bc domain.BundleClass, cs *changeSetTx) error {
@@ -573,25 +537,6 @@ func (s *Store) insertImportedReference(ctx context.Context, tx pgx.Tx, br domai
 		return err
 	}
 	return cs.addItem(ctx, tx, "reference", id, br.PublicID, "import", nil)
-}
-
-func (s *Store) importStatement(ctx context.Context, tx pgx.Tx, bs domain.BundleStatement, cs *changeSetTx) error {
-	var statementID uuid.UUID
-	err := tx.QueryRow(ctx, `SELECT id FROM statement WHERE public_id = $1`, bs.PublicID).Scan(&statementID)
-	if errors.Is(err, pgx.ErrNoRows) {
-		return s.insertImportedStatement(ctx, tx, bs, cs)
-	}
-	if err != nil {
-		return err
-	}
-	ok, err := s.statementRevisionMatches(ctx, tx, bs.PublicID, bs.RevisionNo, bs)
-	if err != nil {
-		return err
-	}
-	if !ok {
-		return fmt.Errorf("%w: statement %s revision %d", ErrImportCollision, bs.PublicID, bs.RevisionNo)
-	}
-	return nil
 }
 
 func (s *Store) insertImportedStatement(ctx context.Context, tx pgx.Tx, bs domain.BundleStatement, cs *changeSetTx) error {
@@ -726,6 +671,10 @@ func (s *Store) statementRevisionMatches(ctx context.Context, tx pgx.Tx, publicI
 	}
 	sv.Numeric = numeric
 	val, err := decodeValue(sv)
+	if err != nil {
+		return false, err
+	}
+	val, err = publicizeValue(ctx, tx, val)
 	if err != nil {
 		return false, err
 	}

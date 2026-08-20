@@ -7,20 +7,21 @@ Tento dokument je kontrakt pro **samostatný nástroj** (export/import Open Exch
 
 Rozsah modelování (L0–L4): [archimate-lite.md](archimate-lite.md).  
 Datový katalog (seed v gitu): [`models/archimate-lite/catalog.json`](../../models/archimate-lite/catalog.json).  
-Nahrání do KC: [`models/archimate-lite/load.py`](../../models/archimate-lite/load.py). Po nahrání je **zdroj pravdy pro tool package `archimate-lite` v KC**, ne JSON v gitu.
+Release bundle (UI import): [`models/archimate-lite/releases/archimate-lite-1.2.0.bundle.json`](../../models/archimate-lite/releases/archimate-lite-1.2.0.bundle.json).  
+Nahrání přes API: [`models/archimate-lite/load.py`](../../models/archimate-lite/load.py). Po nahrání/importu je **zdroj pravdy pro tool package `archimate-lite` v KC**, ne JSON v gitu.
 
 ## Hranice
 
 | Vrstva | Kde | ArchiMate? |
 |--------|-----|------------|
-| knowledge-core | `internal/`, migrace, `/v1/*` | Ne. Obecný graf (Q/P/C, statement, package, shape, lens). |
+| knowledge-core | `internal/`, migrace, `/v1/*` | Ne. Obecný graf (IRI entity/property/class, statement, package, shape, lens). |
 | Package `archimate-lite` | data v KC | Ano. Třídy, vlastnosti, tvary, anotace tříd, lite matice, enumy, exchange poznámky. |
 | Instance packages | data v KC | Ano. Konkrétní systémy, sdílené služby, views. |
 | Exchange XML nástroj | mimo KC | Ano. Čte/zapisuje `/v1`, emituje ArchiMate XML. |
 
-Stabilní identita ve slovníku je **`iriLocal`** (např. `ApplicationComponent`), ne `C12` / `P7`. Public ID se liší mezi instalacemi.
+**Stabilní public ID** = plná IRI (`iriBase` + `iriLocal`), např. `https://knowledge-core.local/archimate-lite/ApplicationComponent`.  
+Krátké zobrazení v UI: `archimate-lite:ApplicationComponent`. Fallback bez zadaného `iriLocal`: `e_<snowflake>` / `p_<snowflake>` / …
 
-Kanonické IRI = `package.iriBase` + `iriLocal`.  
 Default `iriBase`: `https://knowledge-core.local/archimate-lite/` (není well-known RDF namespace jádra).
 
 ## Autentizace
@@ -36,6 +37,26 @@ Odpovědi create: `{ "data": { ... }, "changeSet": { ... } }`. GET entity/packag
 
 ## Bootstrap metamodelu
 
+### Import release bundle (UI / promotion)
+
+```bash
+# soubor: models/archimate-lite/releases/archimate-lite-1.2.0.bundle.json
+# UI: Packages → Import release bundle
+# nebo:
+curl -X POST "$KC_BASE_URL/v1/releases/import" \
+  -H "Authorization: Bearer $KC_TOKEN" \
+  -H "Content-Type: application/json" \
+  --data-binary @models/archimate-lite/releases/archimate-lite-1.2.0.bundle.json
+```
+
+Bundle obsahuje třídy, properties (včetně constraints), shapes, policy entity a statementy.  
+Po importu: pokud je `instanceOfProperty` v schema-config prázdné, nastavte ho na  
+`https://knowledge-core.local/archimate-lite/instanceOf`.
+
+Přegenerování: `python3 models/archimate-lite/build_bundle.py`.
+
+### Load přes API (authoring)
+
 ```bash
 export KC_BASE_URL=http://localhost:8080
 export KC_TOKEN='<bootstrap-or-oidc>'
@@ -48,7 +69,7 @@ Po nahrání:
 
 1. `GET /v1/packages/archimate-lite`
 2. `GET /v1/entities?package=archimate-lite&iriLocal=ApplicationComponent` — resoluce slovníku
-3. `GET /v1/classes/{cid}` / `GET /v1/properties/{pid}` — obsahují `iriLocal`, `iri`, `packageCode`
+3. `GET /v1/classes/{id}` / `GET /v1/properties/{id}` — id je plná IRI (v URL path-encode); obsahují `iriLocal`, `iri`, `packageCode`
 4. `GET /v1/admin/schema-config` — `instanceOfProperty` musí být neprázdné. Loader ho nastaví, jen pokud bylo prázdné (`iriLocal=instanceOf` v tomto package).
 5. `GET /v1/shapes?package=archimate-lite` — `aml-element`, `aml-relationship`, `aml-view-connection`, `aml-allowed-relationship`, `aml-string-enum`
 6. Policy data viz [níže](#policy-data-v-kc) (`AllowedRelationship`, `StringEnum`, `exchange-spec`)
@@ -69,19 +90,19 @@ GET /v1/entities?package=archimate-lite&kind=property&limit=200
 `iri` matchuje kanonické IRI (`iriBase` + `iriLocal`) nebo `entity_iri_alias`.  
 Stránkování: `nextCursor` → `?cursor=`.
 
-`GET /v1/entities/{id}` funguje pro Q/P/C a vrací `effectiveClasses` (instanceOf + předci).  
-`GET /v1/classes/{cid}` vrací `iriLocal`, `iri`, `packageCode`, `effectiveClasses` (self + předci).  
-`GET /v1/properties/{pid}` vrací `iriLocal`, `iri`, `packageCode`.
+`GET /v1/entities/{id}` — `{id}` je plná IRI (path-encoded). Vrací `effectiveClasses` (instanceOf + předci).  
+`GET /v1/classes/{id}` vrací `iriLocal`, `iri`, `packageCode`, `effectiveClasses` (self + předci).  
+`GET /v1/properties/{id}` vrací `iriLocal`, `iri`, `packageCode`.
 
-Tvary patří do package (a do release bundle, `objectType: "shape"`). Kódy: `aml-element`, `aml-relationship`, `aml-view-connection`, `aml-allowed-relationship`, `aml-string-enum`. `document.requiredProperties` jsou `P*` dané instalace.
+Tvary patří do package (a do release bundle, `objectType: "shape"`). Kódy: `aml-element`, `aml-relationship`, `aml-view-connection`, `aml-allowed-relationship`, `aml-string-enum`. `document.requiredProperties` jsou IRI properties.
 
 ## Policy data v KC
 
 KC matici a enumy **nevynucuje**. Tool si je načte z package a implementuje vlastní kontroly / XML mapování.
 
-Nejdřív resolvuj `C*` / `P*` podle `iriLocal` (ne hardcoduj public id).
+Public ID jsou stabilní IRI; pro lookup stačí `iriLocal` (ne hardcoduj cizí instalaci).
 
-### Anotace tříd (`C*`)
+### Anotace tříd
 
 Statementy na třídě prvku nebo vazby:
 
@@ -90,11 +111,16 @@ Statementy na třídě prvku nebo vazby:
 | `archiLayer` | `business` / `application` / `technology` / … |
 | `overlay` | např. `risk-and-security` u `Risk` |
 | `exchangeType` | Open Exchange `xsi:type`; chybí u `DeployedOn` |
+| `usageGuidance` | textový návod, kdy a jak prvek/vazbu/property použít |
+| `usageExamples` | konkrétní příklady použití |
 
 ```text
 GET /v1/entities?package=archimate-lite&iriLocal=ApplicationComponent
-GET /v1/entities/{cid}/statements?property={P-archiLayer}
+GET /v1/entities/{classIri}/statements?property={archiLayerIri}
+GET /v1/entities/{classOrPropertyIri}/statements?property={usageGuidanceIri}
 ```
+
+`usageGuidance` / `usageExamples` jsou i na **property** entitách (nejen na třídách prvků a vazeb).
 
 ### Lite matice vazeb
 
@@ -102,20 +128,20 @@ Instance třídy `AllowedRelationship` (`iriLocal` tvaru `allowed/{type}/{source
 
 | property | hodnota |
 |----------|---------|
-| `allowedRelType` | `C*` podtřídy `ArchiMateRelationship` |
-| `allowedSourceClass` | `C*` podtřídy `ArchiMateElement` |
-| `allowedTargetClass` | `C*` podtřídy `ArchiMateElement` |
+| `allowedRelType` | IRI class podtřídy `ArchiMateRelationship` |
+| `allowedSourceClass` | IRI class podtřídy `ArchiMateElement` |
+| `allowedTargetClass` | IRI class podtřídy `ArchiMateElement` |
 
 ```text
-GET /v1/entities?package=archimate-lite&instanceOf={C-AllowedRelationship}
-GET /v1/entities/{qid}/statements
+GET /v1/entities?package=archimate-lite&instanceOf={AllowedRelationshipIri}
+GET /v1/entities/{entityIri}/statements
 ```
 
 ### Enumy
 
 Instance `StringEnum` (`iriLocal` `enum/{propertyIriLocal}`):
 
-- `enumeratesProperty` → `P*`
+- `enumeratesProperty` → IRI property
 - `allowedValue` — n× String
 
 ```text
@@ -130,8 +156,7 @@ Jedna entita `iriLocal=exchange-spec` (`instanceOf` `ExchangeSpec`): `catalogVer
 GET /v1/entities?package=archimate-lite&iriLocal=exchange-spec
 ```
 
-`catalog.json` v gitu je jen seed pro `load.py` a code review. Runtime tool **nečte** JSON z disku, pokud má přístup k nahranému package (včetně release bundle).
-
+`catalog.json` / release bundle v gitu jsou seed. Runtime tool **nečte** JSON z disku, pokud má přístup k nahranému package.
 ## Konvence instancí
 
 | Package | Účel |
@@ -164,7 +189,7 @@ GET package vrací závislosti stejně (`dependsOnCode` / `versionRange`). Cross
 `iriLocal` instance: stabilní slug (`crm`, `crm-backend`). Pro round-trip z Archi ulož původní identifier:
 
 ```http
-PUT /v1/entities/{qid}/iri-aliases
+PUT /v1/entities/{entityIri}/iri-aliases
 ```
 
 ```json
@@ -176,7 +201,7 @@ PUT /v1/entities/{qid}/iri-aliases
 Přesun do jiného package:
 
 ```http
-POST /v1/entities/{id}/move
+POST /v1/entities/{entityIri}/move
 { "packageCode": "sys-crm" }
 ```
 
@@ -202,13 +227,16 @@ POST /v1/statements
 ```json
 {
   "packageCode": "sys-crm",
-  "subject": "Q10",
-  "property": "P1",
-  "value": { "type": "EntityReference", "entityId": "C22" }
+  "subject": "https://example.org/systems/crm/crm",
+  "property": "https://knowledge-core.local/archimate-lite/instanceOf",
+  "value": {
+    "type": "EntityReference",
+    "entityId": "https://knowledge-core.local/archimate-lite/ApplicationComponent"
+  }
 }
 ```
 
-`P1` = `instanceOfProperty` ze schema-config, `C22` = třída `ApplicationComponent` v této instalaci.
+`property` = `instanceOfProperty` ze schema-config (typicky IRI `…/instanceOf`), `entityId` = IRI class `ApplicationComponent`.
 
 Opakovaný zápis stejné trojice (subject + property + value) s `"upsert": true` vrátí existující statement (`200`), bez duplicity.
 
@@ -216,28 +244,27 @@ Hodnoty statementů:
 
 | datatype | JSON value |
 |----------|------------|
-| EntityReference | `{ "type": "EntityReference", "entityId": "Q…" }` |
+| EntityReference | `{ "type": "EntityReference", "entityId": "<IRI>" }` |
 | String | `{ "type": "String", "string": "…" }` |
 | Integer | `{ "type": "Integer", "int64": 5432 }` |
 | Boolean | `{ "type": "Boolean", "bool": true }` |
 | URI | `{ "type": "URI", "uri": "https://…" }` |
-
 ### Čtení grafu
 
 | Účel | Endpoint |
 |------|----------|
-| Odchozí tvrzení | `GET /v1/entities/{qid}/statements?property=P*` |
-| Příchozí tvrzení (kdo ukazuje na X) | `GET /v1/entities/{qid}/incoming?property=P*` |
-| Okolí (outgoing + incoming + neighbors) | `GET /v1/entities/{qid}/graph?depth=1` (`depth` 1 nebo 2) |
-| Instance třídy | `GET /v1/entities?instanceOf=C*&includeSubclasses=true` |
+| Odchozí tvrzení | `GET /v1/entities/{iri}/statements?property={propertyIri}` |
+| Příchozí tvrzení (kdo ukazuje na X) | `GET /v1/entities/{iri}/incoming?property={propertyIri}` |
+| Okolí (outgoing + incoming + neighbors) | `GET /v1/entities/{iri}/graph?depth=1` (`depth` 1 nebo 2) |
+| Instance třídy | `GET /v1/entities?instanceOf={classIri}&includeSubclasses=true` |
 
-Dopadová analýza: `GET .../incoming` s property `relSource` nebo `relTarget` (public id z resoluce slovníku). RDF dump (`GET /v1/projections/rdf`) zůstává volitelný.
+Dopadová analýza: `GET .../incoming` s property `relSource` nebo `relTarget` (IRI z resoluce slovníku). RDF dump (`GET /v1/projections/rdf`) zůstává volitelný.
 
 ## Vzory objektů
 
 ### Prvek
 
-`Q*` + `instanceOf` → listová třída (`ApplicationComponent`, `Node`, …).  
+Entita + `instanceOf` → listová třída (`ApplicationComponent`, `Node`, …).  
 Atributy = další statementy (`modelingDepth`, `criticality`, …).  
 Popis = `descriptions` na entitě, ne statement.
 
@@ -245,21 +272,21 @@ Popis = `descriptions` na entitě, ne statement.
 
 ### Vazba (first-class entita)
 
-`Q*` + `instanceOf` → `Composition` / `Flow` / …  
+Entita + `instanceOf` → `Composition` / `Flow` / …  
 Povinné: `relSource`, `relTarget` (EntityReference na prvky).  
-Identita vazby = `Q*` (v XML `relationship/@identifier`).
+Identita vazby = IRI entity (v XML `relationship/@identifier` typicky z `iriLocal` nebo aliasu).
 
 ```text
-Q:crm  instanceOf ApplicationComponent
-Q:fe   instanceOf ApplicationComponent
-Q:c1   instanceOf Composition
-Q:c1   relSource → Q:crm
-Q:c1   relTarget → Q:fe
+…/crm  instanceOf ApplicationComponent
+…/fe   instanceOf ApplicationComponent
+…/c1   instanceOf Composition
+…/c1   relSource → …/crm
+…/c1   relTarget → …/fe
 ```
 
-`rangeClasses` na `relSource`/`relTarget` **nastavte** na `ArchiMateElement` (loader to dělá z catalog `range`). Validace range v KC bere `instanceOf` cílového `Q*` a expanduje `subClassOf`. Lite matici vynucuje tool nad instancemi `AllowedRelationship` v KC.
+`rangeClasses` na `relSource`/`relTarget` **nastavte** na `ArchiMateElement` (loader/bundle to dělá z catalog `range`). Validace range v KC bere `instanceOf` cíle a expanduje `subClassOf`. Lite matici vynucuje tool nad instancemi `AllowedRelationship` v KC.
 
-`PATCH /v1/properties/{pid}` `{ "constraints": { ... } }` upraví constraints po vytvoření.
+`PATCH /v1/properties/{propertyIri}` `{ "constraints": { ... } }` upraví constraints po vytvoření.
 
 `DeployedOn` je lite vztah; XML nástroj ho expanduje na `Assignment`.  
 `Risk` je overlay; XML: overlay typ nebo `Assessment` + property.
@@ -281,18 +308,18 @@ Architektura není ve view. View jen vybírá a kreslí.
 | PATCH | `/v1/packages/{code}` | `iriBase`, labels |
 | GET | `/v1/entities` | `?package=&kind=&iriLocal=&iri=&instanceOf=&includeSubclasses=&q=&cursor=&limit=` |
 | POST | `/v1/entities` | prvek / vazba / view |
-| GET/PATCH | `/v1/entities/{id}` | včetně P*/C*; GET: `effectiveClasses` |
+| GET/PATCH | `/v1/entities/{id}` | id = IRI (path-encoded); GET: `effectiveClasses` |
 | POST | `/v1/entities/{id}/move` | `{ packageCode }` |
 | PUT | `/v1/entities/{id}/iri-aliases` | Archi identifier |
 | GET | `/v1/entities/{id}/statements` | odchozí; `?property=` |
 | GET | `/v1/entities/{id}/incoming` | příchozí; `?property=` |
 | GET | `/v1/entities/{id}/graph` | `?depth=1\|2` |
 | POST | `/v1/statements` | atributy, instanceOf, relSource…; `"upsert": true` |
-| GET | `/v1/statements/{sid}` | |
-| POST | `/v1/statements/{sid}/revise` | změna hodnoty |
+| GET | `/v1/statements/{id}` | |
+| POST | `/v1/statements/{id}/revise` | změna hodnoty |
 | GET/POST | `/v1/classes`, `/v1/properties`, `/v1/shapes` | metamodel |
-| GET | `/v1/classes/{cid}`, `/v1/properties/{pid}` | `iriLocal`, `iri` |
-| PATCH | `/v1/properties/{pid}` | `constraints` |
+| GET | `/v1/classes/{id}`, `/v1/properties/{id}` | `iriLocal`, `iri` |
+| PATCH | `/v1/properties/{id}` | `constraints` |
 | GET | `/v1/shapes?package=` | tvary package |
 | GET/PUT | `/v1/admin/schema-config` | `instanceOfProperty` |
 | GET | `/v1/entities/{id}/validation` | shapes / domain / range |
@@ -308,9 +335,9 @@ Lenses (`POST /v1/lenses`, `GET/PATCH .../instances/{key}`) jsou volitelné; ná
 
 ## Open Exchange — povinnosti nástroje (ne jádra)
 
-- `Q*` prvek → `<element identifier xsi:type="{iriLocal}">`
-- `Q*` vazba → `<relationship identifier xsi:type="{iriLocal}" source= target=>` (`relSource` / `relTarget`)
-- literály P* → `<properties>`
+- prvek → `<element identifier xsi:type="{iriLocal}">`
+- vazba → `<relationship identifier xsi:type="{iriLocal}" source= target=>` (`relSource` / `relTarget`)
+- literály properties → `<properties>`
 - `DeployedOn` → `Assignment` řetězec
 - `Risk` → overlay nebo Assessment
 - View* → `<views><diagrams><view>`
@@ -328,5 +355,5 @@ Lite matice a „Flow jen mezi komponentami“ = logika nástroje nad instancemi
 ## Co nástroj nesmí dělat
 
 - Přidávat ArchiMate typy do Go jádra, migrací nebo well-known RDF vocab
-- Hardcodovat `C*` / `P*` z jiné instalace
+- Hardcodovat IRI z jiné instalace s jiným `iriBase`
 - Modelovat L5 (pody, všechny IP, firewall rules) jako ArchiMate prvky

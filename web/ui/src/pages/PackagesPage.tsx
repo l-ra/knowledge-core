@@ -4,7 +4,14 @@ import { useTranslation } from "react-i18next";
 import { apiFetch } from "../api";
 import { usePackage } from "../package";
 
-type Pkg = { code: string; lifecycle: string; labels?: Record<string, string>; iriBase?: string };
+type Pkg = {
+  code: string;
+  lifecycle: string;
+  labels?: Record<string, string>;
+  iriBase?: string;
+  latestReleaseVersion?: string;
+  modifiedAfterRelease?: boolean;
+};
 
 type RDFCandidate = {
   iriBase: string;
@@ -576,6 +583,7 @@ export function PackagesPage() {
             <th>Label</th>
             <th>{t("packages.iriBase")}</th>
             <th>Lifecycle</th>
+            <th>{t("packages.latestRelease")}</th>
             <th />
           </tr>
         </thead>
@@ -588,6 +596,29 @@ export function PackagesPage() {
               <td>{p.labels?.en}</td>
               <td className="mono muted">{p.iriBase || "—"}</td>
               <td>{p.lifecycle}</td>
+              <td>
+                {p.latestReleaseVersion ? (
+                  <span className="pkg-release-cell">
+                    <span className="mono">{p.latestReleaseVersion}</span>
+                    {p.modifiedAfterRelease && (
+                      <span
+                        className="pkg-dirty-icon"
+                        title={t("packages.modifiedAfterRelease")}
+                        aria-label={t("packages.modifiedAfterRelease")}
+                      >
+                        <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true">
+                          <path
+                            fill="currentColor"
+                            d="M11.5 1.5a1.5 1.5 0 0 1 2.12 2.12L5.62 11.62 3 13l1.38-2.62L11.5 1.5zm1.06.94-7.5 7.5-.44 1.44 1.44-.44 7.5-7.5a.5.5 0 0 0-.7-.7z"
+                          />
+                        </svg>
+                      </span>
+                    )}
+                  </span>
+                ) : (
+                  <span className="muted">—</span>
+                )}
+              </td>
               <td>
                 <button type="button" className="danger" onClick={() => void removePackage(p.code)}>
                   {t("packages.delete")}

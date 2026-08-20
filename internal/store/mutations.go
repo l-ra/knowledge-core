@@ -438,6 +438,18 @@ func (s *Store) UpdateProperty(ctx context.Context, meta domain.WriteMeta, pid s
 	if err != nil {
 		return nil, err
 	}
+	ent, err := s.loadEntityTx(ctx, tx, pid)
+	if err != nil {
+		return nil, err
+	}
+	labelsJSON, _ := labelsToJSON(ent.Labels)
+	descJSON, _ := labelsToJSON(ent.Descriptions)
+	if _, err := tx.Exec(ctx, `
+		INSERT INTO entity_revision (id, entity_id, revision_no, status, labels, descriptions, change_set_id, actor, created_at)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+	`, datatype.NewUUID(), entityID, nextRev, ent.Status, labelsJSON, descJSON, cs.id, csActor(cs), now); err != nil {
+		return nil, err
+	}
 	if err := cs.addItem(ctx, tx, "property", entityID, pid, "update", map[string]any{"revisionNo": nextRev}); err != nil {
 		return nil, err
 	}
@@ -507,6 +519,18 @@ func (s *Store) MoveEntity(ctx context.Context, meta domain.WriteMeta, publicID 
 	}
 	cs, err := s.beginChangeSetTx(ctx, tx, meta)
 	if err != nil {
+		return nil, err
+	}
+	entSnap, err := s.loadEntityTx(ctx, tx, publicID)
+	if err != nil {
+		return nil, err
+	}
+	labelsJSON, _ := labelsToJSON(entSnap.Labels)
+	descJSON, _ := labelsToJSON(entSnap.Descriptions)
+	if _, err := tx.Exec(ctx, `
+		INSERT INTO entity_revision (id, entity_id, revision_no, status, labels, descriptions, change_set_id, actor, created_at)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+	`, datatype.NewUUID(), entityID, nextRev, entSnap.Status, labelsJSON, descJSON, cs.id, csActor(cs), now); err != nil {
 		return nil, err
 	}
 	if err := cs.addItem(ctx, tx, "entity", entityID, publicID, "move", map[string]any{"packageCode": in.PackageCode, "revisionNo": nextRev}); err != nil {

@@ -300,6 +300,12 @@ func (s *Store) loadStatementProvenanceAtRevision(ctx context.Context, q querier
 		sv.Numeric = numeric
 		val, err := decodeValue(sv)
 		if err != nil {
+			rows.Close()
+			return nil, nil, err
+		}
+		val, err = publicizeValue(ctx, q, val)
+		if err != nil {
+			rows.Close()
 			return nil, nil, err
 		}
 		qual.Value = val
@@ -352,6 +358,11 @@ func (s *Store) enrichStatement(ctx context.Context, q querier, st *domain.State
 	}
 	st.Qualifiers = quals
 	st.ReferenceIDs = refs
+	pub, err := publicizeValue(ctx, q, st.Value)
+	if err != nil {
+		return err
+	}
+	st.Value = pub
 	var pkgCode string
 	if err := q.QueryRow(ctx, `
 		SELECT COALESCE(pkg.code, '')

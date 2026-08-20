@@ -44,7 +44,7 @@ Tato složka je zdroj pravdy pro vývoj: koncepty, uzavřená implementační ro
 | 1 | Canonical graph | done (A1/A2/A14) |
 | 2 | History / ChangeSet | done (A7/A8/A9) |
 | 3 | Provenance | done (A10) |
-| 4 | Packages / releases | done (A11/A12/A13 + import) |
+| 4 | Packages / releases (+ upgrade BC) | done (A11/A12/A13 + import + upgrade) |
 | 5 | Authorization | done (A4/A5/A6) + bootstrap auth |
 | 6 | Lenses / GraphQL | done (A3) |
 | 7 | Outbox / projections | done (A15) |

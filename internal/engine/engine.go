@@ -10,6 +10,7 @@ import (
 	"github.com/l-ra/knowledge-core/internal/auth"
 	"github.com/l-ra/knowledge-core/internal/datatype"
 	"github.com/l-ra/knowledge-core/internal/domain"
+	"github.com/l-ra/knowledge-core/internal/pkgcompat"
 	"github.com/l-ra/knowledge-core/internal/store"
 )
 
@@ -424,6 +425,13 @@ func mapErr(err error) error {
 	}
 	if errors.Is(err, store.ErrImportCollision) {
 		return ErrConflict
+	}
+	if errors.Is(err, store.ErrImportDowngrade) {
+		return ErrConflict
+	}
+	var br *pkgcompat.BreakingError
+	if errors.As(err, &br) {
+		return br // preserve findings for HTTP layer
 	}
 	msg := err.Error()
 	if strings.Contains(msg, "label.en") ||

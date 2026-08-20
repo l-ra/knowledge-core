@@ -1,11 +1,17 @@
 import { FormEvent, useEffect, useState } from "react";
-import { Link, useNavigate, useSearchParams } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { apiFetch } from "../api";
-import { pickLabel } from "../labels";
 import { usePackage } from "../package";
 import { useChangeSetDraft } from "../changeset";
 import { EntityLink } from "../links";
+import { ObjectPicker } from "../ObjectPicker";
+import {
+  ConstraintsForm,
+  constraintsFromForm,
+  emptyConstraintsForm,
+  ConstraintsFormState,
+} from "../ConstraintsForm";
 
 type Entity = {
   id: string;
@@ -50,11 +56,10 @@ export function EntitiesPage() {
   const [info, setInfo] = useState("");
   const [creating, setCreating] = useState<KindFilter | null>(null);
 
-  // create form state
   const [label, setLabel] = useState("");
   const [iriLocal, setIriLocal] = useState("");
   const [datatype, setDatatype] = useState("String");
-  const [constraintsJSON, setConstraintsJSON] = useState("{}");
+  const [constraints, setConstraints] = useState<ConstraintsFormState>(() => emptyConstraintsForm());
   const [subClassOf, setSubClassOf] = useState("");
 
   async function load(opts?: { reset?: boolean; cursor?: string }) {
@@ -101,6 +106,15 @@ export function EntitiesPage() {
     nav(`/entities/${encodeURIComponent(id)}`);
   }
 
+  function resetCreateForm() {
+    setCreating(null);
+    setLabel("");
+    setIriLocal("");
+    setDatatype("String");
+    setConstraints(emptyConstraintsForm());
+    setSubClassOf("");
+  }
+
   async function create(e: FormEvent) {
     e.preventDefault();
     if (!packageCode) {
@@ -131,12 +145,7 @@ export function EntitiesPage() {
           },
         );
       } else if (creating === "property") {
-        let constraints: Record<string, unknown> = {};
-        try {
-          constraints = JSON.parse(constraintsJSON);
-        } catch {
-          throw new Error("invalid constraints JSON");
-        }
+        const constraintsPayload = constraintsFromForm(constraints);
         await runWrite(
           async () => {
             const res = await apiFetch<{ data: Entity }>("/v1/properties", {
@@ -145,7 +154,7 @@ export function EntitiesPage() {
                 packageCode,
                 datatype,
                 labels: { en: label },
-                constraints,
+                constraints: constraintsPayload,
                 iriLocal: iriLocal || undefined,
               }),
             });
@@ -156,7 +165,7 @@ export function EntitiesPage() {
             packageCode,
             datatype,
             labels: { en: label },
-            constraints,
+            constraints: constraintsPayload,
             iriLocal: iriLocal || undefined,
           },
         );
@@ -185,9 +194,7 @@ export function EntitiesPage() {
       }
       if (isOpen) {
         setInfo(t("changeset.queued"));
-        setCreating(null);
-        setLabel("");
-        setIriLocal("");
+        resetCreateForm();
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : t("common.error"));
@@ -296,23 +303,28 @@ export function EntitiesPage() {
                   ))}
                 </select>
               </label>
-              <label className="field">
-                {t("properties.constraints")}
-                <textarea rows={3} value={constraintsJSON} onChange={(e) => setConstraintsJSON(e.target.value)} />
-              </label>
+              <fieldset className="constraints-fieldset">
+                <legend>{t("properties.constraints")}</legend>
+                <ConstraintsForm value={constraints} onChange={setConstraints} />
+              </fieldset>
             </>
           )}
           {creating === "class" && (
             <label className="field">
               {t("classes.subClassOf")}
-              <input value={subClassOf} onChange={(e) => setSubClassOf(e.target.value)} placeholder="C1" />
+              <ObjectPicker
+                value={subClassOf}
+                onChange={setSubClassOf}
+                kind="class"
+                placeholder={t("classes.pickSubClassOf")}
+              />
             </label>
           )}
           <div className="row">
             <button className="primary" type="submit" disabled={!packageCode}>
               {t("common.save")}
             </button>
-            <button type="button" onClick={() => setCreating(null)}>
+            <button type="button" onClick={() => resetCreateForm()}>
               {t("common.cancel")}
             </button>
           </div>
