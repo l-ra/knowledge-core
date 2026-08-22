@@ -78,13 +78,64 @@ GitHub Actions workflow `.github/workflows/ci.yml`:
 - Go tests (unit + acceptance with Postgres service)
 - Docker build
 - `helm lint` + template smoke test
-- On push to `main`: publish image to `ghcr.io/l-ra/knowledge-core` and Helm chart to `oci://ghcr.io/l-ra`
+- On push to `main`: publish image to `ghcr.io/l-ra/knowledge-core` and dev Helm chart to `oci://ghcr.io/l-ra`
 
 Tag release (`.github/workflows/release.yml`):
 
 ```bash
 git tag v0.2.0 && git push origin v0.2.0
 helm install kc oci://ghcr.io/l-ra/knowledge-core --version 0.2.0
+```
+
+## Versioning
+
+| Artifact | Source of truth | `main` branch | Tag `vX.Y.Z` release |
+|----------|-----------------|---------------|----------------------|
+| Container image | Git tag | `latest` + commit SHA | `X.Y.Z`, `X.Y`, `latest` |
+| Helm chart `version` | Git tag (release) / CI run (dev) | `0.0.0-dev.<run>` | `X.Y.Z` |
+| Helm chart `appVersion` | Same as chart `version` for releases | dev version | `X.Y.Z` |
+| Default image tag in chart | `appVersion` when `image.tag` is empty | dev version | `X.Y.Z` |
+
+Subchart `version` fields (`postgresql`, `pocket-id`, `pgadmin`) version the bundled dependency packages only; they are **not** bumped on application release.
+
+### Release flow
+
+**Option A — GitHub Actions (recommended, no manual `git tag`):**
+
+1. Open **Actions → Create release tag → Run workflow**
+2. Choose bump type (`minor` by default) and run
+3. Workflow creates `vX.Y.Z` from the latest tag and pushes it
+4. `release.yml` runs automatically on the new tag
+
+**Option B — tag from merge commit message:**
+
+Add `[release]` to the squash/merge commit message on `main`. The same workflow bumps `minor` and creates the tag.
+
+**Option C — manual tag:**
+
+```bash
+git tag v1.2.0 && git push origin v1.2.0
+```
+
+After the tag exists, `release.yml` runs:
+   - sets `Chart.yaml` `version` and `appVersion` via `deploy/helm/scripts/set-chart-version.sh`
+   - runs tests, builds and pushes the image with SemVer tags
+   - packages the chart and pushes to `oci://ghcr.io/l-ra/knowledge-core`
+   - creates a GitHub Release with the `.tgz` artifact
+   - commits the same `Chart.yaml` version back to `main` (so the repo reflects the latest release)
+
+You do **not** need to manually edit `Chart.yaml` before tagging.
+
+### Dev chart on `main`
+
+Each push to `main` publishes a chart with version `0.0.0-dev.<run_number>` so it never overwrites a SemVer release in the OCI registry. Use tagged releases for production installs.
+
+```bash
+# Production
+helm upgrade --install kc oci://ghcr.io/l-ra/knowledge-core --version 1.2.0
+
+# Latest dev (optional — version changes every CI run)
+helm upgrade --install kc oci://ghcr.io/l-ra/knowledge-core --version 0.0.0-dev.42
 ```
 
 ## Values reference

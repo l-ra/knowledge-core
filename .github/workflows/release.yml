@@ -6,12 +6,13 @@ on:
       - "v*"
 
 permissions:
-  contents: read
+  contents: write
   packages: write
 
 env:
   REGISTRY: ghcr.io
   IMAGE_NAME: l-ra/knowledge-core
+  CHART_PATH: deploy/helm/knowledge-core
 
 jobs:
   release:
@@ -26,6 +27,9 @@ jobs:
           VERSION="${TAG#v}"
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Set chart version
+        run: ./deploy/helm/scripts/set-chart-version.sh "${{ steps.ver.outputs.version }}"
 
       - uses: actions/setup-go@v5
         with:
@@ -70,9 +74,31 @@ jobs:
           version: v3.16.4
 
       - name: Package and push Helm chart
+        id: chart
         run: |
           VERSION="${{ steps.ver.outputs.version }}"
-          sed -i "s/^version: .*/version: ${VERSION}/" deploy/helm/knowledge-core/Chart.yaml
-          sed -i "s/^appVersion: .*/appVersion: \"${VERSION}\"/" deploy/helm/knowledge-core/Chart.yaml
-          helm package deploy/helm/knowledge-core --destination /tmp/chart --version "$VERSION" --app-version "$VERSION"
-          helm push /tmp/chart/knowledge-core-*.tgz oci://${{ env.REGISTRY }}/l-ra
+          helm package "${{ env.CHART_PATH }}" --destination /tmp/chart
+          CHART_ARCHIVE="/tmp/chart/knowledge-core-${VERSION}.tgz"
+          echo "archive=${CHART_ARCHIVE}" >> "$GITHUB_OUTPUT"
+          helm push "${CHART_ARCHIVE}" oci://${{ env.REGISTRY }}/l-ra
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ${{ steps.chart.outputs.archive }}
+          generate_release_notes: true
+
+      - name: Sync Chart.yaml on main
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git fetch origin main
+          git checkout main
+          ./deploy/helm/scripts/set-chart-version.sh "${{ steps.ver.outputs.version }}"
+          git add "${{ env.CHART_PATH }}/Chart.yaml"
+          if git diff --staged --quiet; then
+            echo "Chart.yaml already at ${{ steps.ver.outputs.version }} on main"
+          else
+            git commit -m "chore(helm): set chart version to ${{ steps.ver.outputs.version }} [skip ci] [skip release]"
+            git push origin main
+          fi
