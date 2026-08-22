@@ -160,8 +160,11 @@ jobs:
       - uses: azure/setup-helm@v4
         with:
           version: v3.16.4
-      - name: Package Helm chart
-        run: helm package deploy/helm/knowledge-core --destination /tmp/chart
+      - name: Package Helm chart (dev)
+        run: |
+          DEV_VERSION="0.0.0-dev.${{ github.run_number }}"
+          ./deploy/helm/scripts/set-chart-version.sh "${DEV_VERSION}"
+          helm package deploy/helm/knowledge-core --destination /tmp/chart
       - uses: docker/login-action@v3
         with:
           registry: ${{ env.REGISTRY }}
