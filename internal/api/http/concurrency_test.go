@@ -22,7 +22,7 @@ func TestConcurrencyOptimisticLock(t *testing.T) {
 	for i := 0; i < workers; i++ {
 		go func(i int) {
 			defer wg.Done()
-			res := doJSON(t, h, http.MethodPost, "/v1/statements/"+sid+"/revise", map[string]any{
+			res := doJSON(t, h, http.MethodPost, statementPath(sid, "/revise"), map[string]any{
 				"expectedRevision": 1,
 				"value":            map[string]any{"type": "String", "string": "race"},
 			}, nil)
