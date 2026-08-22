@@ -100,8 +100,24 @@ Subchart `version` fields (`postgresql`, `pocket-id`, `pgadmin`) version the bun
 
 ### Release flow
 
-1. Create and push a SemVer tag: `git tag v1.2.0 && git push origin v1.2.0`
-2. `release.yml` runs:
+**Option A — GitHub Actions (recommended, no manual `git tag`):**
+
+1. Open **Actions → Create release tag → Run workflow**
+2. Choose bump type (`minor` by default) and run
+3. Workflow creates `vX.Y.Z` from the latest tag and pushes it
+4. `release.yml` runs automatically on the new tag
+
+**Option B — tag from merge commit message:**
+
+Add `[release]` to the squash/merge commit message on `main`. The same workflow bumps `minor` and creates the tag.
+
+**Option C — manual tag:**
+
+```bash
+git tag v1.2.0 && git push origin v1.2.0
+```
+
+After the tag exists, `release.yml` runs:
    - sets `Chart.yaml` `version` and `appVersion` via `deploy/helm/scripts/set-chart-version.sh`
    - runs tests, builds and pushes the image with SemVer tags
    - packages the chart and pushes to `oci://ghcr.io/l-ra/knowledge-core`

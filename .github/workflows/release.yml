@@ -99,6 +99,6 @@ jobs:
           if git diff --staged --quiet; then
             echo "Chart.yaml already at ${{ steps.ver.outputs.version }} on main"
           else
-            git commit -m "chore(helm): set chart version to ${{ steps.ver.outputs.version }} [skip ci]"
+            git commit -m "chore(helm): set chart version to ${{ steps.ver.outputs.version }} [skip ci] [skip release]"
             git push origin main
           fi
