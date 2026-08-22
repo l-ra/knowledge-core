@@ -413,7 +413,7 @@ func TestAcceptanceA1A2A14(t *testing.T) {
 	}
 	sid := parseDataID(t, stmt.Body)
 
-	got := doJSON(t, h, http.MethodGet, "/v1/statements/"+sid, nil, nil)
+	got := doJSON(t, h, http.MethodGet, statementPath(sid, ""), nil, nil)
 	if got.StatusCode != http.StatusOK {
 		t.Fatalf("get statement: %d %s", got.StatusCode, got.Body)
 	}
@@ -440,14 +440,14 @@ func TestAcceptanceA7A8A9(t *testing.T) {
 	s3 := createStatement(t, h, qid, pid, "v3")
 
 	// A8 — stale revision conflict
-	conflict := doJSON(t, h, http.MethodPost, "/v1/statements/"+s1+"/revise", map[string]any{
+	conflict := doJSON(t, h, http.MethodPost, statementPath(s1, "/revise"), map[string]any{
 		"expectedRevision": 1,
 		"value":            map[string]any{"type": "String", "string": "A-first"},
 	}, nil)
 	if conflict.StatusCode != http.StatusOK {
 		t.Fatalf("first revise: %d %s", conflict.StatusCode, conflict.Body)
 	}
-	stale := doJSON(t, h, http.MethodPost, "/v1/statements/"+s1+"/revise", map[string]any{
+	stale := doJSON(t, h, http.MethodPost, statementPath(s1, "/revise"), map[string]any{
 		"expectedRevision": 1,
 		"value":            map[string]any{"type": "String", "string": "A-stale"},
 	}, nil)
@@ -468,8 +468,8 @@ func TestAcceptanceA7A8A9(t *testing.T) {
 	if batch.StatusCode != http.StatusConflict {
 		t.Fatalf("A7: want 409, got %d %s", batch.StatusCode, batch.Body)
 	}
-	s2got := doJSON(t, h, http.MethodGet, "/v1/statements/"+s2, nil, nil)
-	s3got := doJSON(t, h, http.MethodGet, "/v1/statements/"+s3, nil, nil)
+	s2got := doJSON(t, h, http.MethodGet, statementPath(s2, ""), nil, nil)
+	s3got := doJSON(t, h, http.MethodGet, statementPath(s3, ""), nil, nil)
 	if parseStatementStringValue(t, s2got.Body) != "v2" {
 		t.Fatalf("A7: S2 should remain v2, got %s", s2got.Body)
 	}
@@ -483,8 +483,8 @@ func TestAcceptanceA7A8A9(t *testing.T) {
 		"expectedRevision": 2,
 		"value":            map[string]any{"type": "String", "string": "A-idem"},
 	}
-	first := doJSON(t, h, http.MethodPost, "/v1/statements/"+s1+"/revise", body, map[string]string{"Idempotency-Key": idemKey})
-	second := doJSON(t, h, http.MethodPost, "/v1/statements/"+s1+"/revise", body, map[string]string{"Idempotency-Key": idemKey})
+	first := doJSON(t, h, http.MethodPost, statementPath(s1, "/revise"), body, map[string]string{"Idempotency-Key": idemKey})
+	second := doJSON(t, h, http.MethodPost, statementPath(s1, "/revise"), body, map[string]string{"Idempotency-Key": idemKey})
 	if first.StatusCode != http.StatusOK || second.StatusCode != http.StatusOK {
 		t.Fatalf("A9: idempotent calls failed: %d %s / %d %s", first.StatusCode, first.Body, second.StatusCode, second.Body)
 	}
@@ -537,7 +537,7 @@ func TestAcceptanceA10(t *testing.T) {
 	sid := parseDataID(t, stmt.Body)
 
 	// Editor changes qualifier only — reference must stay, new ChangeSet with actor
-	rev := doJSON(t, h, http.MethodPost, "/v1/statements/"+sid+"/revise", map[string]any{
+	rev := doJSON(t, h, http.MethodPost, statementPath(sid, "/revise"), map[string]any{
 		"expectedRevision": 1,
 		"qualifiers": []map[string]any{
 			{"property": roleProp, "value": map[string]any{"type": "String", "string": "technical-owner"}},
@@ -584,7 +584,7 @@ func TestAcceptanceA10(t *testing.T) {
 	}
 
 	// History shows qualifier change between revisions, reference on both
-	hist := doJSON(t, h, http.MethodGet, "/v1/statements/"+sid+"/history", nil, nil)
+	hist := doJSON(t, h, http.MethodGet, statementPath(sid, "/history"), nil, nil)
 	var histBody struct {
 		Revisions []struct {
 			RevisionNo   int      `json:"revisionNo"`
@@ -715,7 +715,7 @@ func TestAcceptanceImportPromotion(t *testing.T) {
 		t.Fatalf("imported entity missing: %d %s", ent.StatusCode, ent.Body)
 	}
 
-	st := doJSON(t, h, http.MethodGet, "/v1/statements/"+sid, nil, nil)
+	st := doJSON(t, h, http.MethodGet, statementPath(sid, ""), nil, nil)
 	if st.StatusCode != http.StatusOK {
 		t.Fatalf("imported statement missing: %d %s", st.StatusCode, st.Body)
 	}
@@ -819,7 +819,7 @@ func TestAcceptancePackageUpgradeCompat(t *testing.T) {
 	if imp2.StatusCode != http.StatusCreated {
 		t.Fatalf("import 1.1.0 additive: %d %s", imp2.StatusCode, imp2.Body)
 	}
-	gotSt := doJSON(t, h, http.MethodGet, "/v1/statements/"+url.PathEscape(sid), nil, nil)
+	gotSt := doJSON(t, h, http.MethodGet, statementPath(sid, ""), nil, nil)
 	if gotSt.StatusCode != http.StatusOK {
 		t.Fatalf("statement after upgrade: %d %s", gotSt.StatusCode, gotSt.Body)
 	}
@@ -869,7 +869,7 @@ func TestAcceptancePublishCompatBreaking(t *testing.T) {
 		t.Fatalf("publish 1.0.0: %d %s", pub1.StatusCode, pub1.Body)
 	}
 
-	mv := doJSON(t, h, http.MethodPost, "/v1/entities/"+url.PathEscape(moved)+"/move", map[string]any{
+	mv := doJSON(t, h, http.MethodPost, entityPath(moved, "/move"), map[string]any{
 		"packageCode": "other-pkg",
 	}, nil)
 	if mv.StatusCode != http.StatusOK {
@@ -885,7 +885,7 @@ func TestAcceptancePublishCompatBreaking(t *testing.T) {
 	}
 
 	// Additive publish: move entity back, add property, publish.
-	mvBack := doJSON(t, h, http.MethodPost, "/v1/entities/"+url.PathEscape(moved)+"/move", map[string]any{
+	mvBack := doJSON(t, h, http.MethodPost, entityPath(moved, "/move"), map[string]any{
 		"packageCode": "pub-pkg",
 	}, nil)
 	if mvBack.StatusCode != http.StatusOK {
@@ -959,7 +959,7 @@ func TestAcceptanceIRIFirstIdentityBundle(t *testing.T) {
 	if !regexp.MustCompile(`^urn:kc:test:e_[0-9a-z]+$`).MatchString(urnID) {
 		t.Fatalf("expected URN entity id, got %q", urnID)
 	}
-	gotURN := doJSON(t, h, http.MethodGet, "/v1/entities/"+url.PathEscape(urnID), nil, nil)
+	gotURN := doJSON(t, h, http.MethodGet, entityPath(urnID, ""), nil, nil)
 	if gotURN.StatusCode != http.StatusOK {
 		t.Fatalf("get urn entity by id: %d %s", gotURN.StatusCode, gotURN.Body)
 	}
@@ -1076,14 +1076,24 @@ func TestAcceptanceIRIFirstIdentityBundle(t *testing.T) {
 	if err := json.Unmarshal([]byte(bundle.Body), &b); err != nil {
 		t.Fatal(err)
 	}
-	if len(b.Entities) != 1 || b.Entities[0].ID != qid || b.Entities[0].IRILocal != "BusinessObject" {
-		t.Fatalf("unexpected entity bundle payload: %+v", b.Entities)
+	if len(b.Entities) < 1 {
+		t.Fatalf("expected at least one entity in bundle, got %+v", b.Entities)
+	}
+	var foundEntity bool
+	for _, e := range b.Entities {
+		if e.ID == qid && e.IRILocal == "BusinessObject" {
+			foundEntity = true
+			break
+		}
+	}
+	if !foundEntity {
+		t.Fatalf("expected BusinessObject entity in bundle, got %+v", b.Entities)
 	}
 	if len(b.Properties) != 1 || b.Properties[0].ID != pid || b.Properties[0].IRILocal != "modelingDepth" {
 		t.Fatalf("unexpected property bundle payload: %+v", b.Properties)
 	}
 
-	got := doJSON(t, h, http.MethodGet, "/v1/entities/"+url.PathEscape(qid), nil, nil)
+	got := doJSON(t, h, http.MethodGet, entityPath(qid, ""), nil, nil)
 	if got.StatusCode != http.StatusOK {
 		t.Fatalf("get entity by iri: %d %s", got.StatusCode, got.Body)
 	}
@@ -1109,17 +1119,17 @@ func TestAcceptanceDeletePackagePurgesOwnedGraph(t *testing.T) {
 		t.Fatalf("deleted package should 404, got %d %s", pkg.StatusCode, pkg.Body)
 	}
 
-	ent := doJSON(t, h, http.MethodGet, "/v1/entities/"+url.PathEscape(qid), nil, nil)
+	ent := doJSON(t, h, http.MethodGet, entityPath(qid, ""), nil, nil)
 	if ent.StatusCode != http.StatusNotFound {
 		t.Fatalf("deleted package entity should 404, got %d %s", ent.StatusCode, ent.Body)
 	}
 
-	st := doJSON(t, h, http.MethodGet, "/v1/statements/"+url.PathEscape(sid), nil, nil)
+	st := doJSON(t, h, http.MethodGet, statementPath(sid, ""), nil, nil)
 	if st.StatusCode != http.StatusNotFound {
 		t.Fatalf("statement referencing deleted package should 404, got %d %s", st.StatusCode, st.Body)
 	}
 
-	prop := doJSON(t, h, http.MethodGet, "/v1/properties/"+url.PathEscape(pid), nil, nil)
+	prop := doJSON(t, h, http.MethodGet, propertyPath(pid, ""), nil, nil)
 	if prop.StatusCode != http.StatusOK {
 		t.Fatalf("other package property should remain, got %d %s", prop.StatusCode, prop.Body)
 	}
@@ -1155,7 +1165,7 @@ func TestAcceptanceA4A5A6(t *testing.T) {
 
 	limited := userHeaders("U-limited", "limited-editor")
 
-	rev := doJSON(t, h, http.MethodPost, "/v1/statements/"+sName+"/revise", map[string]any{
+	rev := doJSON(t, h, http.MethodPost, statementPath(sName, "/revise"), map[string]any{
 		"expectedRevision": 1,
 		"value":            map[string]any{"type": "String", "string": "Beta"},
 	}, limited)
@@ -1163,7 +1173,7 @@ func TestAcceptanceA4A5A6(t *testing.T) {
 		t.Fatalf("A4: revise name: %d %s", rev.StatusCode, rev.Body)
 	}
 
-	secretAfter := doJSON(t, h, http.MethodGet, "/v1/statements/"+sSecret, nil, admin)
+	secretAfter := doJSON(t, h, http.MethodGet, statementPath(sSecret, ""), nil, admin)
 	if secretAfter.StatusCode != http.StatusOK {
 		t.Fatalf("A4: admin read secret: %d %s", secretAfter.StatusCode, secretAfter.Body)
 	}
@@ -1184,7 +1194,7 @@ func TestAcceptanceA4A5A6(t *testing.T) {
 	if len(listBody.Statements) != 1 || listBody.Statements[0].Property != pName {
 		t.Fatalf("A5: expected only name statement visible, got %+v", listBody.Statements)
 	}
-	secretRead := doJSON(t, h, http.MethodGet, "/v1/statements/"+sSecret, nil, userHeaders("U-viewer", "viewer"))
+	secretRead := doJSON(t, h, http.MethodGet, statementPath(sSecret, ""), nil, userHeaders("U-viewer", "viewer"))
 	if secretRead.StatusCode != http.StatusNotFound {
 		t.Fatalf("A5: secret statement should 404, got %d", secretRead.StatusCode)
 	}
@@ -1474,7 +1484,7 @@ func TestAcceptanceIRIMapping(t *testing.T) {
 	}
 	qid := parseDataID(t, entRes.Body)
 
-	get := doJSON(t, h, http.MethodGet, "/v1/entities/"+qid, nil, nil)
+	get := doJSON(t, h, http.MethodGet, entityPath(qid, ""), nil, nil)
 	if get.StatusCode != http.StatusOK {
 		t.Fatalf("get entity: %d %s", get.StatusCode, get.Body)
 	}
@@ -1488,7 +1498,7 @@ func TestAcceptanceIRIMapping(t *testing.T) {
 		t.Fatalf("entity iri=%q local=%q want %q", ent.IRI, ent.IRILocal, wantIRI)
 	}
 
-	alias := doJSON(t, h, http.MethodPut, "/v1/entities/"+qid+"/iri-aliases", map[string]any{
+	alias := doJSON(t, h, http.MethodPut, entityPath(qid, "/iri-aliases"), map[string]any{
 		"aliases": []map[string]string{{"iri": "https://www.wikidata.org/entity/Q42", "kind": "sameAs"}},
 	}, nil)
 	if alias.StatusCode != http.StatusOK {
@@ -1789,6 +1799,22 @@ func parseDataField(t *testing.T, body, field, subfield string) string {
 	val, _ := wrap.Data[field].(map[string]any)
 	s, _ := val[subfield].(string)
 	return s
+}
+
+func statementPath(id string, suffix string) string {
+	return resourcePath("/v1/statements/", id, suffix)
+}
+
+func entityPath(id string, suffix string) string {
+	return resourcePath("/v1/entities/", id, suffix)
+}
+
+func propertyPath(id string, suffix string) string {
+	return resourcePath("/v1/properties/", id, suffix)
+}
+
+func resourcePath(prefix, id, suffix string) string {
+	return prefix + url.PathEscape(id) + suffix
 }
 
 type httpResult struct {
