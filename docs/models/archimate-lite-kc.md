@@ -6,16 +6,18 @@
 Tento dokument je kontrakt pro **samostatný nástroj** (export/import Open Exchange, validační CLI, editor), který pracuje **jen přes HTTP API knowledge-core**. Jádro KC neobsahuje ArchiMate typy; generické mezery P0–P2 jsou ve [fázi 19](../specs/phase-19-graph-api.md).
 
 Rozsah modelování (L0–L4): [archimate-lite.md](archimate-lite.md).  
-Datový katalog (seed v gitu): [`models/archimate-lite/catalog.json`](../../models/archimate-lite/catalog.json).  
-Release bundle (UI import): [`models/archimate-lite/releases/archimate-lite-1.2.0.bundle.json`](../../models/archimate-lite/releases/archimate-lite-1.2.0.bundle.json).  
-Nahrání přes API: [`models/archimate-lite/load.py`](../../models/archimate-lite/load.py). Po nahrání/importu je **zdroj pravdy pro tool package `archimate-lite` v KC**, ne JSON v gitu.
+Foundation: [`models/kc-base/`](../../models/kc-base/) (`instanceOf`, usage anotace, `StringEnum`).  
+Datový katalog: [`models/archimate-lite/catalog.json`](../../models/archimate-lite/catalog.json).  
+Release bundles: [`kc-base-1.0.0`](../../models/kc-base/releases/kc-base-1.0.0.bundle.json), [`archimate-lite-2.0.0`](../../models/archimate-lite/releases/archimate-lite-2.0.0.bundle.json).  
+Nahrání přes API: [`models/archimate-lite/load.py`](../../models/archimate-lite/load.py) (načte i `kc-base`). Po nahrání/importu je **zdroj pravdy v KC**, ne JSON v gitu.
 
 ## Hranice
 
 | Vrstva | Kde | ArchiMate? |
 |--------|-----|------------|
 | knowledge-core | `internal/`, migrace, `/v1/*` | Ne. Obecný graf (IRI entity/property/class, statement, package, shape, lens). |
-| Package `archimate-lite` | data v KC | Ano. Třídy, vlastnosti, tvary, anotace tříd, lite matice, enumy, exchange poznámky. |
+| Package `kc-base` | data v KC | Ne. Globální typing, usage anotace, mechanismus string enumů. |
+| Package `archimate-lite` | data v KC | Ano. Třídy, vlastnosti, tvary, anotace tříd, lite matice, enum *hodnoty*, exchange poznámky. Závisí na `kc-base`. |
 | Instance packages | data v KC | Ano. Konkrétní systémy, sdílené služby, views. |
 | Exchange XML nástroj | mimo KC | Ano. Čte/zapisuje `/v1`, emituje ArchiMate XML. |
 
@@ -40,41 +42,44 @@ Odpovědi create: `{ "data": { ... }, "changeSet": { ... } }`. GET entity/packag
 ### Import release bundle (UI / promotion)
 
 ```bash
-# soubor: models/archimate-lite/releases/archimate-lite-1.2.0.bundle.json
-# UI: Packages → Import release bundle
-# nebo:
+# 1) foundation
 curl -X POST "$KC_BASE_URL/v1/releases/import" \
   -H "Authorization: Bearer $KC_TOKEN" \
   -H "Content-Type: application/json" \
-  --data-binary @models/archimate-lite/releases/archimate-lite-1.2.0.bundle.json
+  --data-binary @models/kc-base/releases/kc-base-1.0.0.bundle.json
+# 2) ArchiMate Lite (manifest.dependencies → kc-base@1.0.0)
+curl -X POST "$KC_BASE_URL/v1/releases/import" \
+  -H "Authorization: Bearer $KC_TOKEN" \
+  -H "Content-Type: application/json" \
+  --data-binary @models/archimate-lite/releases/archimate-lite-2.0.0.bundle.json
 ```
 
-Bundle obsahuje třídy, properties (včetně constraints), shapes, policy entity a statementy.  
-Po importu: pokud je `instanceOfProperty` v schema-config prázdné, nastavte ho na  
-`https://knowledge-core.local/archimate-lite/instanceOf`.
+UI: **Packages → Import release bundle** — nejdřív `kc-base`, pak `archimate-lite`.  
+Po importu: pokud je `instanceOfProperty` prázdné, nastavte ho na  
+`https://knowledge-core.local/kc-base/instanceOf`.
 
-Přegenerování: `python3 models/archimate-lite/build_bundle.py`.
+Přegenerování: `python3 models/kc-base/build_bundle.py && python3 models/archimate-lite/build_bundle.py`.
 
 ### Load přes API (authoring)
 
 ```bash
 export KC_BASE_URL=http://localhost:8080
 export KC_TOKEN='<bootstrap-or-oidc>'
-python3 models/archimate-lite/load.py
+python3 models/archimate-lite/load.py   # nejdřív nahraje kc-base
 ```
 
-Loader je idempotentní (`iriLocal` v package, `code` u shapes, `upsert` u policy statementů). Existující properties znovu zapíše constraints (`PATCH`, včetně `rangeClasses`). Tvary vytváří s `packageCode=archimate-lite`. Druhá vrstva catalogu (matice, enumy, exchange, `layer`/`overlay`/`exchangeType`) se uloží jako data v tomtéž package.
+Loader je idempotentní (`iriLocal` v package, `code` u shapes, `upsert` u policy statementů). Existující properties znovu zapíše constraints (`PATCH`, včetně `rangeClasses`). Tvary `aml-*` vytváří s `packageCode=archimate-lite`. Matice, enum *instance*, exchange a `layer`/`overlay`/`exchangeType` se uloží v `archimate-lite`; `StringEnum` / `usage*` / `instanceOf` žijí v `kc-base`.
 
 Po nahrání:
 
-1. `GET /v1/packages/archimate-lite`
+1. `GET /v1/packages/kc-base` a `GET /v1/packages/archimate-lite`
 2. `GET /v1/entities?package=archimate-lite&iriLocal=ApplicationComponent` — resoluce slovníku
 3. `GET /v1/classes/{id}` / `GET /v1/properties/{id}` — id je plná IRI (v URL path-encode); obsahují `iriLocal`, `iri`, `packageCode`
-4. `GET /v1/admin/schema-config` — `instanceOfProperty` musí být neprázdné. Loader ho nastaví, jen pokud bylo prázdné (`iriLocal=instanceOf` v tomto package).
-5. `GET /v1/shapes?package=archimate-lite` — `aml-element`, `aml-relationship`, `aml-view-connection`, `aml-allowed-relationship`, `aml-string-enum`
-6. Policy data viz [níže](#policy-data-v-kc) (`AllowedRelationship`, `StringEnum`, `exchange-spec`)
+4. `GET /v1/admin/schema-config` — `instanceOfProperty` musí být neprázdné. Loader `kc-base` ho nastaví, jen pokud bylo prázdné.
+5. `GET /v1/shapes?package=archimate-lite` — `aml-element`, `aml-relationship`, `aml-view-connection`, `aml-allowed-relationship`; `GET /v1/shapes?package=kc-base` — `string-enum`
+6. Policy data viz [níže](#policy-data-v-kc) (`AllowedRelationship`, enum instance, `exchange-spec`)
 
-`instanceOf` **není** ArchiMate predikát. Je to globální typing KC. Nástroj ho vždy čte ze schema-config, nikdy ho nehardcoduje.
+`instanceOf` **není** ArchiMate predikát. Je v package `kc-base`. Nástroj ho vždy čte ze schema-config, nikdy ho nehardcoduje.
 
 ## Resoluce slovníku
 
@@ -94,7 +99,7 @@ Stránkování: `nextCursor` → `?cursor=`.
 `GET /v1/classes/{id}` vrací `iriLocal`, `iri`, `packageCode`, `effectiveClasses` (self + předci).  
 `GET /v1/properties/{id}` vrací `iriLocal`, `iri`, `packageCode`.
 
-Tvary patří do package (a do release bundle, `objectType: "shape"`). Kódy: `aml-element`, `aml-relationship`, `aml-view-connection`, `aml-allowed-relationship`, `aml-string-enum`. `document.requiredProperties` jsou IRI properties.
+Tvary patří do package (a do release bundle, `objectType: "shape"`). Kódy v `archimate-lite`: `aml-element`, `aml-relationship`, `aml-view-connection`, `aml-allowed-relationship`. V `kc-base`: `string-enum`. `document.requiredProperties` jsou IRI properties.
 
 ## Policy data v KC
 
@@ -111,8 +116,8 @@ Statementy na třídě prvku nebo vazby:
 | `archiLayer` | `business` / `application` / `technology` / … |
 | `overlay` | např. `risk-and-security` u `Risk` |
 | `exchangeType` | Open Exchange `xsi:type`; chybí u `DeployedOn` |
-| `usageGuidance` | textový návod, kdy a jak prvek/vazbu/property použít |
-| `usageExamples` | konkrétní příklady použití |
+| `usageGuidance` | textový návod (property z `kc-base`) |
+| `usageExamples` | konkrétní příklady (property z `kc-base`) |
 
 ```text
 GET /v1/entities?package=archimate-lite&iriLocal=ApplicationComponent
@@ -139,13 +144,15 @@ GET /v1/entities/{entityIri}/statements
 
 ### Enumy
 
-Instance `StringEnum` (`iriLocal` `enum/{propertyIriLocal}`):
+Třída `StringEnum` a properties `enumeratesProperty` / `allowedValue` jsou v **`kc-base`**.  
+Instance s hodnotami žijí v **`archimate-lite`** (`iriLocal` `enum/{propertyIriLocal}`):
 
-- `enumeratesProperty` → IRI property
+- `enumeratesProperty` → IRI property (typicky z `archimate-lite`)
 - `allowedValue` — n× String
 
 ```text
 GET /v1/entities?package=archimate-lite&iriLocal=enum/modelingDepth
+GET /v1/entities?package=kc-base&iriLocal=StringEnum
 ```
 
 ### Exchange poznámky
@@ -228,7 +235,7 @@ POST /v1/statements
 {
   "packageCode": "sys-crm",
   "subject": "https://example.org/systems/crm/crm",
-  "property": "https://knowledge-core.local/archimate-lite/instanceOf",
+  "property": "https://knowledge-core.local/kc-base/instanceOf",
   "value": {
     "type": "EntityReference",
     "entityId": "https://knowledge-core.local/archimate-lite/ApplicationComponent"

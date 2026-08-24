@@ -488,13 +488,14 @@ Důležité je také nevynucovat jednu úroveň pro celý model. Systém může 
 
 ArchiMate Lite je **doménový package nad jádrem**, ne součást knowledge-core. Jádro se nemění.
 
-- Metamodel i tool-policy: package `archimate-lite`. Seed: [`catalog.json`](../../models/archimate-lite/catalog.json), UI/import bundle [`releases/archimate-lite-1.2.0.bundle.json`](../../models/archimate-lite/releases/archimate-lite-1.2.0.bundle.json), API load [`load.py`](../../models/archimate-lite/load.py)
-- Po loadu/importu čte tool **jen KC** (třídy, properties, tvary, anotace `archiLayer`/`overlay`/`exchangeType`/`usageGuidance`/`usageExamples`, instance `AllowedRelationship` / `StringEnum` / `ExchangeSpec`)
-- Prvek, vazba i view = entita s `instanceOf` na třídu z package (public ID = IRI)
+- Foundation: package [`kc-base`](../../models/kc-base/) (`instanceOf`, `usageGuidance`/`usageExamples`, `StringEnum`)
+- Doménový metamodel i tool-policy: package `archimate-lite` (závisí na `kc-base`). Seed: [`catalog.json`](../../models/archimate-lite/catalog.json), bundles [`kc-base-1.0.0`](../../models/kc-base/releases/kc-base-1.0.0.bundle.json) + [`archimate-lite-2.0.0`](../../models/archimate-lite/releases/archimate-lite-2.0.0.bundle.json), API load [`load.py`](../../models/archimate-lite/load.py)
+- Po loadu/importu čte tool **jen KC** (třídy, properties, tvary, anotace `archiLayer`/`overlay`/`exchangeType`/`usageGuidance`/`usageExamples`, instance `AllowedRelationship` / enumů / `ExchangeSpec`)
+- Prvek, vazba i view = entita s `instanceOf` (z `kc-base`) na třídu z package (public ID = IRI)
 - Vazba je **vlastní entita** (`relSource` / `relTarget`), ne predikát mezi dvěma prvky
 - `relSource` / `relTarget` mají `rangeClasses` = `ArchiMateElement` (KC expanduje `instanceOf` cíle)
 - Lite matici a enumy **nevynucuje** jádro; tool je čte z dat package
-- Tvary `aml-*` patří do package `archimate-lite` a jdou do release bundle
+- Tvary `aml-*` patří do `archimate-lite`; `string-enum` do `kc-base`
 - Stabilní public ID = plná IRI (`iriBase` + `iriLocal`); UI alias `packageCode:iriLocal`
 - Incoming vazby, graph neighborhood a lookup podle IRI jsou generické `/v1` endpointy (fáze 19)
 - Export do ArchiMate Open Exchange XML dělá **samostatný nástroj** přes HTTP API

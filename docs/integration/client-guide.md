@@ -109,7 +109,7 @@ GET /v1/entities?package=my-domain&kind=property&limit=200
 
 ## 3. Nastav schema config
 
-Globální property pro typing instancí — typicky `instanceOf` v metamodel package:
+Globální property pro typing instancí — typicky `instanceOf` z package `kc-base`:
 
 ```http
 PUT /v1/admin/schema-config
@@ -324,8 +324,9 @@ Kompletní implementace stejného postupu pro doménu ArchiMate:
 |----------|-------|
 | [archimate-lite-kc.md](../models/archimate-lite-kc.md) | Plný kontrakt pro nástroje (endpointy, vzory, validace) |
 | [archimate-lite.md](../models/archimate-lite.md) | Doménový rozsah (granularita L0–L4) |
-| [catalog.json](../../models/archimate-lite/catalog.json) | Seed slovníku v gitu |
-| [load.py](../../models/archimate-lite/load.py) | Idempotentní bootstrap do KC |
+| [kc-base](../../models/kc-base/) | Foundation (`instanceOf`, usage anotace, `StringEnum`) |
+| [catalog.json](../../models/archimate-lite/catalog.json) | Seed ArchiMate Lite v gitu |
+| [load.py](../../models/archimate-lite/load.py) | Idempotentní bootstrap (`kc-base` + `archimate-lite`) |
 
 ```bash
 export KC_BASE_URL=http://localhost:8080
@@ -335,16 +336,17 @@ python3 models/archimate-lite/load.py
 
 Loader demonstruje:
 
-1. Package `archimate-lite` s `iriBase`
+1. Package `kc-base`, pak `archimate-lite` s `iriBase` a závislostí
 2. Třídy, properties, constraints (`rangeClasses`)
-3. Schema config (`instanceOfProperty`)
-4. Shapes (`aml-element`, `aml-relationship`, …)
-5. Policy data jako instance (`AllowedRelationship`, `StringEnum`, `exchange-spec`)
+3. Schema config (`instanceOfProperty` z `kc-base`)
+4. Shapes (`aml-element`, `aml-relationship`, …; `string-enum` v `kc-base`)
+5. Policy data jako instance (`AllowedRelationship`, enum hodnoty, `exchange-spec`)
 6. Resoluce přes `iriLocal`, ne hardcoded Q/P
 
 Struktura instancí:
 
 ```text
+kc-base/            foundation (typing, enums mechanismus)
 archimate-lite/     metamodel
 platform/           sdílené služby (IdP, DNS)
 sys-crm/            jeden systém = jeden package

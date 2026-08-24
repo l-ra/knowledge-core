@@ -1,5 +1,5 @@
 {
-  "version": "1.2.0",
+  "version": "2.0.0",
   "package": {
     "code": "archimate-lite",
     "lifecycle": "continuous",
@@ -9,23 +9,16 @@
       "cs": "ArchiMate Lite"
     },
     "descriptions": {
-      "en": "Metamodel for describing systems with a subset of ArchiMate (L0–L4). Not part of knowledge-core.",
-      "cs": "Metamodel pro popis systémů podmnožinou ArchiMate (L0–L4). Není součástí jádra knowledge-core."
-    }
-  },
-  "instanceOf": {
-    "iriLocal": "instanceOf",
-    "datatype": "EntityReference",
-    "createIfSchemaConfigEmpty": true,
-    "labels": {
-      "en": "instance of",
-      "cs": "instance třídy"
+      "en": "Metamodel for describing systems with a subset of ArchiMate (L0–L4). Depends on kc-base. Not part of knowledge-core.",
+      "cs": "Metamodel pro popis systémů podmnožinou ArchiMate (L0–L4). Závisí na kc-base. Není součástí jádra knowledge-core."
     },
-    "descriptions": {
-      "en": "Global typing property. Created only when GET /v1/admin/schema-config has empty instanceOfProperty. Not ArchiMate-specific."
-    },
-    "usageGuidance": "Global typing property linking an entity to its class. Created only when schema-config instanceOfProperty is empty; not ArchiMate-specific.",
-    "usageExamples": "entity CRM typed as ApplicationComponent; AllowedRelationship row typed as AllowedRelationship."
+    "dependencies": [
+      {
+        "dependsOnCode": "kc-base",
+        "versionRange": "*",
+        "releaseVersion": "1.0.0"
+      }
+    ]
   },
   "classes": [
     {
@@ -34,10 +27,10 @@
         "en": "ArchiMate Lite catalog meta"
       },
       "descriptions": {
-        "en": "Not an ArchiMate concept. Root for tool policy data stored in this package (allowed pairs, enums, exchange notes)."
+        "en": "Not an ArchiMate concept. Root for tool policy data stored in this package (allowed pairs, exchange notes)."
       },
-      "usageGuidance": "Root for Lite tool-policy data stored in this package (allowed pairs, enums, exchange notes). Not used in architecture diagrams.",
-      "usageExamples": "AllowedRelationship rows; StringEnum instances; the single ExchangeSpec entity."
+      "usageGuidance": "Root for Lite tool-policy data in this package (allowed pairs, exchange notes). Not used in architecture diagrams.",
+      "usageExamples": "AllowedRelationship rows; the single ExchangeSpec entity."
     },
     {
       "iriLocal": "AllowedRelationship",
@@ -50,18 +43,6 @@
       },
       "usageGuidance": "Declares one allowed (relationship type, source class, target class) triple for tool-side matrix checks. KC does not enforce it.",
       "usageExamples": "Assignment BusinessActor→BusinessRole; Serving TechnologyService→ApplicationComponent; DeployedOn ApplicationComponent→SystemSoftware."
-    },
-    {
-      "iriLocal": "StringEnum",
-      "parent": "ArchiMateLiteMeta",
-      "labels": {
-        "en": "String enumeration"
-      },
-      "descriptions": {
-        "en": "Allowed string values for a property. Enforced by tools, not by KC."
-      },
-      "usageGuidance": "Lists allowed string values for a named property. Tools validate against these instances; KC does not.",
-      "usageExamples": "enum/modelingDepth with catalog|dr_minimum|…; enum/accessMode with read|write|readWrite."
     },
     {
       "iriLocal": "ExchangeSpec",
@@ -1401,36 +1382,6 @@
       "usageExamples": "Serving; Access; Assignment — omitted on DeployedOn."
     },
     {
-      "iriLocal": "usageGuidance",
-      "datatype": "String",
-      "maxCount": 1,
-      "labels": {
-        "en": "Usage guidance",
-        "cs": "Návod k použití"
-      },
-      "descriptions": {
-        "en": "Annotation on a class or property entity explaining when and how to use that metamodel member.",
-        "cs": "Anotace na třídě nebo property vysvětlující, kdy a jak prvek metamodelu použít."
-      },
-      "usageGuidance": "Metamodel annotation property. Attach as a statement on class or property entities; do not set on ordinary architecture instances.",
-      "usageExamples": "usageGuidance on ApplicationComponent; usageGuidance on modelingDepth."
-    },
-    {
-      "iriLocal": "usageExamples",
-      "datatype": "String",
-      "maxCount": 1,
-      "labels": {
-        "en": "Usage examples",
-        "cs": "Příklady použití"
-      },
-      "descriptions": {
-        "en": "Annotation on a class or property entity with concrete usage examples.",
-        "cs": "Anotace na třídě nebo property s konkrétními příklady použití."
-      },
-      "usageGuidance": "Metamodel annotation property listing examples. Attach as a statement on class or property entities.",
-      "usageExamples": "usageExamples on Serving; usageExamples on relSource."
-    },
-    {
       "iriLocal": "allowedRelType",
       "datatype": "EntityReference",
       "domain": [
@@ -1483,38 +1434,6 @@
       },
       "usageGuidance": "On an AllowedRelationship instance: permitted target element class.",
       "usageExamples": "Reference to BusinessService; SystemSoftware; DataObject."
-    },
-    {
-      "iriLocal": "enumeratesProperty",
-      "datatype": "EntityReference",
-      "domain": [
-        "StringEnum"
-      ],
-      "minCount": 1,
-      "maxCount": 1,
-      "severity": "error",
-      "labels": {
-        "en": "Enumerates property"
-      },
-      "descriptions": {
-        "en": "The property whose string values this enum constrains (tool-side)."
-      },
-      "usageGuidance": "On a StringEnum instance: which property the allowed values constrain (tool-side).",
-      "usageExamples": "Reference to modelingDepth; accessMode; viewpoint property IRI."
-    },
-    {
-      "iriLocal": "allowedValue",
-      "datatype": "String",
-      "domain": [
-        "StringEnum"
-      ],
-      "minCount": 1,
-      "severity": "error",
-      "labels": {
-        "en": "Allowed value"
-      },
-      "usageGuidance": "One allowed string value for the enumerated property. Repeat for each value.",
-      "usageExamples": "catalog; mandatory; readWrite; network."
     },
     {
       "iriLocal": "catalogVersion",
@@ -1656,15 +1575,6 @@
         "allowedRelType",
         "allowedSourceClass",
         "allowedTargetClass"
-      ],
-      "severity": "error"
-    },
-    {
-      "code": "aml-string-enum",
-      "class": "StringEnum",
-      "required": [
-        "enumeratesProperty",
-        "allowedValue"
       ],
       "severity": "error"
     }

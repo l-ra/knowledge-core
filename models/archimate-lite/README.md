@@ -1,39 +1,40 @@
 # ArchiMate Lite (data, ne jádro)
 
-Metamodel pro popis systémů v knowledge-core. **Není** součástí Go služby.
+Metamodel pro popis systémů v knowledge-core. **Není** součástí Go služby.  
+Závisí na package **`kc-base`** (typing, usage anotace, StringEnum mechanismus).
 
 Po změně identity v KC jsou public ID **plné IRI** (`iriBase` + `iriLocal`), ne `Q*`/`C*`/`P*`.
 
 | Soubor | Účel |
 |--------|------|
-| [catalog.json](catalog.json) | Seed slovníku v gitu (třídy, properties, tvary, matice, enumy, exchange) |
-| [build_bundle.py](build_bundle.py) | Sestaví portable release bundle z catalogu |
-| [releases/archimate-lite-1.2.0.bundle.json](releases/archimate-lite-1.2.0.bundle.json) | Bundle pro UI import (`Packages → Import release bundle`) |
-| [load.py](load.py) | Alternativa: nahraje catalog přes API (authoring); po loadu je SoT v KC |
+| [catalog.json](catalog.json) | Seed slovníku v gitu (třídy, properties, tvary, matice, enum hodnoty, exchange) |
+| [build_bundle.py](build_bundle.py) | Sestaví portable release bundle z catalogu (resolvuje IRI z kc-base) |
+| [releases/archimate-lite-2.0.0.bundle.json](releases/archimate-lite-2.0.0.bundle.json) | Bundle pro UI import |
+| [load.py](load.py) | Nahraje catalog + nejdřív `kc-base` přes API |
 | [docs/models/archimate-lite.md](../../docs/models/archimate-lite.md) | Granularita L0–L4 |
 | [docs/models/archimate-lite-kc.md](../../docs/models/archimate-lite-kc.md) | Kontrakt pro nástroje nad API |
+| [../kc-base/](../kc-base/) | Foundation package |
 
 ## Import přes UI (doporučeno)
 
-1. V Admin UI: **Packages → Import release bundle**
-2. Nahrajte `releases/archimate-lite-1.2.0.bundle.json`
-3. Pokud je `instanceOfProperty` v schema-config prázdné, nastavte ho na IRI property `instanceOf` z tohoto package (`https://knowledge-core.local/archimate-lite/instanceOf`)
+1. Nejdřív importujte [`kc-base` 1.0.0](../kc-base/releases/kc-base-1.0.0.bundle.json)
+2. Pak **Packages → Import release bundle** → `releases/archimate-lite-2.0.0.bundle.json`
+3. Pokud je `instanceOfProperty` v schema-config prázdné, nastavte ho na IRI z **kc-base**:  
+   `https://knowledge-core.local/kc-base/instanceOf`
 
 Přegenerování bundle:
 
 ```bash
+python3 models/kc-base/build_bundle.py
 python3 models/archimate-lite/build_bundle.py
 ```
 
-Skript automaticky najde starší bundle v `releases/` a u změněného obsahu zvýší `revisionNo` (nutné pro upgrade import DEV→PROD).
-
 ## Load přes API (authoring / DEV)
+
+Loader ArchiMate Lite automaticky nahraje i `kc-base`:
 
 ```bash
 export KC_BASE_URL=http://localhost:8080
 export KC_TOKEN='…'
 python3 models/archimate-lite/load.py
-# volitelně publish + export:
-# POST /v1/packages/archimate-lite/releases  {"version":"1.2.0"}
-# GET  /v1/packages/archimate-lite/releases/1.2.0/bundle
 ```

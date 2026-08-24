@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Load ArchiMate Lite (and kc-base dependency) into a running knowledge-core."""
+"""Load kc-base metamodel into a running knowledge-core via HTTP API."""
 
 from __future__ import annotations
 
