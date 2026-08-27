@@ -55,3 +55,69 @@ func TestArchimateLiteBundleUnmarshal(t *testing.T) {
 		t.Fatalf("statement value empty: %+v", st)
 	}
 }
+
+func TestArchimateLite210BundleUnmarshal(t *testing.T) {
+	_, file, _, ok := runtime.Caller(0)
+	if !ok {
+		t.Fatal("caller")
+	}
+	root := filepath.Clean(filepath.Join(filepath.Dir(file), "../.."))
+	raw, err := os.ReadFile(filepath.Join(root, "models/archimate-lite/releases/archimate-lite-2.2.0.bundle.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var b domain.Bundle
+	if err := json.Unmarshal(raw, &b); err != nil {
+		t.Fatal(err)
+	}
+	if b.Manifest.Package != "archimate-lite" || b.Manifest.Version != "2.2.0" {
+		t.Fatalf("manifest: %+v", b.Manifest)
+	}
+	rootFound := false
+	for _, e := range b.Entities {
+		if e.PublicID == b.Manifest.IRIBase && e.IRILocal == ".package" {
+			rootFound = true
+			break
+		}
+	}
+	if !rootFound {
+		t.Fatal("missing package-root entity at iriBase")
+	}
+	wantClass := map[string]bool{}
+	for _, c := range b.Classes {
+		wantClass[c.IRILocal] = true
+	}
+	if !wantClass["BusinessFunction"] {
+		t.Fatal("missing class BusinessFunction")
+	}
+	wantProp := map[string]bool{}
+	for _, p := range b.Properties {
+		wantProp[p.IRILocal] = true
+	}
+	for _, name := range []string{"actorKind", "ownership", "networkKind", "networkRole", "associationKind", "flowLabel", "flowKind", "relationshipNote"} {
+		if !wantProp[name] {
+			t.Fatalf("missing property %s", name)
+		}
+	}
+	wantShape := map[string]bool{}
+	for _, sh := range b.Shapes {
+		wantShape[sh.Code] = true
+	}
+	for _, code := range []string{"aml-business-function", "aml-business-actor", "aml-association", "aml-flow", "aml-communication-network", "aml-flow-network-detail"} {
+		if !wantShape[code] {
+			t.Fatalf("missing shape %s", code)
+		}
+	}
+	var foundFlowDir, foundActorKind bool
+	for _, e := range b.Entities {
+		if e.IRILocal == "enum/flowDirection" {
+			foundFlowDir = true
+		}
+		if e.IRILocal == "enum/actorKind" {
+			foundActorKind = true
+		}
+	}
+	if !foundFlowDir || !foundActorKind {
+		t.Fatalf("enums flowDirection=%v actorKind=%v", foundFlowDir, foundActorKind)
+	}
+}

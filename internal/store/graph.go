@@ -86,6 +86,9 @@ func (s *Store) CreateEntity(ctx context.Context, meta domain.WriteMeta, in doma
 	if err != nil {
 		return nil, err
 	}
+	if datatype.IsPackageRootIRILocal(iriLocal) {
+		return nil, fmt.Errorf("iriLocal %q is reserved for package root", datatype.PackageRootIRILocal)
+	}
 	pkgCode, iriBase, err := s.packageIRIBaseByID(ctx, tx, pkgID)
 	if err != nil {
 		return nil, err

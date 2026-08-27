@@ -10,7 +10,7 @@ JSON kontrakty: [api-contract.md](api-contract.md). Spustitelné příklady: [ex
 ## Přehled kroků
 
 ```text
-1. Package (metamodel)     → code, iriBase, labels
+1. Package (metamodel)     → code, iriBase, labels [, descriptions]
 2. Classes + Properties    → C*, P*, constraints, iriLocal
 3. Schema config           → instanceOfProperty (globální typing)
 4. Shapes (volitelně)      → validace instancí
@@ -38,17 +38,19 @@ Authorization: Bearer {{token}}
   "lifecycle": "released",
   "iriBase": "https://example.org/my-domain/",
   "labels": { "en": "My Domain Model" },
+  "descriptions": { "en": "Optional description (on package-root entity)" },
   "dependencies": []
 }
 ```
 
-Odpověď: `{ "data": { "code", "iriBase", "labels", … }, "changeSet": { … } }`
+Odpověď: `{ "data": { "code", "iriBase", "labels", "descriptions", "rootEntityId", … }, "changeSet": { … } }`
 
 **Konvence:**
 
 - `code` — krátký slug (`my-domain`, `archimate-lite`)
-- `iriBase` — končí `/`; kanonické IRI = `iriBase` + `iriLocal`
+- `iriBase` — končí `/`; package-root entita má `publicId` = `iriBase` (`iriLocal` = `.package`); ostatní objekty = `iriBase` + `iriLocal`
 - `lifecycle: released` — metamodel se publikuje releases; `continuous` pro instance packages
+- Po nahrání `kc-base`: root je `instanceOf → Package` a má statement `packageCode`
 
 ---
 
@@ -183,6 +185,22 @@ Sdílené závislosti (IdP, DNS, lokality) patří do společného package (`pla
 ```
 
 `POST /v1/entities` → `{ "data": { "id": "Q42", … }, "changeSet" }`
+
+### Deprecate a delete
+
+Mutace lifecycle jsou explicitní POST (ne HTTP DELETE) s optimistic lock:
+
+```http
+POST /v1/entities/Q42/deprecate
+{ "expectedRevision": 1 }
+
+POST /v1/entities/Q42/delete
+{ "expectedRevision": 2 }
+```
+
+`deleted` je logické smazání: historie zůstane, GET vrací 404. Odchozí aktivní statementy se deprecate-nou. Příchozí aktivní reference (value / property / qualifier) delete zablokují (409) — nejdřív `POST /v1/statements/{sid}/deprecate`.
+
+Stejné ops v ChangeSetu: `deprecateEntity`, `deleteEntity`, `deprecateStatement`.
 
 ### Typ instance (instanceOf)
 

@@ -605,7 +605,7 @@ func (s *Store) baselineSnapshotForUpgrade(ctx context.Context, packageCode stri
 		if err != nil {
 			return pkgcompat.Snapshot{}, false, err
 		}
-		snap := pkgcompat.SnapshotFromBundle(*bundle)
+		snap := pkgcompat.FilterByPackage(pkgcompat.SnapshotFromBundle(*bundle), packageCode)
 		return snap, true, nil
 	}
 	has, err := s.packageHasLiveObjects(ctx, packageCode)

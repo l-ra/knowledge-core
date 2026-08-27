@@ -41,6 +41,11 @@ func (s *Store) ApplyChangeSet(ctx context.Context, meta domain.WriteMeta, in do
 	if err != nil {
 		return nil, err
 	}
+	if comment := strings.TrimSpace(in.Comment); comment != "" {
+		if _, err := tx.Exec(ctx, `UPDATE change_set SET comment = $2 WHERE id = $1`, cs.id, comment); err != nil {
+			return nil, err
+		}
+	}
 
 	keys := map[string]string{}
 	results := make([]map[string]any, 0, len(in.Operations))
@@ -58,7 +63,9 @@ func (s *Store) ApplyChangeSet(ctx context.Context, meta domain.WriteMeta, in do
 	}
 	responseBody, _ := json.Marshal(response)
 	domainCS := s.changeSetDomain(cs, meta)
+	domainCS.Comment = strings.TrimSpace(in.Comment)
 	domainCS.Items = cs.items
+	domainCS.ItemCount = len(cs.items)
 	if err := s.finalizeChangeSet(ctx, tx, cs, response); err != nil {
 		return nil, err
 	}
@@ -202,6 +209,28 @@ func (s *Store) applyOneOp(ctx context.Context, tx pgx.Tx, cs *changeSetTx, meta
 		}
 		return map[string]any{"op": op.Op, "statement": st.PublicID, "revisionNo": st.RevisionNo}, nil
 
+	case "deprecateEntity":
+		eid := resolveKey(keys, op.Entity)
+		if eid == "" {
+			return nil, fmt.Errorf("deprecateEntity requires entity")
+		}
+		ent, err := s.deprecateEntityInTx(ctx, tx, cs, meta, eid, op.ExpectedRevision)
+		if err != nil {
+			return nil, err
+		}
+		return map[string]any{"op": op.Op, "entity": ent.PublicID, "revisionNo": ent.RevisionNo, "status": ent.Status}, nil
+
+	case "deleteEntity":
+		eid := resolveKey(keys, op.Entity)
+		if eid == "" {
+			return nil, fmt.Errorf("deleteEntity requires entity")
+		}
+		ent, err := s.deleteEntityInTx(ctx, tx, cs, meta, eid, op.ExpectedRevision)
+		if err != nil {
+			return nil, err
+		}
+		return map[string]any{"op": op.Op, "entity": ent.PublicID, "revisionNo": ent.RevisionNo, "status": ent.Status}, nil
+
 	default:
 		return nil, fmt.Errorf("unsupported operation %q", op.Op)
 	}
@@ -228,6 +257,9 @@ func (s *Store) createEntityInTx(ctx context.Context, tx pgx.Tx, cs *changeSetTx
 	iriLocal, err := normalizeOptionalIRILocal(in.IRILocal)
 	if err != nil {
 		return nil, err
+	}
+	if datatype.IsPackageRootIRILocal(iriLocal) {
+		return nil, fmt.Errorf("iriLocal %q is reserved for package root", datatype.PackageRootIRILocal)
 	}
 	pkgCode, iriBase, err := s.packageIRIBaseByID(ctx, tx, pkgID)
 	if err != nil {
@@ -574,6 +606,9 @@ func (s *Store) createStatementInTx(ctx context.Context, tx pgx.Tx, cs *changeSe
 }
 
 func (s *Store) deprecateStatementInTx(ctx context.Context, tx pgx.Tx, cs *changeSetTx, meta domain.WriteMeta, publicID string, expectedRevision int) (*domain.Statement, error) {
+	if err := s.assertNotManagedPackageCodeStatementTx(ctx, tx, publicID); err != nil {
+		return nil, err
+	}
 	var statementID uuid.UUID
 	var status string
 	err := tx.QueryRow(ctx, `SELECT id, status FROM statement WHERE public_id = $1`, publicID).Scan(&statementID, &status)
@@ -581,7 +616,7 @@ func (s *Store) deprecateStatementInTx(ctx context.Context, tx pgx.Tx, cs *chang
 		return nil, fmt.Errorf("statement: %w", err)
 	}
 	if status != string(domain.StatementActive) {
-		return nil, fmt.Errorf("statement is not active")
+		return nil, fmt.Errorf("%w: statement is not active", ErrNotActive)
 	}
 	currentRev, err := s.assertStatementRevision(ctx, tx, statementID, expectedRevision)
 	if err != nil {

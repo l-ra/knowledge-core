@@ -31,6 +31,10 @@ func (s *Store) DeprecateStatement(ctx context.Context, meta domain.WriteMeta, p
 		return &domain.WriteResult[domain.Statement]{Value: st, Replay: true, ResponseRaw: hit.responseBody}, nil
 	}
 
+	if err := s.assertNotManagedPackageCodeStatementTx(ctx, tx, publicID); err != nil {
+		return nil, err
+	}
+
 	var statementID uuid.UUID
 	var status string
 	err = tx.QueryRow(ctx, `
@@ -40,7 +44,7 @@ func (s *Store) DeprecateStatement(ctx context.Context, meta domain.WriteMeta, p
 		return nil, fmt.Errorf("statement: %w", err)
 	}
 	if status != string(domain.StatementActive) {
-		return nil, fmt.Errorf("statement is not active")
+		return nil, fmt.Errorf("%w: statement is not active", ErrNotActive)
 	}
 
 	currentRev, err := s.assertStatementRevision(ctx, tx, statementID, expectedRevision)

@@ -70,6 +70,8 @@ func New(eng *engine.Engine, st *store.Store, authn Authenticator, cfg config.Co
 		r.Get("/entities/{qid}/incoming", s.listIncomingStatements)
 		r.Get("/entities/{qid}/graph", s.getEntityGraph)
 		r.Post("/entities/{qid}/move", s.moveEntity)
+		r.Post("/entities/{qid}/deprecate", s.deprecateEntity)
+		r.Post("/entities/{qid}/delete", s.deleteEntity)
 		r.Get("/entities/{qid}", s.getEntity)
 		r.Patch("/entities/{qid}", s.updateEntity)
 		r.Put("/entities/{qid}/iri-aliases", s.putEntityIRIAliases)
@@ -105,8 +107,10 @@ func New(eng *engine.Engine, st *store.Store, authn Authenticator, cfg config.Co
 		r.Post("/statements", s.createStatement)
 		r.Get("/statements/{sid}", s.getStatement)
 		r.Post("/statements/{sid}/revise", s.reviseStatement)
+		r.Post("/statements/{sid}/deprecate", s.deprecateStatement)
 		r.Get("/statements/{sid}/history", s.getStatementHistory)
 
+		r.Get("/changesets", s.listChangeSets)
 		r.Post("/changesets", s.applyChangeSet)
 		r.Get("/changesets/{cid}", s.getChangeSet)
 
@@ -292,6 +296,50 @@ func (s *Server) updateEntity(w http.ResponseWriter, r *http.Request) {
 		status = http.StatusOK
 	}
 	writeJSON(w, status, writeResponse(entityDTO(&res.Value), res.ChangeSet))
+}
+
+type expectedRevisionReq struct {
+	ExpectedRevision int `json:"expectedRevision"`
+}
+
+func (s *Server) deprecateEntity(w http.ResponseWriter, r *http.Request) {
+	body, err := readBody(r)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid body")
+		return
+	}
+	var req expectedRevisionReq
+	if err := json.Unmarshal(body, &req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid JSON")
+		return
+	}
+	meta := writeMetaFromRequest(r, "deprecateEntity", hashBody(body))
+	res, err := s.engine.DeprecateEntity(r.Context(), meta, pathParam(r, "qid"), req.ExpectedRevision)
+	if err != nil {
+		writeEngineError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, writeResponse(entityDTO(&res.Value), res.ChangeSet))
+}
+
+func (s *Server) deleteEntity(w http.ResponseWriter, r *http.Request) {
+	body, err := readBody(r)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid body")
+		return
+	}
+	var req expectedRevisionReq
+	if err := json.Unmarshal(body, &req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid JSON")
+		return
+	}
+	meta := writeMetaFromRequest(r, "deleteEntity", hashBody(body))
+	res, err := s.engine.DeleteEntity(r.Context(), meta, pathParam(r, "qid"), req.ExpectedRevision)
+	if err != nil {
+		writeEngineError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, writeResponse(entityDTO(&res.Value), res.ChangeSet))
 }
 
 type putEntityIRIAliasesReq struct {
@@ -503,6 +551,26 @@ func (s *Server) reviseStatement(w http.ResponseWriter, r *http.Request) {
 		in.ValidTo = req.ValidTo
 	}
 	res, err := s.engine.ReviseStatement(r.Context(), meta, pathParam(r, "sid"), in)
+	if err != nil {
+		writeEngineError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, writeResponse(statementDTO(&res.Value), res.ChangeSet))
+}
+
+func (s *Server) deprecateStatement(w http.ResponseWriter, r *http.Request) {
+	body, err := readBody(r)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid body")
+		return
+	}
+	var req expectedRevisionReq
+	if err := json.Unmarshal(body, &req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid JSON")
+		return
+	}
+	meta := writeMetaFromRequest(r, "deprecateStatement", hashBody(body))
+	res, err := s.engine.DeprecateStatement(r.Context(), meta, pathParam(r, "sid"), req.ExpectedRevision)
 	if err != nil {
 		writeEngineError(w, err)
 		return
@@ -730,6 +798,56 @@ func (s *Server) applyChangeSet(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, changeSetDTO(&res.Value))
 }
 
+func (s *Server) listChangeSets(w http.ResponseWriter, r *http.Request) {
+	q := r.URL.Query()
+	opt := store.ChangeSetListOptions{
+		Query:         q.Get("q"),
+		Cursor:        q.Get("cursor"),
+		Actor:         q.Get("actor"),
+		OperationType: q.Get("operationType"),
+		CorrelationID: q.Get("correlationId"),
+		ObjectID:      q.Get("objectId"),
+		Limit:         50,
+	}
+	if v := q.Get("limit"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 {
+			opt.Limit = n
+		}
+	}
+	if v := strings.TrimSpace(q.Get("committedFrom")); v != "" {
+		ts, err := time.Parse(time.RFC3339Nano, v)
+		if err != nil {
+			ts, err = time.Parse(time.RFC3339, v)
+		}
+		if err != nil {
+			writeError(w, http.StatusBadRequest, "invalid committedFrom")
+			return
+		}
+		opt.CommittedFrom = &ts
+	}
+	if v := strings.TrimSpace(q.Get("committedTo")); v != "" {
+		ts, err := time.Parse(time.RFC3339Nano, v)
+		if err != nil {
+			ts, err = time.Parse(time.RFC3339, v)
+		}
+		if err != nil {
+			writeError(w, http.StatusBadRequest, "invalid committedTo")
+			return
+		}
+		opt.CommittedTo = &ts
+	}
+	items, next, err := s.engine.ListChangeSets(r.Context(), opt)
+	if err != nil {
+		writeEngineError(w, err)
+		return
+	}
+	out := make([]any, 0, len(items))
+	for i := range items {
+		out = append(out, changeSetSummaryDTO(&items[i]))
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"items": out, "nextCursor": next})
+}
+
 func (s *Server) getChangeSet(w http.ResponseWriter, r *http.Request) {
 	cs, err := s.engine.GetChangeSet(r.Context(), pathParam(r, "cid"))
 	if err != nil {
@@ -744,6 +862,7 @@ type createPackageReq struct {
 	Lifecycle    string                     `json:"lifecycle"`
 	IRIBase      string                     `json:"iriBase,omitempty"`
 	Labels       map[string]string          `json:"labels"`
+	Descriptions map[string]string          `json:"descriptions,omitempty"`
 	Dependencies []domain.PackageDependency `json:"dependencies,omitempty"`
 }
 
@@ -764,7 +883,8 @@ func (s *Server) createPackage(w http.ResponseWriter, r *http.Request) {
 	}
 	meta := writeMetaFromRequest(r, "createPackage", hashBody(body))
 	res, err := s.engine.CreatePackage(r.Context(), meta, domain.CreatePackageInput{
-		Code: req.Code, Lifecycle: lc, IRIBase: req.IRIBase, Labels: req.Labels, Dependencies: req.Dependencies,
+		Code: req.Code, Lifecycle: lc, IRIBase: req.IRIBase, Labels: req.Labels,
+		Descriptions: req.Descriptions, Dependencies: req.Dependencies,
 	})
 	if err != nil {
 		writeEngineError(w, err)
@@ -1024,6 +1144,12 @@ func packageDTO(p *domain.Package) map[string]any {
 		"createdAt":    p.CreatedAt.UTC().Format(time.RFC3339Nano),
 		"updatedAt":    p.UpdatedAt.UTC().Format(time.RFC3339Nano),
 	}
+	if p.RootEntityID != "" {
+		out["rootEntityId"] = p.RootEntityID
+	}
+	if len(p.Descriptions) > 0 {
+		out["descriptions"] = p.Descriptions
+	}
 	if p.LatestReleaseVersion != "" {
 		out["latestReleaseVersion"] = p.LatestReleaseVersion
 	}
@@ -1173,13 +1299,30 @@ func changeSetDTO(cs *domain.ChangeSet) map[string]any {
 			"op":         it.Op,
 		})
 	}
-	return map[string]any{
+	out := map[string]any{
 		"id": cs.PublicID, "canonicalId": cs.ID.String(),
 		"displayId": datatype.PackageDisplayID("", "", cs.PublicID),
 		"actor":     cs.Actor, "operationType": cs.OperationType,
 		"committedAt": cs.CommittedAt.UTC().Format(time.RFC3339Nano),
+		"itemCount":   cs.ItemCount,
 		"items":       items,
 	}
+	if cs.Comment != "" {
+		out["comment"] = cs.Comment
+	}
+	if cs.CorrelationID != "" {
+		out["correlationId"] = cs.CorrelationID
+	}
+	if cs.IdempotencyKey != "" {
+		out["idempotencyKey"] = cs.IdempotencyKey
+	}
+	return out
+}
+
+func changeSetSummaryDTO(cs *domain.ChangeSet) map[string]any {
+	out := changeSetDTO(cs)
+	delete(out, "items")
+	return out
 }
 
 func entityRevisionDTO(rev *domain.EntityRevision) map[string]any {

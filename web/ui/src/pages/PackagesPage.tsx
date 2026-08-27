@@ -87,6 +87,7 @@ export function PackagesPage() {
   const [items, setItems] = useState<Pkg[]>([]);
   const [code, setCode] = useState("");
   const [label, setLabel] = useState("");
+  const [description, setDescription] = useState("");
   const [iriBase, setIriBase] = useState("");
   const [error, setError] = useState("");
   const [importError, setImportError] = useState("");
@@ -122,12 +123,14 @@ export function PackagesPage() {
           code,
           lifecycle: "released",
           labels: { en: label || code },
+          descriptions: description ? { en: description } : undefined,
           iriBase: iriBase || undefined,
         }),
       });
       setPackageCode(code);
       setCode("");
       setLabel("");
+      setDescription("");
       setIriBase("");
       await load();
       await reloadPackages();
@@ -353,6 +356,14 @@ export function PackagesPage() {
         <label className="field">
           {t("entities.labelEn")}
           <input value={label} onChange={(e) => setLabel(e.target.value)} />
+        </label>
+        <label className="field">
+          {t("packages.descriptionEn")}
+          <input
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+            placeholder={t("packages.descriptionPlaceholder")}
+          />
         </label>
         <label className="field">
           {t("packages.iriBase")}

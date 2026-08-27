@@ -17,6 +17,8 @@ from typing import Any
 
 MODELS_ROOT = Path(__file__).resolve().parents[1]
 
+PACKAGE_ROOT_IRI_LOCAL = ".package"
+
 
 def iri(base: str, local: str) -> str:
     return base + local
@@ -31,6 +33,26 @@ def stmt_iri(base: str, subject_local: str, prop_local: str, suffix: str = "") -
 
 def load_catalog(path: Path) -> dict:
     return json.loads(path.read_text())
+
+
+def iter_enums(cat: dict) -> list[tuple[str, str, list[str]]]:
+    """Yield (enum_iri_local, property_iri_local, values) from catalog enums.
+
+    A list value means the enum entity is enum/{key} for property {key}.
+    A dict value may set property and/or iriLocal (defaulting to the key).
+    """
+    out: list[tuple[str, str, list[str]]] = []
+    for name, spec in (cat.get("enums") or {}).items():
+        if isinstance(spec, dict):
+            prop = spec.get("property") or name
+            values = list(spec.get("values") or [])
+            local = spec.get("iriLocal") or name
+        else:
+            prop = name
+            values = list(spec or [])
+            local = name
+        out.append((local, prop, values))
+    return out
 
 
 def resolve_dep_catalogs(cat: dict, catalog_path: Path) -> list[dict]:
@@ -210,6 +232,38 @@ def build(cat: dict, dep_catalogs: list[dict] | None = None) -> dict:
     statements: list[dict] = []
     instance_of_pid = prop_ids.get("instanceOf", "")
 
+    # Package-root entity: public id == iriBase, reserved iriLocal.
+    root_id = base
+    entities.append({
+        "id": root_id,
+        "packageCode": code,
+        "iriLocal": PACKAGE_ROOT_IRI_LOCAL,
+        "revisionNo": 1,
+        "status": "active",
+        "labels": pkg.get("labels") or {"en": code},
+        "descriptions": pkg.get("descriptions") or {},
+    })
+    if instance_of_pid and "Package" in class_ids:
+        statements.append({
+            "id": stmt_iri(base, PACKAGE_ROOT_IRI_LOCAL, "instanceOf"),
+            "packageCode": code,
+            "revisionNo": 1,
+            "subject": root_id,
+            "property": instance_of_pid,
+            "status": "active",
+            "value": ref(class_ids["Package"]),
+        })
+    if "packageCode" in prop_ids:
+        statements.append({
+            "id": stmt_iri(base, PACKAGE_ROOT_IRI_LOCAL, "packageCode"),
+            "packageCode": code,
+            "revisionNo": 1,
+            "subject": root_id,
+            "property": prop_ids["packageCode"],
+            "status": "active",
+            "value": sval(code),
+        })
+
     def add_typed_entity(local: str, labels: dict, class_local: str) -> str:
         eid = iri(base, local)
         entities.append({
@@ -299,12 +353,12 @@ def build(cat: dict, dep_catalogs: list[dict] | None = None) -> dict:
         add_ref_stmt(local, eid, "allowedSourceClass", class_ids[src])
         add_ref_stmt(local, eid, "allowedTargetClass", class_ids[tgt])
 
-    for name, values in (cat.get("enums") or {}).items():
-        local = f"enum/{name}"
-        eid = add_typed_entity(local, {"en": f"Enum {name}"}, "StringEnum")
-        if name not in prop_ids:
-            raise SystemExit(f"enums: unknown property {name}")
-        add_ref_stmt(local, eid, "enumeratesProperty", prop_ids[name])
+    for enum_local, prop_local, values in iter_enums(cat):
+        local = f"enum/{enum_local}"
+        eid = add_typed_entity(local, {"en": f"Enum {enum_local}"}, "StringEnum")
+        if prop_local not in prop_ids:
+            raise SystemExit(f"enums: unknown property {prop_local}")
+        add_ref_stmt(local, eid, "enumeratesProperty", prop_ids[prop_local])
         for v in values:
             add_string_stmt(local, eid, "allowedValue", v, suffix=v)
 

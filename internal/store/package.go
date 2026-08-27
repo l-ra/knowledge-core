@@ -107,6 +107,14 @@ func (s *Store) CreatePackage(ctx context.Context, meta domain.WriteMeta, in dom
 		Labels: labels, Dependencies: in.Dependencies,
 		CreatedAt: now, UpdatedAt: now,
 	}
+	rootID, err := s.createPackageRootInTx(ctx, tx, cs, meta, pkg, in.Descriptions)
+	if err != nil {
+		return nil, err
+	}
+	pkg.RootEntityID = rootID
+	if len(in.Descriptions) > 0 {
+		pkg.Descriptions = in.Descriptions
+	}
 	if err := s.finalizeChangeSet(ctx, tx, cs, pkg); err != nil {
 		return nil, err
 	}
@@ -156,6 +164,9 @@ func (s *Store) GetPackageByCode(ctx context.Context, code string) (*domain.Pack
 		}
 		pkg.ModifiedAfterRelease = dirty
 	}
+	if err := s.fillPackageRoot(ctx, &pkg); err != nil {
+		return nil, err
+	}
 	return &pkg, nil
 }
 
@@ -172,10 +183,16 @@ func (s *Store) UpdatePackage(ctx context.Context, meta domain.WriteMeta, code s
 	}
 
 	now := time.Now().UTC()
+	oldBase := pkg.IRIBase
+	iriBaseChanged := false
+	labelsChanged := false
 	if in.IRIBase != nil {
 		base, err := datatype.NormalizeIRIBase(*in.IRIBase)
 		if err != nil {
 			return nil, err
+		}
+		if base != pkg.IRIBase {
+			iriBaseChanged = true
 		}
 		pkg.IRIBase = base
 	}
@@ -184,6 +201,7 @@ func (s *Store) UpdatePackage(ctx context.Context, meta domain.WriteMeta, code s
 			return nil, err
 		}
 		pkg.Labels = in.Labels
+		labelsChanged = true
 	}
 	labelsJSON, _ := json.Marshal(pkg.Labels)
 	_, err = tx.Exec(ctx, `
@@ -201,12 +219,35 @@ func (s *Store) UpdatePackage(ctx context.Context, meta domain.WriteMeta, code s
 	if err := cs.addItem(ctx, tx, "package", pkg.ID, pkg.Code, "update", map[string]any{"iriBase": pkg.IRIBase}); err != nil {
 		return nil, err
 	}
+	if iriBaseChanged {
+		if oldBase == "" && pkg.IRIBase != "" {
+			rootID, err := s.createPackageRootInTx(ctx, tx, cs, meta, *pkg, pkg.Descriptions)
+			if err != nil {
+				return nil, err
+			}
+			pkg.RootEntityID = rootID
+		} else if pkg.IRIBase != "" {
+			if err := s.relocatePackageRootTx(ctx, tx, *pkg, oldBase, pkg.IRIBase); err != nil {
+				return nil, err
+			}
+			pkg.RootEntityID = pkg.IRIBase
+			if err := s.ensurePackageRootStatementsTx(ctx, tx, cs, meta, *pkg, pkg.IRIBase); err != nil {
+				return nil, err
+			}
+		}
+	}
+	if labelsChanged {
+		if err := s.syncRootLabelsFromPackageTx(ctx, tx, cs, meta, *pkg); err != nil {
+			return nil, err
+		}
+	}
 	if err := s.finalizeChangeSet(ctx, tx, cs, *pkg); err != nil {
 		return nil, err
 	}
 	if err := tx.Commit(ctx); err != nil {
 		return nil, err
 	}
+	_ = s.fillPackageRoot(ctx, pkg)
 	return &domain.WriteResult[domain.Package]{Value: *pkg, ChangeSet: s.changeSetDomain(cs, meta)}, nil
 }
 
@@ -389,7 +430,7 @@ func (s *Store) PublishRelease(ctx context.Context, meta domain.WriteMeta, packa
 		if err != nil {
 			return nil, err
 		}
-		old := pkgcompat.SnapshotFromBundle(*prevBundle)
+		old := pkgcompat.FilterByPackage(pkgcompat.SnapshotFromBundle(*prevBundle), packageCode)
 		if err := s.ensureBackwardCompatible(fmt.Sprintf("publish %s@%s from %s", packageCode, in.Version, prevVer), old, live); err != nil {
 			return nil, err
 		}
@@ -654,8 +695,16 @@ func (s *Store) ExportReleaseBundle(ctx context.Context, packageCode, version st
 		Releases: []domain.BundleManifest{mainManifest},
 	}
 
-	// Include dependency closure objects
-	allObjects := append([]domain.ReleaseObject{}, rel.Objects...)
+	// Include dependency closure objects. Stamp PackageCode from the owning
+	// release so FilterByPackage stays correct even if entities were later moved.
+	type indexedObj struct {
+		obj         domain.ReleaseObject
+		packageCode string
+	}
+	allObjects := make([]indexedObj, 0, len(rel.Objects))
+	for _, o := range rel.Objects {
+		allObjects = append(allObjects, indexedObj{obj: o, packageCode: packageCode})
+	}
 	for _, dep := range rel.Dependencies {
 		depRel, err := s.GetRelease(ctx, dep.DependencyCode, dep.DependencyVersion)
 		if err != nil {
@@ -678,12 +727,15 @@ func (s *Store) ExportReleaseBundle(ctx context.Context, packageCode, version st
 			Dependencies:  depRel.Dependencies,
 			ObjectIndex:   depRel.Objects,
 		})
-		allObjects = append(allObjects, depRel.Objects...)
+		for _, o := range depRel.Objects {
+			allObjects = append(allObjects, indexedObj{obj: o, packageCode: dep.DependencyCode})
+		}
 	}
 
 	refIDs := map[string]struct{}{}
 	seen := map[string]struct{}{}
-	for _, obj := range allObjects {
+	for _, item := range allObjects {
+		obj := item.obj
 		key := obj.ObjectType + ":" + obj.ObjectPublicID
 		if _, ok := seen[key]; ok {
 			continue
@@ -695,24 +747,28 @@ func (s *Store) ExportReleaseBundle(ctx context.Context, packageCode, version st
 			if err != nil {
 				return nil, err
 			}
+			be.PackageCode = item.packageCode
 			bundle.Entities = append(bundle.Entities, *be)
 		case "property":
 			bp, err := s.exportPropertyAtRevision(ctx, obj.ObjectPublicID, obj.RevisionNo)
 			if err != nil {
 				return nil, err
 			}
+			bp.PackageCode = item.packageCode
 			bundle.Properties = append(bundle.Properties, *bp)
 		case "class":
 			bc, err := s.exportClassAtRevision(ctx, obj.ObjectPublicID, obj.RevisionNo)
 			if err != nil {
 				return nil, err
 			}
+			bc.PackageCode = item.packageCode
 			bundle.Classes = append(bundle.Classes, *bc)
 		case "statement":
 			bs, err := s.exportStatementAtRevision(ctx, obj.ObjectPublicID, obj.RevisionNo)
 			if err != nil {
 				return nil, err
 			}
+			bs.PackageCode = item.packageCode
 			bundle.Statements = append(bundle.Statements, *bs)
 			for _, rid := range bs.ReferenceIDs {
 				refIDs[rid] = struct{}{}
@@ -723,7 +779,7 @@ func (s *Store) ExportReleaseBundle(ctx context.Context, packageCode, version st
 				return nil, err
 			}
 			bundle.Shapes = append(bundle.Shapes, domain.BundleShape{
-				Code: sh.Code, PackageCode: sh.PackageCode, ClassID: sh.ClassPID,
+				Code: sh.Code, PackageCode: item.packageCode, ClassID: sh.ClassPID,
 				Document: sh.Document, RevisionNo: 1,
 			})
 		}

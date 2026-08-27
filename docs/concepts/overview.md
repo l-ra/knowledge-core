@@ -30,6 +30,16 @@ Veřejné ID se **nikdy nerecyklují**. Label není identita.
 
 Typing entity: statement `instanceOf` → entita `C*` (class_profile). Property/class jsou entity; o nich lze dělat statementy. Schema kontrakt (datatype, constraints, subClassOf) žije v profile, ne v obyčejných statements.
 
+## Lifecycle
+
+Entity: `active` → `deprecated` → `deleted` (logické odstranění; historie zůstává). `redirected` je rezervované.
+
+- `POST /v1/entities/{id}/deprecate` — jen status; entita zůstane v seznamech
+- `POST /v1/entities/{id}/delete` — status `deleted`; GET vrací 404; seznamy a projekce ji vynechají
+- Delete deprecate-ne odchozí aktivní statementy. Pokud na entitu stále ukazují jiná aktivní tvrzení (value / property / qualifier), operace končí 409.
+
+Statement: `POST /v1/statements/{id}/deprecate` (zmizí z `statement_current` a ze seznamů; GET podle ID zůstane).
+
 ## Statement
 
 First-class tvrzení: subject + property + typed value + status + volitelný valid time + package + qualifiers + references.
@@ -51,6 +61,8 @@ First-class tvrzení: subject + property + typed value + status + volitelný val
 ## Package / Release
 
 - Package vlastní modelové i graph objekty; cross-package reference je povolena.
+- Package s `iriBase` má **package-root** entitu: `publicId` = `iriBase`, rezervované `iriLocal` = `.package`, typ `kc-base:Package`, statement `packageCode`.
+- Labels package a root entity jsou synchronizované; descriptions žijí na root entitě (read-through v `GET /v1/packages/{code}`).
 - Release je **immutable** snapshot (bundle), ne kopie celé authoring DB.
 - Revision ≠ Release.
 

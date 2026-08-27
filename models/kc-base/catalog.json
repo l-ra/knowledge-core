@@ -1,5 +1,5 @@
 {
-  "version": "1.0.0",
+  "version": "1.1.0",
   "package": {
     "code": "kc-base",
     "lifecycle": "continuous",
@@ -9,8 +9,8 @@
       "cs": "KC základ"
     },
     "descriptions": {
-      "en": "Reusable foundation for KC metamodels: global instanceOf typing, vocabulary usage annotations, and string enumerations.",
-      "cs": "Znovupoužitelný základ metamodelů KC: globální typing instanceOf, anotace použití slovníku a stringové enumerace."
+      "en": "Reusable foundation for KC metamodels: global instanceOf typing, vocabulary usage annotations, string enumerations, and package-root typing.",
+      "cs": "Znovupoužitelný základ metamodelů KC: globální typing instanceOf, anotace použití slovníku, stringové enumerace a typing package-root."
     },
     "dependencies": []
   },
@@ -30,6 +30,19 @@
   },
   "classes": [
     {
+      "iriLocal": "Package",
+      "labels": {
+        "en": "Package",
+        "cs": "Balíček"
+      },
+      "descriptions": {
+        "en": "Package-root entity. Canonical IRI equals the package iriBase. Holds package presentation metadata and packageCode.",
+        "cs": "Package-root entita. Kanonické IRI = iriBase package. Nese prezentační metadata package a packageCode."
+      },
+      "usageGuidance": "Do not create manually. Engine creates one root per package with iriBase; type it with instanceOf → Package.",
+      "usageExamples": "Root https://knowledge-core.local/archimate-lite/ typed as Package with packageCode=archimate-lite."
+    },
+    {
       "iriLocal": "StringEnum",
       "labels": {
         "en": "String enumeration"
@@ -42,6 +55,26 @@
     }
   ],
   "properties": [
+    {
+      "iriLocal": "packageCode",
+      "datatype": "String",
+      "domain": [
+        "Package"
+      ],
+      "minCount": 1,
+      "maxCount": 1,
+      "severity": "error",
+      "labels": {
+        "en": "Package code",
+        "cs": "Kód balíčku"
+      },
+      "descriptions": {
+        "en": "Stable package code mirrored from package.code. Managed by the engine; do not revise or deprecate manually.",
+        "cs": "Stabilní kód balíčku zrcadlený z package.code. Spravuje engine; nerušit ani nerevidovat ručně."
+      },
+      "usageGuidance": "Only on the package-root entity. Value equals package.code; mutations are rejected.",
+      "usageExamples": "packageCode=kc-base on https://knowledge-core.local/kc-base/; packageCode=archimate-lite on its root."
+    },
     {
       "iriLocal": "usageGuidance",
       "datatype": "String",
@@ -112,6 +145,14 @@
       "required": [
         "enumeratesProperty",
         "allowedValue"
+      ],
+      "severity": "error"
+    },
+    {
+      "code": "package-root",
+      "class": "Package",
+      "required": [
+        "packageCode"
       ],
       "severity": "error"
     }

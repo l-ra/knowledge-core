@@ -479,6 +479,18 @@ func (s *Store) resolveIRIToPublicID(ctx context.Context, pkg *domain.Package, i
 	if pkg.IRIBase == "" || !strings.HasPrefix(iri, pkg.IRIBase) {
 		return "", nil
 	}
+	if iri == pkg.IRIBase {
+		err = s.pool.QueryRow(ctx, `
+			SELECT e.public_id FROM entity e
+			WHERE e.package_id = $1 AND e.status <> 'deleted'
+			  AND (e.iri_local = $2 OR e.public_id = $3)
+			LIMIT 1
+		`, pkg.ID, datatype.PackageRootIRILocal, pkg.IRIBase).Scan(&pub)
+		if err == pgx.ErrNoRows {
+			return "", nil
+		}
+		return pub, err
+	}
 	local := strings.TrimPrefix(iri, pkg.IRIBase)
 	err = s.pool.QueryRow(ctx, `
 		SELECT e.public_id FROM entity e

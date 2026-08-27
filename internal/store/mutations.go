@@ -33,8 +33,12 @@ func (s *Store) UpdateEntity(ctx context.Context, meta domain.WriteMeta, publicI
 	}
 
 	var entityID uuid.UUID
-	err = tx.QueryRow(ctx, `SELECT id FROM entity WHERE public_id = $1`, publicID).Scan(&entityID)
+	var status string
+	err = tx.QueryRow(ctx, `SELECT id, status FROM entity WHERE public_id = $1`, publicID).Scan(&entityID, &status)
 	if err != nil {
+		return nil, err
+	}
+	if err := errIfEntityDeleted(status); err != nil {
 		return nil, err
 	}
 
@@ -77,9 +81,19 @@ func (s *Store) UpdateEntity(ctx context.Context, meta domain.WriteMeta, publicI
 		}
 	}
 	if in.IRILocal != nil {
+		isRoot, err := s.isPackageRootEntityTx(ctx, tx, publicID)
+		if err != nil {
+			return nil, err
+		}
+		if isRoot {
+			return nil, fmt.Errorf("%w: cannot change iriLocal of package root", ErrPackageRootProtected)
+		}
 		iriLocal, err := normalizeOptionalIRILocal(*in.IRILocal)
 		if err != nil {
 			return nil, err
+		}
+		if datatype.IsPackageRootIRILocal(iriLocal) {
+			return nil, fmt.Errorf("iriLocal %q is reserved for package root", datatype.PackageRootIRILocal)
 		}
 		if _, err := tx.Exec(ctx, `UPDATE entity SET iri_local = $2 WHERE id = $1`, entityID, iriLocal); err != nil {
 			return nil, err
@@ -114,6 +128,11 @@ func (s *Store) UpdateEntity(ctx context.Context, meta domain.WriteMeta, publicI
 	if err := cs.addItem(ctx, tx, "entity", entityID, publicID, "update", map[string]any{"revisionNo": nextRev}); err != nil {
 		return nil, err
 	}
+	if in.Labels != nil {
+		if err := s.syncPackageLabelsFromRootTx(ctx, tx, entityID, ent.Labels); err != nil {
+			return nil, err
+		}
+	}
 	if err := s.finalizeChangeSet(ctx, tx, cs, ent); err != nil {
 		return nil, err
 	}
@@ -141,6 +160,10 @@ func (s *Store) ReviseStatement(ctx context.Context, meta domain.WriteMeta, publ
 			return nil, err
 		}
 		return &domain.WriteResult[domain.Statement]{Value: st, Replay: true, ResponseRaw: hit.responseBody}, nil
+	}
+
+	if err := s.assertNotManagedPackageCodeStatementTx(ctx, tx, publicID); err != nil {
+		return nil, err
 	}
 
 	var statementID uuid.UUID
@@ -190,6 +213,9 @@ func (s *Store) ReviseStatement(ctx context.Context, meta domain.WriteMeta, publ
 }
 
 func (s *Store) reviseStatementInTx(ctx context.Context, tx pgx.Tx, cs *changeSetTx, meta domain.WriteMeta, publicID string, in domain.ReviseStatementInput) (*domain.Statement, error) {
+	if err := s.assertNotManagedPackageCodeStatementTx(ctx, tx, publicID); err != nil {
+		return nil, err
+	}
 	var statementID uuid.UUID
 	var dtype string
 	err := tx.QueryRow(ctx, `
@@ -223,8 +249,12 @@ func (s *Store) reviseStatementInTx(ctx context.Context, tx pgx.Tx, cs *changeSe
 
 func (s *Store) updateEntityInTx(ctx context.Context, tx pgx.Tx, cs *changeSetTx, meta domain.WriteMeta, publicID string, in domain.UpdateEntityInput) (*domain.Entity, error) {
 	var entityID uuid.UUID
-	err := tx.QueryRow(ctx, `SELECT id FROM entity WHERE public_id = $1`, publicID).Scan(&entityID)
+	var status string
+	err := tx.QueryRow(ctx, `SELECT id, status FROM entity WHERE public_id = $1`, publicID).Scan(&entityID, &status)
 	if err != nil {
+		return nil, err
+	}
+	if err := errIfEntityDeleted(status); err != nil {
 		return nil, err
 	}
 	currentRev, err := s.assertEntityRevision(ctx, tx, entityID, in.ExpectedRevision)
@@ -263,9 +293,19 @@ func (s *Store) updateEntityInTx(ctx context.Context, tx pgx.Tx, cs *changeSetTx
 		}
 	}
 	if in.IRILocal != nil {
+		isRoot, err := s.isPackageRootEntityTx(ctx, tx, publicID)
+		if err != nil {
+			return nil, err
+		}
+		if isRoot {
+			return nil, fmt.Errorf("%w: cannot change iriLocal of package root", ErrPackageRootProtected)
+		}
 		iriLocal, err := normalizeOptionalIRILocal(*in.IRILocal)
 		if err != nil {
 			return nil, err
+		}
+		if datatype.IsPackageRootIRILocal(iriLocal) {
+			return nil, fmt.Errorf("iriLocal %q is reserved for package root", datatype.PackageRootIRILocal)
 		}
 		if _, err := tx.Exec(ctx, `UPDATE entity SET iri_local = $2 WHERE id = $1`, entityID, iriLocal); err != nil {
 			return nil, err
@@ -292,6 +332,11 @@ func (s *Store) updateEntityInTx(ctx context.Context, tx pgx.Tx, cs *changeSetTx
 	}
 	if err := cs.addItem(ctx, tx, "entity", entityID, publicID, "update", map[string]any{"revisionNo": nextRev}); err != nil {
 		return nil, err
+	}
+	if in.Labels != nil {
+		if err := s.syncPackageLabelsFromRootTx(ctx, tx, entityID, ent.Labels); err != nil {
+			return nil, err
+		}
 	}
 	return ent, nil
 }
@@ -491,10 +536,14 @@ func (s *Store) MoveEntity(ctx context.Context, meta domain.WriteMeta, publicID 
 
 	var entityID uuid.UUID
 	var oldPkg *uuid.UUID
+	var status string
 	var rev int
-	err = tx.QueryRow(ctx, `SELECT id, package_id, current_revision_no FROM entity WHERE public_id = $1`, publicID).
-		Scan(&entityID, &oldPkg, &rev)
+	err = tx.QueryRow(ctx, `SELECT id, package_id, status, current_revision_no FROM entity WHERE public_id = $1`, publicID).
+		Scan(&entityID, &oldPkg, &status, &rev)
 	if err != nil {
+		return nil, err
+	}
+	if err := errIfEntityDeleted(status); err != nil {
 		return nil, err
 	}
 	if in.ExpectedRevision > 0 && in.ExpectedRevision != rev {

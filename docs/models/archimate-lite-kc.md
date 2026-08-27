@@ -8,7 +8,7 @@ Tento dokument je kontrakt pro **samostatný nástroj** (export/import Open Exch
 Rozsah modelování (L0–L4): [archimate-lite.md](archimate-lite.md).  
 Foundation: [`models/kc-base/`](../../models/kc-base/) (`instanceOf`, usage anotace, `StringEnum`).  
 Datový katalog: [`models/archimate-lite/catalog.json`](../../models/archimate-lite/catalog.json).  
-Release bundles: [`kc-base-1.0.0`](../../models/kc-base/releases/kc-base-1.0.0.bundle.json), [`archimate-lite-2.0.0`](../../models/archimate-lite/releases/archimate-lite-2.0.0.bundle.json).  
+Release bundles: [`kc-base-1.1.0`](../../models/kc-base/releases/kc-base-1.1.0.bundle.json), [`archimate-lite-2.2.0`](../../models/archimate-lite/releases/archimate-lite-2.2.0.bundle.json).  
 Nahrání přes API: [`models/archimate-lite/load.py`](../../models/archimate-lite/load.py) (načte i `kc-base`). Po nahrání/importu je **zdroj pravdy v KC**, ne JSON v gitu.
 
 ## Hranice
@@ -46,12 +46,12 @@ Odpovědi create: `{ "data": { ... }, "changeSet": { ... } }`. GET entity/packag
 curl -X POST "$KC_BASE_URL/v1/releases/import" \
   -H "Authorization: Bearer $KC_TOKEN" \
   -H "Content-Type: application/json" \
-  --data-binary @models/kc-base/releases/kc-base-1.0.0.bundle.json
-# 2) ArchiMate Lite (manifest.dependencies → kc-base@1.0.0)
+  --data-binary @models/kc-base/releases/kc-base-1.1.0.bundle.json
+# 2) ArchiMate Lite (manifest.dependencies → kc-base@1.1.0)
 curl -X POST "$KC_BASE_URL/v1/releases/import" \
   -H "Authorization: Bearer $KC_TOKEN" \
   -H "Content-Type: application/json" \
-  --data-binary @models/archimate-lite/releases/archimate-lite-2.0.0.bundle.json
+  --data-binary @models/archimate-lite/releases/archimate-lite-2.2.0.bundle.json
 ```
 
 UI: **Packages → Import release bundle** — nejdřív `kc-base`, pak `archimate-lite`.  
@@ -76,7 +76,7 @@ Po nahrání:
 2. `GET /v1/entities?package=archimate-lite&iriLocal=ApplicationComponent` — resoluce slovníku
 3. `GET /v1/classes/{id}` / `GET /v1/properties/{id}` — id je plná IRI (v URL path-encode); obsahují `iriLocal`, `iri`, `packageCode`
 4. `GET /v1/admin/schema-config` — `instanceOfProperty` musí být neprázdné. Loader `kc-base` ho nastaví, jen pokud bylo prázdné.
-5. `GET /v1/shapes?package=archimate-lite` — `aml-element`, `aml-relationship`, `aml-view-connection`, `aml-allowed-relationship`; `GET /v1/shapes?package=kc-base` — `string-enum`
+5. `GET /v1/shapes?package=archimate-lite` — `aml-element`, `aml-relationship`, `aml-view-connection`, `aml-allowed-relationship`, `aml-business-function`, `aml-business-actor`, `aml-association`, `aml-flow`, `aml-communication-network`, `aml-flow-network-detail`; `GET /v1/shapes?package=kc-base` — `string-enum`
 6. Policy data viz [níže](#policy-data-v-kc) (`AllowedRelationship`, enum instance, `exchange-spec`)
 
 `instanceOf` **není** ArchiMate predikát. Je v package `kc-base`. Nástroj ho vždy čte ze schema-config, nikdy ho nehardcoduje.
@@ -99,7 +99,9 @@ Stránkování: `nextCursor` → `?cursor=`.
 `GET /v1/classes/{id}` vrací `iriLocal`, `iri`, `packageCode`, `effectiveClasses` (self + předci).  
 `GET /v1/properties/{id}` vrací `iriLocal`, `iri`, `packageCode`.
 
-Tvary patří do package (a do release bundle, `objectType: "shape"`). Kódy v `archimate-lite`: `aml-element`, `aml-relationship`, `aml-view-connection`, `aml-allowed-relationship`. V `kc-base`: `string-enum`. `document.requiredProperties` jsou IRI properties.
+Tvary patří do package (a do release bundle, `objectType: "shape"`). Kódy v `archimate-lite`: `aml-element`, `aml-relationship`, `aml-view-connection`, `aml-allowed-relationship`, `aml-business-function`, `aml-business-actor`, `aml-association`, `aml-flow`, `aml-communication-network`, `aml-flow-network-detail`. V `kc-base`: `string-enum`. `document.requiredProperties` jsou IRI properties.
+
+Podmínka `when` u `aml-flow-network-detail` (modelingDepth ≥ infrastructure/network) je v `catalog.json` jako nápověda pro nástroje; KC ji na shape dokumentu neukládá a shape se vztahuje na všechny instance `Flow` (warning bez `protocol`). `actorKind` u `BusinessActor` vynucuje class-specific shape `aml-business-actor`, ne rozšíření `aml-element`.
 
 ## Policy data v KC
 
@@ -145,15 +147,19 @@ GET /v1/entities/{entityIri}/statements
 ### Enumy
 
 Třída `StringEnum` a properties `enumeratesProperty` / `allowedValue` jsou v **`kc-base`**.  
-Instance s hodnotami žijí v **`archimate-lite`** (`iriLocal` `enum/{propertyIriLocal}`):
+Instance s hodnotami žijí v **`archimate-lite`** (`iriLocal` `enum/{name}`, obvykle shodné s property; výjimka `enum/flowDirection` pro property `direction`):
 
 - `enumeratesProperty` → IRI property (typicky z `archimate-lite`)
 - `allowedValue` — n× String
 
 ```text
 GET /v1/entities?package=archimate-lite&iriLocal=enum/modelingDepth
+GET /v1/entities?package=archimate-lite&iriLocal=enum/actorKind
+GET /v1/entities?package=archimate-lite&iriLocal=enum/flowDirection
 GET /v1/entities?package=kc-base&iriLocal=StringEnum
 ```
+
+Instance 2.1.0 (kromě již existujících `modelingDepth`, `dependencyStrength`, `accessMode`, `nodeKind`, `viewpoint`): `actorKind`, `ownership`, `associationKind`, `networkKind`, `networkRole`, `flowKind`, `flowDirection` (property `direction`), `dependencyType`.
 
 ### Exchange poznámky
 
@@ -316,6 +322,8 @@ Architektura není ve view. View jen vybírá a kreslí.
 | GET | `/v1/entities` | `?package=&kind=&iriLocal=&iri=&instanceOf=&includeSubclasses=&q=&cursor=&limit=` |
 | POST | `/v1/entities` | prvek / vazba / view |
 | GET/PATCH | `/v1/entities/{id}` | id = IRI (path-encoded); GET: `effectiveClasses` |
+| POST | `/v1/entities/{id}/deprecate` | status → `deprecated` |
+| POST | `/v1/entities/{id}/delete` | logické smazání (`deleted`); 409 při příchozích refs |
 | POST | `/v1/entities/{id}/move` | `{ packageCode }` |
 | PUT | `/v1/entities/{id}/iri-aliases` | Archi identifier |
 | GET | `/v1/entities/{id}/statements` | odchozí; `?property=` |
@@ -324,6 +332,7 @@ Architektura není ve view. View jen vybírá a kreslí.
 | POST | `/v1/statements` | atributy, instanceOf, relSource…; `"upsert": true` |
 | GET | `/v1/statements/{id}` | |
 | POST | `/v1/statements/{id}/revise` | změna hodnoty |
+| POST | `/v1/statements/{id}/deprecate` | status → `deprecated` |
 | GET/POST | `/v1/classes`, `/v1/properties`, `/v1/shapes` | metamodel |
 | GET | `/v1/classes/{id}`, `/v1/properties/{id}` | `iriLocal`, `iri` |
 | PATCH | `/v1/properties/{id}` | `constraints` |
@@ -336,7 +345,7 @@ Architektura není ve view. View jen vybírá a kreslí.
 | GET | `/v1/packages/{code}/releases/{version}/bundle` | přenositelný bundle |
 | POST | `/v1/releases/import` | promotion bundle |
 
-OpenAPI: [`api/openapi.yaml`](../../api/openapi.yaml) (0.2.1).
+OpenAPI: [`api/openapi.yaml`](../../api/openapi.yaml) (0.2.2).
 
 Lenses (`POST /v1/lenses`, `GET/PATCH .../instances/{key}`) jsou volitelné; nástroj může jít přímo na entity/statementy.
 
@@ -356,8 +365,14 @@ Lenses (`POST /v1/lenses`, `GET/PATCH .../instances/{key}`) jsou volitelné; ná
 KC `relaxed`: zápis projde, findings v odpovědi / `GET .../validation`.  
 Shape `aml-relationship` vyžaduje `relSource`+`relTarget` (error).  
 Shape `aml-element` varuje bez `modelingDepth`.  
+Shape `aml-business-actor` vyžaduje `actorKind` (error).  
+Shape `aml-flow` vyžaduje `flowLabel` (error).  
+Shape `aml-association` varuje bez `associationKind`.  
+Shape `aml-communication-network` varuje bez `networkKind`.  
 Range `ArchiMateElement` na koncích vazby = jádro.  
 Lite matice a „Flow jen mezi komponentami“ = logika nástroje nad instancemi `AllowedRelationship` (seed v catalog `allowedRelationships`). Enumy = instance `StringEnum`.
+
+Demo instance (Compliance + síť) proti 2.1.0: [`models/archimate-lite-demo/`](../../models/archimate-lite-demo/) (`python3 models/archimate-lite-demo/load.py`).
 
 ## Co nástroj nesmí dělat
 

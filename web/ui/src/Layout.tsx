@@ -1,4 +1,4 @@
-import { NavLink, Outlet } from "react-router-dom";
+import { Link, NavLink, Outlet } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { useState } from "react";
 import { useAuth } from "./auth";
@@ -69,6 +69,7 @@ export function Layout() {
           <h2>{t("nav.data")}</h2>
           <NavLink to="/search">{t("nav.search")}</NavLink>
           <NavLink to="/entities">{t("nav.entities")}</NavLink>
+          <NavLink to="/changesets">{t("nav.changesets")}</NavLink>
         </div>
 
         <div className="nav-section">
@@ -128,7 +129,10 @@ export function Layout() {
                 </button>
                 {lastCommittedId && (
                   <span className="topbar-muted">
-                    {t("changeset.lastCommitted")}: <code>{lastCommittedId}</code>
+                    {t("changeset.lastCommitted")}:{" "}
+                    <Link to={`/changesets/${encodeURIComponent(lastCommittedId)}`}>
+                      <code>{lastCommittedId}</code>
+                    </Link>
                   </span>
                 )}
               </>

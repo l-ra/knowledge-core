@@ -10,10 +10,7 @@ import (
 )
 
 func (e *Engine) ListIncomingStatements(ctx context.Context, qid, propertyPID string) ([]domain.Statement, error) {
-	if _, _, err := datatype.ParsePublicGraphID(qid); err != nil {
-		return nil, fmt.Errorf("%w: %v", ErrInvalid, err)
-	}
-	if err := e.authorizeEntity(ctx, auth.OpDiscover, qid); err != nil {
+	if _, err := e.GetEntity(ctx, qid); err != nil {
 		return nil, err
 	}
 	list, err := e.store.ListStatementsByObject(ctx, qid, propertyPID)

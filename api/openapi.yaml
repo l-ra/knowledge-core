@@ -1,7 +1,7 @@
 openapi: 3.0.3
 info:
   title: Knowledge Core API
-  version: 0.2.1
+  version: 0.2.2
   description: |
     Knowledge graph core (Wikibase-inspired). All `/v1/*` endpoints require authentication.
 
@@ -182,6 +182,57 @@ paths:
       responses:
         "200":
           description: OK
+  /v1/entities/{qid}/deprecate:
+    post:
+      summary: Deprecate entity (status active → deprecated)
+      tags: [graph]
+      parameters:
+        - $ref: "#/components/parameters/qid"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ExpectedRevision"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WriteResponseEntity"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          description: Not active, or revision conflict
+  /v1/entities/{qid}/delete:
+    post:
+      summary: Logically delete entity (status → deleted)
+      description: |
+        History is preserved. Outgoing active statements are deprecated.
+        Fails with 409 if other active statements still reference the entity
+        as property, value, or qualifier.
+      tags: [graph]
+      parameters:
+        - $ref: "#/components/parameters/qid"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ExpectedRevision"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WriteResponseEntity"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          description: Incoming references remain, or revision conflict
+
   /v1/properties:
     get:
       summary: List properties (cursor pagination)
@@ -288,6 +339,32 @@ paths:
       responses:
         "200":
           description: OK
+  /v1/statements/{sid}/deprecate:
+    post:
+      summary: Deprecate statement (status active → deprecated)
+      tags: [graph]
+      parameters:
+        - name: sid
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ExpectedRevision"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WriteResponseStatement"
+        "409":
+          description: Not active, or revision conflict
+
   /v1/statements/{sid}/history:
     get:
       summary: Statement revision history
@@ -322,6 +399,44 @@ paths:
         "200":
           description: OK
   /v1/changesets:
+    get:
+      summary: List change sets
+      tags: [history]
+      parameters:
+        - name: limit
+          in: query
+          schema: { type: integer, default: 50, maximum: 200 }
+        - name: cursor
+          in: query
+          schema: { type: string }
+        - name: q
+          in: query
+          description: Search public id, actor, operation type, comment, correlation id, idempotency key
+          schema: { type: string }
+        - name: actor
+          in: query
+          schema: { type: string }
+        - name: operationType
+          in: query
+          schema: { type: string }
+        - name: correlationId
+          in: query
+          schema: { type: string }
+        - name: objectId
+          in: query
+          description: Filter by touched object public id (entity/statement/…)
+          schema: { type: string }
+        - name: committedFrom
+          in: query
+          description: RFC3339 / RFC3339Nano lower bound (inclusive)
+          schema: { type: string, format: date-time }
+        - name: committedTo
+          in: query
+          description: RFC3339 / RFC3339Nano upper bound (inclusive)
+          schema: { type: string, format: date-time }
+      responses:
+        "200":
+          description: OK
     post:
       summary: Apply change set batch
       tags: [history]
@@ -1033,6 +1148,8 @@ components:
           type: string
         labels:
           $ref: "#/components/schemas/LocalizedLabels"
+        descriptions:
+          $ref: "#/components/schemas/LocalizedLabels"
         dependencies:
           type: array
           items:
@@ -1048,6 +1165,11 @@ components:
           type: string
         labels:
           $ref: "#/components/schemas/LocalizedLabels"
+        descriptions:
+          $ref: "#/components/schemas/LocalizedLabels"
+        rootEntityId:
+          type: string
+          description: Public id of the package-root entity (equals iriBase when set)
         dependencies:
           type: array
           items:
@@ -1058,6 +1180,10 @@ components:
         updatedAt:
           type: string
           format: date-time
+        latestReleaseVersion:
+          type: string
+        modifiedAfterRelease:
+          type: boolean
     CreateClass:
       type: object
       required: [labels]
@@ -1210,6 +1336,12 @@ components:
             $ref: "#/components/schemas/Entity"
         nextCursor:
           type: string
+    ExpectedRevision:
+      type: object
+      required: [expectedRevision]
+      properties:
+        expectedRevision:
+          type: integer
     WriteResponseEntity:
       type: object
       properties:

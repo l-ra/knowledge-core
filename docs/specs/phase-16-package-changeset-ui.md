@@ -2,6 +2,8 @@
 
 **Status:** implemented
 
+> **Poznámka:** per-user JSON draft (`/v1/me/changeset-draft*`) má nahradit [Fáze 20 — Open ChangeSet v DB](phase-20-open-changeset.md). Package UI část této fáze zůstává.
+
 ## Cíl
 
 UI pro správu packages/releases a postupné skládání ChangeSetu (draft per user na serveru).
@@ -16,7 +18,7 @@ UI pro správu packages/releases a postupné skládání ChangeSetu (draft per u
 - Package filter na seznamu entit (`?package=`)
 - Package detail: objects, releases, publish, export; import na packages page
 - Cross-package warning při add statement; release membership badges na entity detail
-- ApplyChangeSet rozšířen o createEntity/Property/Class/Statement, deprecateStatement + clientKey remapping (`$…`)
+- ApplyChangeSet rozšířen o createEntity/Property/Class/Statement, deprecateStatement, deprecateEntity, deleteEntity + clientKey remapping (`$…`)
 
 **Out:**
 

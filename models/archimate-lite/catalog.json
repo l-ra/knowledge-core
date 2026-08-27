@@ -1,5 +1,5 @@
 {
-  "version": "2.0.0",
+  "version": "2.2.0",
   "package": {
     "code": "archimate-lite",
     "lifecycle": "continuous",
@@ -16,7 +16,7 @@
       {
         "dependsOnCode": "kc-base",
         "versionRange": "*",
-        "releaseVersion": "1.0.0"
+        "releaseVersion": "1.1.0"
       }
     ]
   },
@@ -130,6 +130,16 @@
       },
       "usageGuidance": "A sequence of business behaviors achieving a specific outcome. Use for key processes the system supports.",
       "usageExamples": "Order-to-cash; claim handling; identity provisioning request; month-end close."
+    },
+    {
+      "iriLocal": "BusinessFunction",
+      "parent": "ArchiMateElement",
+      "layer": "business",
+      "labels": {
+        "en": "Business function"
+      },
+      "usageGuidance": "Stable area of responsibility or work. Answers 'what is this unit accountable for?' — unlike BusinessProcess, which answers 'what happens when…'. Use as the primary business-layer decomposition.",
+      "usageExamples": "Data Protection; Compliance Management; Customer Onboarding as a standing function (not a process run)."
     },
     {
       "iriLocal": "ApplicationComponent",
@@ -278,8 +288,8 @@
       "labels": {
         "en": "Communication network"
       },
-      "usageGuidance": "A communication medium or logical network segment relevant to security/DR (VLAN, subnet, WAN, DMZ).",
-      "usageExamples": "APP_NET VLAN; DB_NET; DMZ; DC interconnect WAN; backup network."
+      "usageGuidance": "A communication medium or logical network segment relevant to security/DR (VLAN, subnet, WAN, DMZ). Set networkKind from infrastructure/network depth (L3+); add cidr, vlanId, and networkRole at L4.",
+      "usageExamples": "APP_NET VLAN 10.1.0.0/16 production; DC-WAN; DMZ; backup network."
     },
     {
       "iriLocal": "Path",
@@ -288,8 +298,8 @@
       "labels": {
         "en": "Path"
       },
-      "usageGuidance": "A logical or physical communication path between nodes or networks that is worth naming for impact analysis.",
-      "usageExamples": "DC1↔DC2 replication path; primary site to DR site WAN path; app tier to DB tier path."
+      "usageGuidance": "A named communication path between nodes or networks for impact analysis. Use Path when the route itself matters (WAN, replication link, zoned crossing) rather than Flow (what is transferred) or Association (membership or attachment).",
+      "usageExamples": "DC1↔DC2 replication path; primary site to DR site WAN path; app-tier to DB-tier path spanning VLANs."
     },
     {
       "iriLocal": "Facility",
@@ -429,8 +439,8 @@
       "labels": {
         "en": "Flow"
       },
-      "usageGuidance": "Transfer of information, value, or goods between elements. Attach protocol/port/zone attributes when relevant (L2–L4).",
-      "usageExamples": "Backend→ExternalPayment (HTTPS); Backend→Worker (Kafka); App tier→DB tier (TCP/5432 cross-zone)."
+      "usageGuidance": "Transfer of information, value, or goods between elements — not a 'uses' or Serving relationship. Always set flowLabel (what flows). Use messageOrObject for the technical payload name; attach protocol/port/zone at L2–L4.",
+      "usageExamples": "Backend→Payment Gateway (flowLabel=Customer orders, flowKind=data, protocol=HTTPS); WAN→APP_NET (Inter-DC replication)."
     },
     {
       "iriLocal": "Triggering",
@@ -633,6 +643,41 @@
       "usageExamples": "Platform team; CRM guild; DBAs; Network ops."
     },
     {
+      "iriLocal": "actorKind",
+      "datatype": "String",
+      "domain": [
+        "BusinessActor"
+      ],
+      "minCount": 1,
+      "maxCount": 1,
+      "severity": "error",
+      "labels": {
+        "en": "Actor kind"
+      },
+      "descriptions": {
+        "en": "department | person | external"
+      },
+      "usageGuidance": "Distinguishes an organizational unit, a named person, and an external party on BusinessActor. Required on every BusinessActor (shape aml-business-actor). department = org unit; person = named individual; external = party outside the organization.",
+      "usageExamples": "department for Odbor Compliance; person for Petr Novák; external for EU Registry."
+    },
+    {
+      "iriLocal": "ownership",
+      "datatype": "String",
+      "domain": [
+        "ApplicationComponent",
+        "TechnologyService",
+        "CommunicationNetwork"
+      ],
+      "labels": {
+        "en": "Ownership"
+      },
+      "descriptions": {
+        "en": "internal | external | shared"
+      },
+      "usageGuidance": "Who operates or owns the element: internal to the organization, an external provider, or a shared/multi-tenant service. EU registries and vendor SaaS are typically external.",
+      "usageExamples": "internal for CRM Backend; external for EU Registry; shared for corporate IdP."
+    },
+    {
       "iriLocal": "criticality",
       "datatype": "String",
       "domain": [
@@ -677,8 +722,11 @@
       "labels": {
         "en": "Dependency type"
       },
-      "usageGuidance": "Qualifies the kind of dependency expressed by a relationship.",
-      "usageExamples": "runtime; data; identity; network; build-time."
+      "usageGuidance": "Qualifies the kind of dependency expressed by a relationship (formalized enum/dependencyType).",
+      "usageExamples": "runtime; data; identity; network; build-time; organizational.",
+      "descriptions": {
+        "en": "runtime | data | identity | network | build-time | organizational"
+      }
     },
     {
       "iriLocal": "dependencyStrength",
@@ -718,6 +766,33 @@
       },
       "usageGuidance": "Business consequence of failure of the dependency or element.",
       "usageExamples": "Cannot accept orders; delayed invoicing; login unavailable."
+    },
+    {
+      "iriLocal": "associationKind",
+      "datatype": "String",
+      "domain": [
+        "Association"
+      ],
+      "labels": {
+        "en": "Association kind"
+      },
+      "descriptions": {
+        "en": "reportsTo | deputizesFor | locatedIn | connectedTo | memberOf | routesThrough | spans | uses | other"
+      },
+      "usageGuidance": "Qualifies the business meaning of an Association. Prefer a specific relationship type when one exists (e.g. Composition for org hierarchy). reportsTo is a reporting line between persons, not Composition. other requires relationshipNote.",
+      "usageExamples": "reportsTo Petr Novák → Jiri Kreuzman; memberOf Node → CommunicationNetwork; spans Path → WAN."
+    },
+    {
+      "iriLocal": "relationshipNote",
+      "datatype": "String",
+      "domain": [
+        "ArchiMateRelationship"
+      ],
+      "labels": {
+        "en": "Relationship note"
+      },
+      "usageGuidance": "Optional free-text note on a relationship. Required when associationKind is other.",
+      "usageExamples": "Temporary dual-reporting during reorganization; exception approved by architecture board."
     },
     {
       "iriLocal": "protocol",
@@ -795,13 +870,44 @@
       "iriLocal": "messageOrObject",
       "datatype": "String",
       "domain": [
-        "ArchiMateConcept"
+        "ArchiMateConcept",
+        "Flow"
       ],
       "labels": {
         "en": "Message or object"
       },
-      "usageGuidance": "Name of the message, event, or payload exchanged.",
+      "usageGuidance": "Technical name of the message, event, or payload exchanged. On Flow this is the payload identifier; the business description belongs in flowLabel.",
       "usageExamples": "OrderCreated; CustomerDTO; PaymentRequest."
+    },
+    {
+      "iriLocal": "flowLabel",
+      "datatype": "String",
+      "domain": [
+        "Flow"
+      ],
+      "minCount": 1,
+      "maxCount": 1,
+      "severity": "error",
+      "labels": {
+        "en": "Flow label"
+      },
+      "usageGuidance": "Business description of what is transferred by a Flow — 'what flows'. Required on every Flow (shape aml-flow). Do not confuse with messageOrObject, which is the technical payload or event name.",
+      "usageExamples": "Customer orders; Inter-DC replication; Invoice PDF; Identity assertions."
+    },
+    {
+      "iriLocal": "flowKind",
+      "datatype": "String",
+      "domain": [
+        "Flow"
+      ],
+      "labels": {
+        "en": "Flow kind"
+      },
+      "descriptions": {
+        "en": "data | event | control | physical"
+      },
+      "usageGuidance": "Kind of Flow: data payload, event/message, control signal, or physical transfer. Use data vs event to distinguish request/response payloads from published events.",
+      "usageExamples": "data for API or DB query; event for Kafka OrderCreated; control for health check; physical for media or material."
     },
     {
       "iriLocal": "accessMode",
@@ -1031,7 +1137,7 @@
       "labels": {
         "en": "Zone"
       },
-      "usageGuidance": "Security or network zone label.",
+      "usageGuidance": "Security or network zone label. Prefer on CommunicationNetwork and Node so flows can be reasoned about by zone; sourceZone/targetZone on Flow should match these labels.",
       "usageExamples": "APP_NET; DB_NET; DMZ; MGMT."
     },
     {
@@ -1057,6 +1163,36 @@
       },
       "usageGuidance": "Routing domain or VRF name for a network.",
       "usageExamples": "corp-prod; pci; guest."
+    },
+    {
+      "iriLocal": "networkKind",
+      "datatype": "String",
+      "domain": [
+        "CommunicationNetwork"
+      ],
+      "labels": {
+        "en": "Network kind"
+      },
+      "descriptions": {
+        "en": "vlan | subnet | wan | dmz | overlay | management | storage | other"
+      },
+      "usageGuidance": "Type of CommunicationNetwork segment. Required at L3+ (shape aml-communication-network). Distinguish vlan (L2 segment), subnet (IP block), wan (site interconnect), dmz, overlay, management, and storage.",
+      "usageExamples": "vlan for APP_NET; wan for DC-WAN; dmz for internet-facing segment; overlay for VXLAN."
+    },
+    {
+      "iriLocal": "networkRole",
+      "datatype": "String",
+      "domain": [
+        "CommunicationNetwork"
+      ],
+      "labels": {
+        "en": "Network role"
+      },
+      "descriptions": {
+        "en": "production | management | backup | dmz | wan | other"
+      },
+      "usageGuidance": "Operational role of a CommunicationNetwork in the estate (production vs management vs backup vs dmz vs wan).",
+      "usageExamples": "production for APP_NET; management for OOB/ILO; wan for DC interconnect; dmz for perimeter."
     },
     {
       "iriLocal": "fqdn",
@@ -1446,7 +1582,7 @@
         "en": "Catalog version"
       },
       "usageGuidance": "Version string of the ArchiMate Lite catalog carried on ExchangeSpec.",
-      "usageExamples": "1.2.0."
+      "usageExamples": "2.1.0."
     },
     {
       "iriLocal": "exchangeFormat",
@@ -1577,6 +1713,62 @@
         "allowedTargetClass"
       ],
       "severity": "error"
+    },
+    {
+      "code": "aml-business-function",
+      "class": "BusinessFunction",
+      "required": [
+        "modelingDepth"
+      ],
+      "severity": "warning"
+    },
+    {
+      "code": "aml-business-actor",
+      "class": "BusinessActor",
+      "required": [
+        "actorKind"
+      ],
+      "severity": "error"
+    },
+    {
+      "code": "aml-association",
+      "class": "Association",
+      "required": [
+        "associationKind"
+      ],
+      "severity": "warning"
+    },
+    {
+      "code": "aml-flow",
+      "class": "Flow",
+      "required": [
+        "flowLabel"
+      ],
+      "severity": "error"
+    },
+    {
+      "code": "aml-communication-network",
+      "class": "CommunicationNetwork",
+      "required": [
+        "networkKind"
+      ],
+      "severity": "warning"
+    },
+    {
+      "code": "aml-flow-network-detail",
+      "class": "Flow",
+      "required": [
+        "flowLabel",
+        "protocol"
+      ],
+      "severity": "warning",
+      "when": {
+        "property": "modelingDepth",
+        "values": [
+          "infrastructure_detail",
+          "network_detail"
+        ]
+      }
     }
   ],
   "allowedRelationships": [
@@ -1679,6 +1871,151 @@
       "type": "Serving",
       "source": "Device",
       "target": "CommunicationNetwork"
+    },
+    {
+      "type": "Composition",
+      "source": "BusinessActor",
+      "target": "BusinessActor"
+    },
+    {
+      "type": "Assignment",
+      "source": "BusinessActor",
+      "target": "BusinessFunction"
+    },
+    {
+      "type": "Assignment",
+      "source": "BusinessRole",
+      "target": "BusinessFunction"
+    },
+    {
+      "type": "Assignment",
+      "source": "BusinessRole",
+      "target": "BusinessProcess"
+    },
+    {
+      "type": "Composition",
+      "source": "BusinessFunction",
+      "target": "BusinessProcess"
+    },
+    {
+      "type": "Realization",
+      "source": "BusinessFunction",
+      "target": "BusinessService"
+    },
+    {
+      "type": "Realization",
+      "source": "BusinessProcess",
+      "target": "BusinessService"
+    },
+    {
+      "type": "Serving",
+      "source": "ApplicationService",
+      "target": "BusinessFunction"
+    },
+    {
+      "type": "Triggering",
+      "source": "BusinessProcess",
+      "target": "BusinessProcess"
+    },
+    {
+      "type": "Association",
+      "source": "BusinessActor",
+      "target": "BusinessActor"
+    },
+    {
+      "type": "Serving",
+      "source": "ApplicationService",
+      "target": "ApplicationFunction"
+    },
+    {
+      "type": "Realization",
+      "source": "ApplicationComponent",
+      "target": "ApplicationFunction"
+    },
+    {
+      "type": "Composition",
+      "source": "ApplicationCollaboration",
+      "target": "ApplicationComponent"
+    },
+    {
+      "type": "Flow",
+      "source": "ApplicationComponent",
+      "target": "DataObject"
+    },
+    {
+      "type": "Flow",
+      "source": "ApplicationFunction",
+      "target": "ApplicationFunction"
+    },
+    {
+      "type": "Triggering",
+      "source": "ApplicationProcess",
+      "target": "ApplicationProcess"
+    },
+    {
+      "type": "Flow",
+      "source": "ApplicationComponent",
+      "target": "TechnologyService"
+    },
+    {
+      "type": "Flow",
+      "source": "TechnologyService",
+      "target": "ApplicationComponent"
+    },
+    {
+      "type": "Flow",
+      "source": "Node",
+      "target": "Node"
+    },
+    {
+      "type": "Composition",
+      "source": "CommunicationNetwork",
+      "target": "CommunicationNetwork"
+    },
+    {
+      "type": "Composition",
+      "source": "Node",
+      "target": "Node"
+    },
+    {
+      "type": "Assignment",
+      "source": "Device",
+      "target": "Node"
+    },
+    {
+      "type": "Association",
+      "source": "Device",
+      "target": "Facility"
+    },
+    {
+      "type": "Serving",
+      "source": "TechnologyService",
+      "target": "ApplicationService"
+    },
+    {
+      "type": "Realization",
+      "source": "Node",
+      "target": "TechnologyService"
+    },
+    {
+      "type": "Association",
+      "source": "Path",
+      "target": "CommunicationNetwork"
+    },
+    {
+      "type": "Association",
+      "source": "Path",
+      "target": "Node"
+    },
+    {
+      "type": "Flow",
+      "source": "CommunicationNetwork",
+      "target": "CommunicationNetwork"
+    },
+    {
+      "type": "Flow",
+      "source": "Path",
+      "target": "Path"
     }
   ],
   "exchange": {
@@ -1718,6 +2055,67 @@
       "application",
       "technology",
       "network"
+    ],
+    "actorKind": [
+      "department",
+      "person",
+      "external"
+    ],
+    "ownership": [
+      "internal",
+      "external",
+      "shared"
+    ],
+    "associationKind": [
+      "reportsTo",
+      "deputizesFor",
+      "locatedIn",
+      "connectedTo",
+      "memberOf",
+      "routesThrough",
+      "spans",
+      "uses",
+      "other"
+    ],
+    "networkKind": [
+      "vlan",
+      "subnet",
+      "wan",
+      "dmz",
+      "overlay",
+      "management",
+      "storage",
+      "other"
+    ],
+    "networkRole": [
+      "production",
+      "management",
+      "backup",
+      "dmz",
+      "wan",
+      "other"
+    ],
+    "flowKind": [
+      "data",
+      "event",
+      "control",
+      "physical"
+    ],
+    "flowDirection": {
+      "property": "direction",
+      "values": [
+        "inbound",
+        "outbound",
+        "bidirectional"
+      ]
+    },
+    "dependencyType": [
+      "runtime",
+      "data",
+      "identity",
+      "network",
+      "build-time",
+      "organizational"
     ]
   }
 }

@@ -1,0 +1,740 @@
+{
+  "manifest": {
+    "formatVersion": 1,
+    "package": "kc-base",
+    "version": "1.1.0",
+    "publishedAt": "2026-08-24T00:00:00.000000Z",
+    "iriBase": "https://knowledge-core.local/kc-base/",
+    "lifecycle": "continuous",
+    "labels": {
+      "en": "KC Base",
+      "cs": "KC základ"
+    },
+    "dependencies": [],
+    "objectIndex": [
+      {
+        "objectType": "class",
+        "objectPublicId": "https://knowledge-core.local/kc-base/Package",
+        "revisionNo": 1
+      },
+      {
+        "objectType": "class",
+        "objectPublicId": "https://knowledge-core.local/kc-base/StringEnum",
+        "revisionNo": 1
+      },
+      {
+        "objectType": "property",
+        "objectPublicId": "https://knowledge-core.local/kc-base/instanceOf",
+        "revisionNo": 1
+      },
+      {
+        "objectType": "property",
+        "objectPublicId": "https://knowledge-core.local/kc-base/packageCode",
+        "revisionNo": 1
+      },
+      {
+        "objectType": "property",
+        "objectPublicId": "https://knowledge-core.local/kc-base/usageGuidance",
+        "revisionNo": 1
+      },
+      {
+        "objectType": "property",
+        "objectPublicId": "https://knowledge-core.local/kc-base/usageExamples",
+        "revisionNo": 1
+      },
+      {
+        "objectType": "property",
+        "objectPublicId": "https://knowledge-core.local/kc-base/enumeratesProperty",
+        "revisionNo": 1
+      },
+      {
+        "objectType": "property",
+        "objectPublicId": "https://knowledge-core.local/kc-base/allowedValue",
+        "revisionNo": 1
+      },
+      {
+        "objectType": "entity",
+        "objectPublicId": "https://knowledge-core.local/kc-base/",
+        "revisionNo": 1
+      },
+      {
+        "objectType": "statement",
+        "objectPublicId": "https://knowledge-core.local/kc-base/statement/.package/instanceOf",
+        "revisionNo": 1
+      },
+      {
+        "objectType": "statement",
+        "objectPublicId": "https://knowledge-core.local/kc-base/statement/.package/packageCode",
+        "revisionNo": 1
+      },
+      {
+        "objectType": "statement",
+        "objectPublicId": "https://knowledge-core.local/kc-base/statement/Package/usageGuidance",
+        "revisionNo": 1
+      },
+      {
+        "objectType": "statement",
+        "objectPublicId": "https://knowledge-core.local/kc-base/statement/Package/usageExamples",
+        "revisionNo": 1
+      },
+      {
+        "objectType": "statement",
+        "objectPublicId": "https://knowledge-core.local/kc-base/statement/StringEnum/usageGuidance",
+        "revisionNo": 1
+      },
+      {
+        "objectType": "statement",
+        "objectPublicId": "https://knowledge-core.local/kc-base/statement/StringEnum/usageExamples",
+        "revisionNo": 1
+      },
+      {
+        "objectType": "statement",
+        "objectPublicId": "https://knowledge-core.local/kc-base/statement/packageCode/usageGuidance",
+        "revisionNo": 1
+      },
+      {
+        "objectType": "statement",
+        "objectPublicId": "https://knowledge-core.local/kc-base/statement/packageCode/usageExamples",
+        "revisionNo": 1
+      },
+      {
+        "objectType": "statement",
+        "objectPublicId": "https://knowledge-core.local/kc-base/statement/usageGuidance/usageGuidance",
+        "revisionNo": 1
+      },
+      {
+        "objectType": "statement",
+        "objectPublicId": "https://knowledge-core.local/kc-base/statement/usageGuidance/usageExamples",
+        "revisionNo": 1
+      },
+      {
+        "objectType": "statement",
+        "objectPublicId": "https://knowledge-core.local/kc-base/statement/usageExamples/usageGuidance",
+        "revisionNo": 1
+      },
+      {
+        "objectType": "statement",
+        "objectPublicId": "https://knowledge-core.local/kc-base/statement/usageExamples/usageExamples",
+        "revisionNo": 1
+      },
+      {
+        "objectType": "statement",
+        "objectPublicId": "https://knowledge-core.local/kc-base/statement/enumeratesProperty/usageGuidance",
+        "revisionNo": 1
+      },
+      {
+        "objectType": "statement",
+        "objectPublicId": "https://knowledge-core.local/kc-base/statement/enumeratesProperty/usageExamples",
+        "revisionNo": 1
+      },
+      {
+        "objectType": "statement",
+        "objectPublicId": "https://knowledge-core.local/kc-base/statement/allowedValue/usageGuidance",
+        "revisionNo": 1
+      },
+      {
+        "objectType": "statement",
+        "objectPublicId": "https://knowledge-core.local/kc-base/statement/allowedValue/usageExamples",
+        "revisionNo": 1
+      },
+      {
+        "objectType": "statement",
+        "objectPublicId": "https://knowledge-core.local/kc-base/statement/instanceOf/usageGuidance",
+        "revisionNo": 1
+      },
+      {
+        "objectType": "statement",
+        "objectPublicId": "https://knowledge-core.local/kc-base/statement/instanceOf/usageExamples",
+        "revisionNo": 1
+      },
+      {
+        "objectType": "shape",
+        "objectPublicId": "string-enum",
+        "revisionNo": 1
+      },
+      {
+        "objectType": "shape",
+        "objectPublicId": "package-root",
+        "revisionNo": 1
+      }
+    ]
+  },
+  "releases": [
+    {
+      "formatVersion": 1,
+      "package": "kc-base",
+      "version": "1.1.0",
+      "publishedAt": "2026-08-24T00:00:00.000000Z",
+      "iriBase": "https://knowledge-core.local/kc-base/",
+      "lifecycle": "continuous",
+      "labels": {
+        "en": "KC Base",
+        "cs": "KC základ"
+      },
+      "dependencies": [],
+      "objectIndex": [
+        {
+          "objectType": "class",
+          "objectPublicId": "https://knowledge-core.local/kc-base/Package",
+          "revisionNo": 1
+        },
+        {
+          "objectType": "class",
+          "objectPublicId": "https://knowledge-core.local/kc-base/StringEnum",
+          "revisionNo": 1
+        },
+        {
+          "objectType": "property",
+          "objectPublicId": "https://knowledge-core.local/kc-base/instanceOf",
+          "revisionNo": 1
+        },
+        {
+          "objectType": "property",
+          "objectPublicId": "https://knowledge-core.local/kc-base/packageCode",
+          "revisionNo": 1
+        },
+        {
+          "objectType": "property",
+          "objectPublicId": "https://knowledge-core.local/kc-base/usageGuidance",
+          "revisionNo": 1
+        },
+        {
+          "objectType": "property",
+          "objectPublicId": "https://knowledge-core.local/kc-base/usageExamples",
+          "revisionNo": 1
+        },
+        {
+          "objectType": "property",
+          "objectPublicId": "https://knowledge-core.local/kc-base/enumeratesProperty",
+          "revisionNo": 1
+        },
+        {
+          "objectType": "property",
+          "objectPublicId": "https://knowledge-core.local/kc-base/allowedValue",
+          "revisionNo": 1
+        },
+        {
+          "objectType": "entity",
+          "objectPublicId": "https://knowledge-core.local/kc-base/",
+          "revisionNo": 1
+        },
+        {
+          "objectType": "statement",
+          "objectPublicId": "https://knowledge-core.local/kc-base/statement/.package/instanceOf",
+          "revisionNo": 1
+        },
+        {
+          "objectType": "statement",
+          "objectPublicId": "https://knowledge-core.local/kc-base/statement/.package/packageCode",
+          "revisionNo": 1
+        },
+        {
+          "objectType": "statement",
+          "objectPublicId": "https://knowledge-core.local/kc-base/statement/Package/usageGuidance",
+          "revisionNo": 1
+        },
+        {
+          "objectType": "statement",
+          "objectPublicId": "https://knowledge-core.local/kc-base/statement/Package/usageExamples",
+          "revisionNo": 1
+        },
+        {
+          "objectType": "statement",
+          "objectPublicId": "https://knowledge-core.local/kc-base/statement/StringEnum/usageGuidance",
+          "revisionNo": 1
+        },
+        {
+          "objectType": "statement",
+          "objectPublicId": "https://knowledge-core.local/kc-base/statement/StringEnum/usageExamples",
+          "revisionNo": 1
+        },
+        {
+          "objectType": "statement",
+          "objectPublicId": "https://knowledge-core.local/kc-base/statement/packageCode/usageGuidance",
+          "revisionNo": 1
+        },
+        {
+          "objectType": "statement",
+          "objectPublicId": "https://knowledge-core.local/kc-base/statement/packageCode/usageExamples",
+          "revisionNo": 1
+        },
+        {
+          "objectType": "statement",
+          "objectPublicId": "https://knowledge-core.local/kc-base/statement/usageGuidance/usageGuidance",
+          "revisionNo": 1
+        },
+        {
+          "objectType": "statement",
+          "objectPublicId": "https://knowledge-core.local/kc-base/statement/usageGuidance/usageExamples",
+          "revisionNo": 1
+        },
+        {
+          "objectType": "statement",
+          "objectPublicId": "https://knowledge-core.local/kc-base/statement/usageExamples/usageGuidance",
+          "revisionNo": 1
+        },
+        {
+          "objectType": "statement",
+          "objectPublicId": "https://knowledge-core.local/kc-base/statement/usageExamples/usageExamples",
+          "revisionNo": 1
+        },
+        {
+          "objectType": "statement",
+          "objectPublicId": "https://knowledge-core.local/kc-base/statement/enumeratesProperty/usageGuidance",
+          "revisionNo": 1
+        },
+        {
+          "objectType": "statement",
+          "objectPublicId": "https://knowledge-core.local/kc-base/statement/enumeratesProperty/usageExamples",
+          "revisionNo": 1
+        },
+        {
+          "objectType": "statement",
+          "objectPublicId": "https://knowledge-core.local/kc-base/statement/allowedValue/usageGuidance",
+          "revisionNo": 1
+        },
+        {
+          "objectType": "statement",
+          "objectPublicId": "https://knowledge-core.local/kc-base/statement/allowedValue/usageExamples",
+          "revisionNo": 1
+        },
+        {
+          "objectType": "statement",
+          "objectPublicId": "https://knowledge-core.local/kc-base/statement/instanceOf/usageGuidance",
+          "revisionNo": 1
+        },
+        {
+          "objectType": "statement",
+          "objectPublicId": "https://knowledge-core.local/kc-base/statement/instanceOf/usageExamples",
+          "revisionNo": 1
+        },
+        {
+          "objectType": "shape",
+          "objectPublicId": "string-enum",
+          "revisionNo": 1
+        },
+        {
+          "objectType": "shape",
+          "objectPublicId": "package-root",
+          "revisionNo": 1
+        }
+      ]
+    }
+  ],
+  "classes": [
+    {
+      "id": "https://knowledge-core.local/kc-base/Package",
+      "packageCode": "kc-base",
+      "iriLocal": "Package",
+      "revisionNo": 1,
+      "status": "active",
+      "labels": {
+        "en": "Package",
+        "cs": "Balíček"
+      },
+      "descriptions": {
+        "en": "Package-root entity. Canonical IRI equals the package iriBase. Holds package presentation metadata and packageCode.",
+        "cs": "Package-root entita. Kanonické IRI = iriBase package. Nese prezentační metadata package a packageCode."
+      }
+    },
+    {
+      "id": "https://knowledge-core.local/kc-base/StringEnum",
+      "packageCode": "kc-base",
+      "iriLocal": "StringEnum",
+      "revisionNo": 1,
+      "status": "active",
+      "labels": {
+        "en": "String enumeration"
+      },
+      "descriptions": {
+        "en": "Allowed string values for a property. Enforced by tools, not by KC."
+      }
+    }
+  ],
+  "properties": [
+    {
+      "id": "https://knowledge-core.local/kc-base/instanceOf",
+      "packageCode": "kc-base",
+      "iriLocal": "instanceOf",
+      "revisionNo": 1,
+      "datatype": "EntityReference",
+      "status": "active",
+      "labels": {
+        "en": "instance of",
+        "cs": "instance třídy"
+      },
+      "descriptions": {
+        "en": "Global typing property. Created only when GET /v1/admin/schema-config has empty instanceOfProperty. Not domain-specific."
+      },
+      "constraints": {}
+    },
+    {
+      "id": "https://knowledge-core.local/kc-base/packageCode",
+      "packageCode": "kc-base",
+      "iriLocal": "packageCode",
+      "revisionNo": 1,
+      "datatype": "String",
+      "status": "active",
+      "labels": {
+        "en": "Package code",
+        "cs": "Kód balíčku"
+      },
+      "descriptions": {
+        "en": "Stable package code mirrored from package.code. Managed by the engine; do not revise or deprecate manually.",
+        "cs": "Stabilní kód balíčku zrcadlený z package.code. Spravuje engine; nerušit ani nerevidovat ručně."
+      },
+      "constraints": {
+        "domainClasses": [
+          "https://knowledge-core.local/kc-base/Package"
+        ],
+        "minCount": 1,
+        "maxCount": 1,
+        "severity": "error"
+      }
+    },
+    {
+      "id": "https://knowledge-core.local/kc-base/usageGuidance",
+      "packageCode": "kc-base",
+      "iriLocal": "usageGuidance",
+      "revisionNo": 1,
+      "datatype": "String",
+      "status": "active",
+      "labels": {
+        "en": "Usage guidance",
+        "cs": "Návod k použití"
+      },
+      "descriptions": {
+        "en": "Annotation on a class or property entity explaining when and how to use that metamodel member.",
+        "cs": "Anotace na třídě nebo property vysvětlující, kdy a jak prvek metamodelu použít."
+      },
+      "constraints": {
+        "maxCount": 1
+      }
+    },
+    {
+      "id": "https://knowledge-core.local/kc-base/usageExamples",
+      "packageCode": "kc-base",
+      "iriLocal": "usageExamples",
+      "revisionNo": 1,
+      "datatype": "String",
+      "status": "active",
+      "labels": {
+        "en": "Usage examples",
+        "cs": "Příklady použití"
+      },
+      "descriptions": {
+        "en": "Annotation on a class or property entity with concrete usage examples.",
+        "cs": "Anotace na třídě nebo property s konkrétními příklady použití."
+      },
+      "constraints": {
+        "maxCount": 1
+      }
+    },
+    {
+      "id": "https://knowledge-core.local/kc-base/enumeratesProperty",
+      "packageCode": "kc-base",
+      "iriLocal": "enumeratesProperty",
+      "revisionNo": 1,
+      "datatype": "EntityReference",
+      "status": "active",
+      "labels": {
+        "en": "Enumerates property"
+      },
+      "descriptions": {
+        "en": "The property whose string values this enum constrains (tool-side)."
+      },
+      "constraints": {
+        "domainClasses": [
+          "https://knowledge-core.local/kc-base/StringEnum"
+        ],
+        "minCount": 1,
+        "maxCount": 1,
+        "severity": "error"
+      }
+    },
+    {
+      "id": "https://knowledge-core.local/kc-base/allowedValue",
+      "packageCode": "kc-base",
+      "iriLocal": "allowedValue",
+      "revisionNo": 1,
+      "datatype": "String",
+      "status": "active",
+      "labels": {
+        "en": "Allowed value"
+      },
+      "descriptions": {},
+      "constraints": {
+        "domainClasses": [
+          "https://knowledge-core.local/kc-base/StringEnum"
+        ],
+        "minCount": 1,
+        "severity": "error"
+      }
+    }
+  ],
+  "entities": [
+    {
+      "id": "https://knowledge-core.local/kc-base/",
+      "packageCode": "kc-base",
+      "iriLocal": ".package",
+      "revisionNo": 1,
+      "status": "active",
+      "labels": {
+        "en": "KC Base",
+        "cs": "KC základ"
+      },
+      "descriptions": {
+        "en": "Reusable foundation for KC metamodels: global instanceOf typing, vocabulary usage annotations, string enumerations, and package-root typing.",
+        "cs": "Znovupoužitelný základ metamodelů KC: globální typing instanceOf, anotace použití slovníku, stringové enumerace a typing package-root."
+      }
+    }
+  ],
+  "statements": [
+    {
+      "id": "https://knowledge-core.local/kc-base/statement/.package/instanceOf",
+      "packageCode": "kc-base",
+      "revisionNo": 1,
+      "subject": "https://knowledge-core.local/kc-base/",
+      "property": "https://knowledge-core.local/kc-base/instanceOf",
+      "status": "active",
+      "value": {
+        "type": "EntityReference",
+        "entityId": "https://knowledge-core.local/kc-base/Package"
+      }
+    },
+    {
+      "id": "https://knowledge-core.local/kc-base/statement/.package/packageCode",
+      "packageCode": "kc-base",
+      "revisionNo": 1,
+      "subject": "https://knowledge-core.local/kc-base/",
+      "property": "https://knowledge-core.local/kc-base/packageCode",
+      "status": "active",
+      "value": {
+        "type": "String",
+        "string": "kc-base"
+      }
+    },
+    {
+      "id": "https://knowledge-core.local/kc-base/statement/Package/usageGuidance",
+      "packageCode": "kc-base",
+      "revisionNo": 1,
+      "subject": "https://knowledge-core.local/kc-base/Package",
+      "property": "https://knowledge-core.local/kc-base/usageGuidance",
+      "status": "active",
+      "value": {
+        "type": "String",
+        "string": "Do not create manually. Engine creates one root per package with iriBase; type it with instanceOf → Package."
+      }
+    },
+    {
+      "id": "https://knowledge-core.local/kc-base/statement/Package/usageExamples",
+      "packageCode": "kc-base",
+      "revisionNo": 1,
+      "subject": "https://knowledge-core.local/kc-base/Package",
+      "property": "https://knowledge-core.local/kc-base/usageExamples",
+      "status": "active",
+      "value": {
+        "type": "String",
+        "string": "Root https://knowledge-core.local/archimate-lite/ typed as Package with packageCode=archimate-lite."
+      }
+    },
+    {
+      "id": "https://knowledge-core.local/kc-base/statement/StringEnum/usageGuidance",
+      "packageCode": "kc-base",
+      "revisionNo": 1,
+      "subject": "https://knowledge-core.local/kc-base/StringEnum",
+      "property": "https://knowledge-core.local/kc-base/usageGuidance",
+      "status": "active",
+      "value": {
+        "type": "String",
+        "string": "Lists allowed string values for a named property. Tools validate against these instances; KC does not."
+      }
+    },
+    {
+      "id": "https://knowledge-core.local/kc-base/statement/StringEnum/usageExamples",
+      "packageCode": "kc-base",
+      "revisionNo": 1,
+      "subject": "https://knowledge-core.local/kc-base/StringEnum",
+      "property": "https://knowledge-core.local/kc-base/usageExamples",
+      "status": "active",
+      "value": {
+        "type": "String",
+        "string": "enum/modelingDepth with catalog|dr_minimum|…; enum/accessMode with read|write|readWrite."
+      }
+    },
+    {
+      "id": "https://knowledge-core.local/kc-base/statement/packageCode/usageGuidance",
+      "packageCode": "kc-base",
+      "revisionNo": 1,
+      "subject": "https://knowledge-core.local/kc-base/packageCode",
+      "property": "https://knowledge-core.local/kc-base/usageGuidance",
+      "status": "active",
+      "value": {
+        "type": "String",
+        "string": "Only on the package-root entity. Value equals package.code; mutations are rejected."
+      }
+    },
+    {
+      "id": "https://knowledge-core.local/kc-base/statement/packageCode/usageExamples",
+      "packageCode": "kc-base",
+      "revisionNo": 1,
+      "subject": "https://knowledge-core.local/kc-base/packageCode",
+      "property": "https://knowledge-core.local/kc-base/usageExamples",
+      "status": "active",
+      "value": {
+        "type": "String",
+        "string": "packageCode=kc-base on https://knowledge-core.local/kc-base/; packageCode=archimate-lite on its root."
+      }
+    },
+    {
+      "id": "https://knowledge-core.local/kc-base/statement/usageGuidance/usageGuidance",
+      "packageCode": "kc-base",
+      "revisionNo": 1,
+      "subject": "https://knowledge-core.local/kc-base/usageGuidance",
+      "property": "https://knowledge-core.local/kc-base/usageGuidance",
+      "status": "active",
+      "value": {
+        "type": "String",
+        "string": "Metamodel annotation property. Attach as a statement on class or property entities; do not set on ordinary architecture instances."
+      }
+    },
+    {
+      "id": "https://knowledge-core.local/kc-base/statement/usageGuidance/usageExamples",
+      "packageCode": "kc-base",
+      "revisionNo": 1,
+      "subject": "https://knowledge-core.local/kc-base/usageGuidance",
+      "property": "https://knowledge-core.local/kc-base/usageExamples",
+      "status": "active",
+      "value": {
+        "type": "String",
+        "string": "usageGuidance on ApplicationComponent; usageGuidance on modelingDepth."
+      }
+    },
+    {
+      "id": "https://knowledge-core.local/kc-base/statement/usageExamples/usageGuidance",
+      "packageCode": "kc-base",
+      "revisionNo": 1,
+      "subject": "https://knowledge-core.local/kc-base/usageExamples",
+      "property": "https://knowledge-core.local/kc-base/usageGuidance",
+      "status": "active",
+      "value": {
+        "type": "String",
+        "string": "Metamodel annotation property listing examples. Attach as a statement on class or property entities."
+      }
+    },
+    {
+      "id": "https://knowledge-core.local/kc-base/statement/usageExamples/usageExamples",
+      "packageCode": "kc-base",
+      "revisionNo": 1,
+      "subject": "https://knowledge-core.local/kc-base/usageExamples",
+      "property": "https://knowledge-core.local/kc-base/usageExamples",
+      "status": "active",
+      "value": {
+        "type": "String",
+        "string": "usageExamples on Serving; usageExamples on relSource."
+      }
+    },
+    {
+      "id": "https://knowledge-core.local/kc-base/statement/enumeratesProperty/usageGuidance",
+      "packageCode": "kc-base",
+      "revisionNo": 1,
+      "subject": "https://knowledge-core.local/kc-base/enumeratesProperty",
+      "property": "https://knowledge-core.local/kc-base/usageGuidance",
+      "status": "active",
+      "value": {
+        "type": "String",
+        "string": "On a StringEnum instance: which property the allowed values constrain (tool-side)."
+      }
+    },
+    {
+      "id": "https://knowledge-core.local/kc-base/statement/enumeratesProperty/usageExamples",
+      "packageCode": "kc-base",
+      "revisionNo": 1,
+      "subject": "https://knowledge-core.local/kc-base/enumeratesProperty",
+      "property": "https://knowledge-core.local/kc-base/usageExamples",
+      "status": "active",
+      "value": {
+        "type": "String",
+        "string": "Reference to modelingDepth; accessMode; viewpoint property IRI."
+      }
+    },
+    {
+      "id": "https://knowledge-core.local/kc-base/statement/allowedValue/usageGuidance",
+      "packageCode": "kc-base",
+      "revisionNo": 1,
+      "subject": "https://knowledge-core.local/kc-base/allowedValue",
+      "property": "https://knowledge-core.local/kc-base/usageGuidance",
+      "status": "active",
+      "value": {
+        "type": "String",
+        "string": "One allowed string value for the enumerated property. Repeat for each value."
+      }
+    },
+    {
+      "id": "https://knowledge-core.local/kc-base/statement/allowedValue/usageExamples",
+      "packageCode": "kc-base",
+      "revisionNo": 1,
+      "subject": "https://knowledge-core.local/kc-base/allowedValue",
+      "property": "https://knowledge-core.local/kc-base/usageExamples",
+      "status": "active",
+      "value": {
+        "type": "String",
+        "string": "catalog; mandatory; readWrite; network."
+      }
+    },
+    {
+      "id": "https://knowledge-core.local/kc-base/statement/instanceOf/usageGuidance",
+      "packageCode": "kc-base",
+      "revisionNo": 1,
+      "subject": "https://knowledge-core.local/kc-base/instanceOf",
+      "property": "https://knowledge-core.local/kc-base/usageGuidance",
+      "status": "active",
+      "value": {
+        "type": "String",
+        "string": "Global typing property linking an entity to its class. Created only when schema-config instanceOfProperty is empty."
+      }
+    },
+    {
+      "id": "https://knowledge-core.local/kc-base/statement/instanceOf/usageExamples",
+      "packageCode": "kc-base",
+      "revisionNo": 1,
+      "subject": "https://knowledge-core.local/kc-base/instanceOf",
+      "property": "https://knowledge-core.local/kc-base/usageExamples",
+      "status": "active",
+      "value": {
+        "type": "String",
+        "string": "entity CRM typed as ApplicationComponent; AllowedRelationship row typed as AllowedRelationship."
+      }
+    }
+  ],
+  "shapes": [
+    {
+      "code": "string-enum",
+      "packageCode": "kc-base",
+      "classId": "https://knowledge-core.local/kc-base/StringEnum",
+      "document": {
+        "requiredProperties": [
+          "https://knowledge-core.local/kc-base/enumeratesProperty",
+          "https://knowledge-core.local/kc-base/allowedValue"
+        ],
+        "closed": false,
+        "severity": "error"
+      },
+      "revisionNo": 1
+    },
+    {
+      "code": "package-root",
+      "packageCode": "kc-base",
+      "classId": "https://knowledge-core.local/kc-base/Package",
+      "document": {
+        "requiredProperties": [
+          "https://knowledge-core.local/kc-base/packageCode"
+        ],
+        "closed": false,
+        "severity": "error"
+      },
+      "revisionNo": 1
+    }
+  ],
+  "references": []
+}

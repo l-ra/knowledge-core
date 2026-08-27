@@ -11,7 +11,9 @@ type Pkg = {
   code: string;
   lifecycle: string;
   labels?: Record<string, string>;
+  descriptions?: Record<string, string>;
   iriBase?: string;
+  rootEntityId?: string;
   dependencies?: PkgDep[];
   createdAt?: string;
   updatedAt?: string;
@@ -140,6 +142,20 @@ export function PackageDetailPage() {
           {code}
           {pkg?.lifecycle ? ` · ${pkg.lifecycle}` : ""}
         </p>
+        {pkg?.descriptions && Object.keys(pkg.descriptions).length > 0 && (
+          <p>{pickLabel(pkg.descriptions, i18n.language, "")}</p>
+        )}
+        {pkg?.rootEntityId && (
+          <p>
+            {t("packages.rootEntity")}:{" "}
+            <EntityLink
+              id={pkg.rootEntityId}
+              displayId={code}
+              labels={pkg.labels}
+              lang={i18n.language}
+            />
+          </p>
+        )}
         {pkg?.iriBase && (
           <p className="muted mono">
             {t("packages.iriBase")}: {pkg.iriBase}

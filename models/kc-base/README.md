@@ -4,21 +4,23 @@ Znovupoužitelný foundation package pro metamodely v knowledge-core. **Není** 
 
 | Soubor | Účel |
 |--------|------|
-| [catalog.json](catalog.json) | Seed: `instanceOf`, `usageGuidance` / `usageExamples`, `StringEnum` + shape |
+| [catalog.json](catalog.json) | Seed: `instanceOf`, `Package` / `packageCode`, usage anotace, `StringEnum` + shapes |
 | [build_bundle.py](build_bundle.py) | Sestaví portable release bundle |
-| [releases/kc-base-1.0.0.bundle.json](releases/kc-base-1.0.0.bundle.json) | Bundle pro UI import |
+| [releases/kc-base-1.1.0.bundle.json](releases/kc-base-1.1.0.bundle.json) | Bundle pro UI import (aktuální) |
+| [releases/kc-base-1.0.0.bundle.json](releases/kc-base-1.0.0.bundle.json) | Předchozí release |
 | [load.py](load.py) | Nahraje catalog přes API |
 
 ## Obsah
 
 - **`instanceOf`** — globální typing property pro `schema-config.instanceOfProperty`
+- **`Package`** + **`packageCode`** + shape `package-root` — typ a zrcadlo code pro package-root entitu (`publicId` = `iriBase`)
 - **`usageGuidance` / `usageExamples`** — anotace na třídách a properties libovolného slovníku
 - **`StringEnum`** + `enumeratesProperty` / `allowedValue` + shape `string-enum` — mechanismus enumů (konkrétní hodnoty zůstávají v doménovém package)
 
 ## Import
 
 1. Admin UI: **Packages → Import release bundle**
-2. Nahrajte `releases/kc-base-1.0.0.bundle.json`
+2. Nahrajte `releases/kc-base-1.1.0.bundle.json`
 3. Pokud je `instanceOfProperty` prázdné, nastavte ho na `https://knowledge-core.local/kc-base/instanceOf`
 
 ```bash

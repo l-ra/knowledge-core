@@ -19,6 +19,7 @@ import { OpsPage } from "./pages/OpsPage";
 import { ShapesPage } from "./pages/ShapesPage";
 import { SchemaConfigPage } from "./pages/SchemaConfigPage";
 import { ValidationPage } from "./pages/ValidationPage";
+import { ChangesetsPage } from "./pages/ChangesetsPage";
 import { AuthPage } from "./pages/AuthPage";
 
 function RequireAuth({ children }: { children: React.ReactNode }) {
@@ -48,6 +49,8 @@ export function App() {
         <Route index element={<Navigate to="/entities" replace />} />
         <Route path="search" element={<SearchPage />} />
         <Route path="entities" element={<EntitiesPage />} />
+        <Route path="changesets" element={<ChangesetsPage />} />
+        <Route path="changesets/:cid" element={<ChangesetsPage />} />
         <Route path="entities/:qid/validation" element={<ValidationPage />} />
         <Route path="entities/:qid/history" element={<EntityHistoryPage />} />
         <Route path="entities/:qid" element={<EntityPage />} />

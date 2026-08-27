@@ -127,16 +127,20 @@ Graph writes accept optional `packageCode` for ownership.
 
 - `POST /v1/entities` — `{ "packageCode": "…", "labels": { "en": "…" } }`
 - `PATCH /v1/entities/{Qid}` — `{ "labels": {…}, "expectedRevision": 1 }`
+- `POST /v1/entities/{Qid}/deprecate` — `{ "expectedRevision": 1 }`
+- `POST /v1/entities/{Qid}/delete` — logické smazání; `{ "expectedRevision": 1 }`
 - `GET /v1/entities/{Qid}/history`
 - `POST /v1/properties` — `{ "packageCode": "…", "datatype": "String", "labels": { "en": "…" } }`
 - `POST /v1/references` — `{ "fields": { "sourceUrl": "…", … } }`
 - `GET /v1/references/{Rid}`
 - `POST /v1/statements` — supports `packageCode`, `qualifiers`, `referenceIds`, `validFrom`, `validTo`
 - `POST /v1/statements/{Sid}/revise` — optional `value`, `qualifiers`, `referenceIds`, valid time
+- `POST /v1/statements/{Sid}/deprecate` — `{ "expectedRevision": 1 }`
 - `GET /v1/statements/{Sid}/history`
 - `POST /v1/changesets` — batch `{ "operations": […] }`
+- `GET /v1/changesets` — list (`limit`, `cursor`, filters: `q`, `actor`, `operationType`, `objectId`, `correlationId`, `committedFrom`, `committedTo`)
 - `GET /v1/changesets/{Cid}`
-- `POST /v1/packages` — `{ "code": "…", "lifecycle": "released", "labels": { "en": "…" }, "dependencies": […] }`
+- `POST /v1/packages` — `{ "code": "…", "lifecycle": "released", "labels": { "en": "…" }, "descriptions"?: {…}, "iriBase"?: "…", "dependencies": […] }` → with `iriBase` creates package-root entity (`rootEntityId`)
 - `GET /v1/packages/{code}`
 - `POST /v1/packages/{code}/releases` — `{ "version": "1.0.0" }`
 - `GET /v1/packages/{code}/releases/{version}`

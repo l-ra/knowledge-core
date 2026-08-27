@@ -41,4 +41,8 @@ func TestResolveIRI(t *testing.T) {
 	if iri != "https://knowledge-core.local/entity/Q9" {
 		t.Fatalf("fallback got %q", iri)
 	}
+	iri = datatype.ResolveIRI("https://ex.org/pkg/", datatype.PackageRootIRILocal, "ignored", "")
+	if iri != "https://ex.org/pkg/" {
+		t.Fatalf("package root got %q", iri)
+	}
 }

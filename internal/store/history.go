@@ -2,6 +2,10 @@ package store
 
 import (
 	"context"
+	"errors"
+	"strconv"
+	"strings"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -9,13 +13,28 @@ import (
 	"github.com/shopspring/decimal"
 )
 
+var ErrInvalidCursor = errors.New("invalid cursor")
+
+type ChangeSetListOptions struct {
+	Limit         int
+	Cursor        string
+	Query         string
+	Actor         string
+	OperationType string
+	CorrelationID string
+	ObjectID      string
+	CommittedFrom *time.Time
+	CommittedTo   *time.Time
+}
+
 func (s *Store) GetChangeSetByPublicID(ctx context.Context, cid string) (*domain.ChangeSet, error) {
 	var cs domain.ChangeSet
 	var idem, corr *string
 	err := s.pool.QueryRow(ctx, `
-		SELECT id, public_id, COALESCE(actor,''), operation_type, committed_at, idempotency_key, correlation_id
+		SELECT id, public_id, COALESCE(actor,''), operation_type, COALESCE(comment,''),
+			committed_at, idempotency_key, correlation_id
 		FROM change_set WHERE public_id = $1
-	`, cid).Scan(&cs.ID, &cs.PublicID, &cs.Actor, &cs.OperationType, &cs.CommittedAt, &idem, &corr)
+	`, cid).Scan(&cs.ID, &cs.PublicID, &cs.Actor, &cs.OperationType, &cs.Comment, &cs.CommittedAt, &idem, &corr)
 	if err != nil {
 		return nil, err
 	}
@@ -40,7 +59,137 @@ func (s *Store) GetChangeSetByPublicID(ctx context.Context, cid string) (*domain
 		}
 		cs.Items = append(cs.Items, item)
 	}
-	return &cs, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	cs.ItemCount = len(cs.Items)
+	return &cs, nil
+}
+
+func (s *Store) ListChangeSets(ctx context.Context, opt ChangeSetListOptions) ([]domain.ChangeSet, string, error) {
+	if opt.Limit <= 0 {
+		opt.Limit = 50
+	}
+	if opt.Limit > 200 {
+		opt.Limit = 200
+	}
+
+	args := []any{}
+	where := `TRUE`
+	if actor := strings.TrimSpace(opt.Actor); actor != "" {
+		args = append(args, actor)
+		where += ` AND cs.actor = $` + strconv.Itoa(len(args))
+	}
+	if opType := strings.TrimSpace(opt.OperationType); opType != "" {
+		args = append(args, opType)
+		where += ` AND cs.operation_type = $` + strconv.Itoa(len(args))
+	}
+	if corr := strings.TrimSpace(opt.CorrelationID); corr != "" {
+		args = append(args, corr)
+		where += ` AND cs.correlation_id = $` + strconv.Itoa(len(args))
+	}
+	if obj := strings.TrimSpace(opt.ObjectID); obj != "" {
+		args = append(args, obj)
+		where += ` AND EXISTS (
+			SELECT 1 FROM change_set_item csi
+			WHERE csi.change_set_id = cs.id AND csi.public_id = $` + strconv.Itoa(len(args)) + `
+		)`
+	}
+	if opt.CommittedFrom != nil {
+		args = append(args, *opt.CommittedFrom)
+		where += ` AND cs.committed_at >= $` + strconv.Itoa(len(args))
+	}
+	if opt.CommittedTo != nil {
+		args = append(args, *opt.CommittedTo)
+		where += ` AND cs.committed_at <= $` + strconv.Itoa(len(args))
+	}
+	if q := strings.TrimSpace(opt.Query); q != "" {
+		args = append(args, "%"+strings.ToLower(q)+"%")
+		n := strconv.Itoa(len(args))
+		where += ` AND (
+			lower(cs.public_id) LIKE $` + n + `
+			OR lower(COALESCE(cs.actor,'')) LIKE $` + n + `
+			OR lower(COALESCE(cs.operation_type,'')) LIKE $` + n + `
+			OR lower(COALESCE(cs.comment,'')) LIKE $` + n + `
+			OR lower(COALESCE(cs.correlation_id,'')) LIKE $` + n + `
+			OR lower(COALESCE(cs.idempotency_key,'')) LIKE $` + n + `
+		)`
+	}
+	if opt.Cursor != "" {
+		ts, pid, ok := parseChangeSetCursor(opt.Cursor)
+		if !ok {
+			return nil, "", ErrInvalidCursor
+		}
+		args = append(args, ts, pid)
+		tsN := strconv.Itoa(len(args) - 1)
+		pidN := strconv.Itoa(len(args))
+		where += ` AND (cs.committed_at, cs.public_id) < ($` + tsN + `::timestamptz, $` + pidN + `)`
+	}
+
+	args = append(args, opt.Limit+1)
+	limitArg := `$` + strconv.Itoa(len(args))
+
+	rows, err := s.pool.Query(ctx, `
+		SELECT cs.id, cs.public_id, COALESCE(cs.actor,''), cs.operation_type, COALESCE(cs.comment,''),
+			cs.committed_at, cs.idempotency_key, cs.correlation_id,
+			(SELECT count(*)::int FROM change_set_item csi WHERE csi.change_set_id = cs.id)
+		FROM change_set cs
+		WHERE `+where+`
+		ORDER BY cs.committed_at DESC, cs.public_id DESC
+		LIMIT `+limitArg+`
+	`, args...)
+	if err != nil {
+		return nil, "", err
+	}
+	defer rows.Close()
+
+	var out []domain.ChangeSet
+	for rows.Next() {
+		var cs domain.ChangeSet
+		var idem, corr *string
+		if err := rows.Scan(
+			&cs.ID, &cs.PublicID, &cs.Actor, &cs.OperationType, &cs.Comment,
+			&cs.CommittedAt, &idem, &corr, &cs.ItemCount,
+		); err != nil {
+			return nil, "", err
+		}
+		if idem != nil {
+			cs.IdempotencyKey = *idem
+		}
+		if corr != nil {
+			cs.CorrelationID = *corr
+		}
+		out = append(out, cs)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, "", err
+	}
+	next := ""
+	if len(out) > opt.Limit {
+		last := out[opt.Limit-1]
+		next = encodeChangeSetCursor(last.CommittedAt, last.PublicID)
+		out = out[:opt.Limit]
+	}
+	return out, next, nil
+}
+
+func encodeChangeSetCursor(committedAt time.Time, publicID string) string {
+	return committedAt.UTC().Format(time.RFC3339Nano) + "|" + publicID
+}
+
+func parseChangeSetCursor(cursor string) (time.Time, string, bool) {
+	i := strings.LastIndex(cursor, "|")
+	if i <= 0 || i == len(cursor)-1 {
+		return time.Time{}, "", false
+	}
+	ts, err := time.Parse(time.RFC3339Nano, cursor[:i])
+	if err != nil {
+		ts, err = time.Parse(time.RFC3339, cursor[:i])
+		if err != nil {
+			return time.Time{}, "", false
+		}
+	}
+	return ts, cursor[i+1:], true
 }
 
 func (s *Store) GetChangeSetByIdempotencyKey(ctx context.Context, key string) (*domain.ChangeSet, error) {

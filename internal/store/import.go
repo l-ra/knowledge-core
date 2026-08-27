@@ -30,7 +30,7 @@ func (s *Store) ImportReleaseBundle(ctx context.Context, meta domain.WriteMeta, 
 	if baseline, ok, err := s.baselineSnapshotForUpgrade(ctx, pkgCode); err != nil {
 		return nil, err
 	} else if ok {
-		neu := pkgcompat.SnapshotFromBundle(bundle)
+		neu := pkgcompat.FilterByPackage(pkgcompat.SnapshotFromBundle(bundle), pkgCode)
 		if err := s.ensureBackwardCompatible(fmt.Sprintf("import %s@%s", pkgCode, bundle.Manifest.Version), baseline, neu); err != nil {
 			return nil, err
 		}

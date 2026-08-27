@@ -139,7 +139,7 @@ func (e *Engine) authorizeChangeSet(ctx context.Context, in domain.ApplyChangeSe
 			if err := e.authorizeStatementProperty(ctx, auth.OpUpdate, st.SubjectQID, st.PropertyPID); err != nil {
 				return err
 			}
-		case "updateEntity":
+		case "updateEntity", "deprecateEntity":
 			if op.Entity == "" {
 				return fmt.Errorf("%w: missing entity", ErrInvalid)
 			}
@@ -147,6 +147,16 @@ func (e *Engine) authorizeChangeSet(ctx context.Context, in domain.ApplyChangeSe
 				continue
 			}
 			if err := e.authorizeEntity(ctx, auth.OpUpdate, op.Entity); err != nil {
+				return err
+			}
+		case "deleteEntity":
+			if op.Entity == "" {
+				return fmt.Errorf("%w: missing entity", ErrInvalid)
+			}
+			if strings.HasPrefix(op.Entity, "$") {
+				continue
+			}
+			if err := e.authorizeEntity(ctx, auth.OpDelete, op.Entity); err != nil {
 				return err
 			}
 		default:

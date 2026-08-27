@@ -14,8 +14,10 @@ import (
 )
 
 var (
-	ErrConflict             = errors.New("revision conflict")
-	ErrIdempotencyConflict  = errors.New("idempotency key reused with different request")
+	ErrConflict            = errors.New("revision conflict")
+	ErrIdempotencyConflict = errors.New("idempotency key reused with different request")
+	ErrNotActive           = errors.New("not active")
+	ErrEntityReferenced    = errors.New("entity is still referenced by active statements")
 )
 
 type idempotencyHit struct {
@@ -138,7 +140,7 @@ func (s *Store) changeSetDomain(cs *changeSetTx, meta domain.WriteMeta) *domain.
 		ID: cs.id, PublicID: cs.publicID, Actor: meta.Actor,
 		OperationType: meta.OperationType, CommittedAt: cs.committed,
 		IdempotencyKey: meta.IdempotencyKey, CorrelationID: meta.CorrelationID,
-		Items: cs.items,
+		Items: cs.items, ItemCount: len(cs.items),
 	}
 }
 

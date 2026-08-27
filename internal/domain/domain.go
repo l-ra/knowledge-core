@@ -140,9 +140,11 @@ type ChangeSet struct {
 	PublicID       string
 	Actor          string
 	OperationType  string
+	Comment        string
 	CommittedAt    time.Time
 	IdempotencyKey string
 	CorrelationID  string
+	ItemCount      int
 	Items          []ChangeSetItem
 }
 
@@ -315,6 +317,8 @@ type Package struct {
 	Lifecycle            PackageLifecycle
 	IRIBase              string
 	Labels               map[string]string
+	Descriptions         map[string]string // read-through from package-root entity
+	RootEntityID         string            // publicId of package-root (= iriBase when set)
 	Dependencies         []PackageDependency
 	LatestReleaseVersion string // highest SemVer release, empty if none
 	ModifiedAfterRelease bool   // live objects differ from LatestReleaseVersion pins
@@ -440,6 +444,7 @@ type CreatePackageInput struct {
 	Lifecycle    PackageLifecycle
 	IRIBase      string
 	Labels       map[string]string
+	Descriptions map[string]string
 	Dependencies []PackageDependency
 }
 

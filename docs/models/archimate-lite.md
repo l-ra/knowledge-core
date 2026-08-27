@@ -63,8 +63,9 @@ Pro modelování konkrétních hloubek a úrovní granularity v Archimate bude v
 | ArchiMate prvek        | Použití                                                |
 | ---------------------- | ------------------------------------------------------ |
 | `BusinessService`      | služba poskytovaná organizaci nebo zákazníkům          |
-| `BusinessActor`        | vlastník, organizace nebo odpovědný útvar              |
+| `BusinessActor`        | vlastník, organizace nebo odpovědný útvar (`actorKind`: department / person / external) |
 | `BusinessRole`         | business owner, system owner, provozní role            |
+| `BusinessFunction`     | stabilní oblast odpovědnosti (za co jednotka odpovídá) |
 | `ApplicationComponent` | systém jako jeden celek                                |
 | `Requirement`          | RTO, RPO, dostupnost nebo jiné závazné požadavky       |
 | `Assessment`           | kritičnost nebo základní hodnocení stavu               |
@@ -84,6 +85,8 @@ Influence
 
 ```text
 BusinessActor --Assignment--> BusinessRole
+BusinessActor --Assignment--> BusinessFunction
+BusinessActor --Composition--> BusinessActor   # útvar → osoba
 BusinessRole --Assignment--> BusinessService
 ApplicationComponent --Realization--> BusinessService
 Requirement --Association--> ApplicationComponent
@@ -93,6 +96,7 @@ Assessment --Influence--> Requirement
 ### Povinné atributy
 
 ```yaml
+actorKind: department | person | external   # povinné na BusinessActor
 owner:
 technical_owner:
 criticality:
@@ -125,6 +129,7 @@ L1 obsahuje vše z L0 a přidává:
 | ArchiMate prvek        | Použití                                      |
 | ---------------------- | -------------------------------------------- |
 | `BusinessProcess`      | klíčový proces podporovaný systémem          |
+| `BusinessFunction`     | oblast odpovědnosti, kterou proces naplňuje  |
 | `ApplicationService`   | funkce/služba poskytovaná aplikací           |
 | `ApplicationInterface` | významné uživatelské nebo systémové rozhraní |
 | `DataObject`           | hlavní business nebo aplikační data          |
@@ -162,10 +167,12 @@ Risk --Influence--> BusinessService
 ### Povinné atributy vazeb
 
 ```yaml
-dependency_type:
+dependency_type: runtime | data | identity | network | build-time | organizational
 dependency_strength: mandatory | optional
 degraded_mode:
 business_impact:
+flowLabel:          # povinné na Flow — „co teče“ (neplést s messageOrObject)
+flowKind: data | event | control | physical
 ```
 
 L1 by měl umět odpovědět:
@@ -397,6 +404,8 @@ Na sítích:
 ```yaml
 vlan_id:
 cidr:
+networkKind: vlan | subnet | wan | dmz | overlay | management | storage | other
+networkRole: production | management | backup | dmz | wan | other
 zone:
 site:
 routing_domain:
@@ -422,7 +431,9 @@ source_zone:
 target_zone:
 protocol:
 port:
-direction:
+direction: inbound | outbound | bidirectional
+flowLabel:   # povinné — business popis „co teče“
+flowKind: data | event | control | physical
 firewall_policy_reference:
 dependency_strength:
 degraded_mode:
@@ -447,6 +458,7 @@ Které VIP, DNS nebo gateway endpointy jsou single point of failure?
 | BusinessRole                |  ✓  |  ✓  |  ✓  |  ✓  |  ✓  |
 | BusinessService             |  ✓  |  ✓  |  ✓  |  ✓  |  ✓  |
 | BusinessProcess             |     |  ✓  |  ✓  |  ✓  |  ✓  |
+| BusinessFunction            |  ✓  |  ✓  |  ✓  |  ✓  |  ✓  |
 | ApplicationComponent        |  ✓  |  ✓  |  ✓  |  ✓  |  ✓  |
 | ApplicationService          |     |  ✓  |  ✓  |  ✓  |  ✓  |
 | ApplicationInterface        |     |  ✓  |  ✓  |  ✓  |  ✓  |
@@ -484,12 +496,43 @@ Důležité je také nevynucovat jednu úroveň pro celý model. Systém může 
 
 ---
 
+# 2.1.0 — organizace, toky a sítě
+
+Additive rozšíření vůči 2.0.0 (bez breaking changes).
+
+### BusinessFunction vs BusinessProcess
+
+`BusinessFunction` je stabilní oblast odpovědnosti („za co útvar odpovídá?“). `BusinessProcess` je průběh („co se děje, když…“). Function se skládá do Process (`Composition`) a realizuje `BusinessService`.
+
+### Actor kind a Association
+
+Každý `BusinessActor` musí mít `actorKind` (`department` / `person` / `external`). Reportní linie mezi osobami je `Association` s `associationKind=reportsTo`, ne `Composition` (ta je pro útvar → osoba). `associationKind=other` vyžaduje `relationshipNote`.
+
+### Flow
+
+Flow není „uses“ ani Serving. Vždy `flowLabel` (business popis toho, co teče). Technický název payloadu patří do `messageOrObject`. `flowKind` rozlišuje data / event / control / physical.
+
+Povolené páry mimo jiné: ApplicationComponent ↔ ApplicationComponent, ApplicationComponent ↔ TechnologyService, Node ↔ Node, CommunicationNetwork ↔ CommunicationNetwork. BusinessProcess → ApplicationComponent/ApplicationService **není** v matici — metodika: Serving, ne Flow (zákaz vynucuje nástroj, ne KC).
+
+Na L3/L4 (`modelingDepth` infrastructure_detail / network_detail) shape `aml-flow-network-detail` varuje bez `protocol`.
+
+### Path vs Flow vs Association (síť)
+
+- **Flow** — co teče (data, replikace) mezi prvky.
+- **Path** — pojmenovaná cesta, která sama o sobě záleží pro dopad (WAN, replication link). Association `spans` spojuje Path se sítí; `memberOf` / `connectedTo` připojuje Node k `CommunicationNetwork`.
+- **Association** — členství, umístění, reportní linie, když neexistuje specifičtější vztah.
+
+`CommunicationNetwork` má od L3+ `networkKind` (vlan vs wan vs dmz…). `zone` používejte konzistentně na síti, Node a na `sourceZone`/`targetZone` Flow.
+
+---
+
 # Mapování do knowledge-core
 
 ArchiMate Lite je **doménový package nad jádrem**, ne součást knowledge-core. Jádro se nemění.
 
 - Foundation: package [`kc-base`](../../models/kc-base/) (`instanceOf`, `usageGuidance`/`usageExamples`, `StringEnum`)
-- Doménový metamodel i tool-policy: package `archimate-lite` (závisí na `kc-base`). Seed: [`catalog.json`](../../models/archimate-lite/catalog.json), bundles [`kc-base-1.0.0`](../../models/kc-base/releases/kc-base-1.0.0.bundle.json) + [`archimate-lite-2.0.0`](../../models/archimate-lite/releases/archimate-lite-2.0.0.bundle.json), API load [`load.py`](../../models/archimate-lite/load.py)
+- Doménový metamodel i tool-policy: package `archimate-lite` (závisí na `kc-base`). Seed: [`catalog.json`](../../models/archimate-lite/catalog.json), bundles [`kc-base-1.1.0`](../../models/kc-base/releases/kc-base-1.1.0.bundle.json) + [`archimate-lite-2.2.0`](../../models/archimate-lite/releases/archimate-lite-2.2.0.bundle.json), API load [`load.py`](../../models/archimate-lite/load.py)
+- Demo instance (Compliance + síť): [`archimate-lite-demo`](../../models/archimate-lite-demo/)
 - Po loadu/importu čte tool **jen KC** (třídy, properties, tvary, anotace `archiLayer`/`overlay`/`exchangeType`/`usageGuidance`/`usageExamples`, instance `AllowedRelationship` / enumů / `ExchangeSpec`)
 - Prvek, vazba i view = entita s `instanceOf` (z `kc-base`) na třídu z package (public ID = IRI)
 - Vazba je **vlastní entita** (`relSource` / `relTarget`), ne predikát mezi dvěma prvky

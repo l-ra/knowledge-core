@@ -13,9 +13,9 @@ import (
 type Kind string
 
 const (
-	KindAdditive  Kind = "additive"
-	KindMetadata  Kind = "metadata"
-	KindBreaking  Kind = "breaking"
+	KindAdditive Kind = "additive"
+	KindMetadata Kind = "metadata"
+	KindBreaking Kind = "breaking"
 )
 
 // Reason codes for structured API findings.
@@ -37,11 +37,11 @@ const (
 )
 
 type Finding struct {
-	Kind            Kind   `json:"kind"`
-	ReasonCode      string `json:"reasonCode"`
-	ObjectType      string `json:"objectType"`
-	ObjectPublicID  string `json:"objectPublicId"`
-	Detail          string `json:"detail,omitempty"`
+	Kind           Kind   `json:"kind"`
+	ReasonCode     string `json:"reasonCode"`
+	ObjectType     string `json:"objectType"`
+	ObjectPublicID string `json:"objectPublicId"`
+	Detail         string `json:"detail,omitempty"`
 }
 
 func (f Finding) String() string {
@@ -87,6 +87,53 @@ func SnapshotFromBundle(b domain.Bundle) Snapshot {
 	return s
 }
 
+// FilterByPackage keeps objects that belong to packageCode. Used so a fat
+// release export (dependency closure) can be compared against a thin package
+// bundle without treating dependency objects as removals.
+func FilterByPackage(s Snapshot, packageCode string) Snapshot {
+	if packageCode == "" {
+		return s
+	}
+	keep := func(code string) bool {
+		return code == "" || code == packageCode
+	}
+	out := Snapshot{
+		Package:    s.Package,
+		Version:    s.Version,
+		Entities:   map[string]domain.BundleEntity{},
+		Properties: map[string]domain.BundleProperty{},
+		Classes:    map[string]domain.BundleClass{},
+		Shapes:     map[string]domain.BundleShape{},
+		Statements: map[string]domain.BundleStatement{},
+	}
+	for id, e := range s.Entities {
+		if keep(e.PackageCode) {
+			out.Entities[id] = e
+		}
+	}
+	for id, p := range s.Properties {
+		if keep(p.PackageCode) {
+			out.Properties[id] = p
+		}
+	}
+	for id, c := range s.Classes {
+		if keep(c.PackageCode) {
+			out.Classes[id] = c
+		}
+	}
+	for id, sh := range s.Shapes {
+		if keep(sh.PackageCode) {
+			out.Shapes[id] = sh
+		}
+	}
+	for id, st := range s.Statements {
+		if keep(st.PackageCode) {
+			out.Statements[id] = st
+		}
+	}
+	return out
+}
+
 func HasBreaking(findings []Finding) bool {
 	for _, f := range findings {
 		if f.Kind == KindBreaking {
@@ -112,7 +159,9 @@ func Diff(old, new Snapshot) []Finding {
 
 	diffMaps(
 		keys(old.Classes), keys(new.Classes), "class",
-		func(id string) { out = append(out, Finding{Kind: KindAdditive, ReasonCode: ReasonObjectAdded, ObjectType: "class", ObjectPublicID: id}) },
+		func(id string) {
+			out = append(out, Finding{Kind: KindAdditive, ReasonCode: ReasonObjectAdded, ObjectType: "class", ObjectPublicID: id})
+		},
 		func(id string) {
 			out = append(out, Finding{Kind: KindBreaking, ReasonCode: ReasonObjectRemoved, ObjectType: "class", ObjectPublicID: id, Detail: "class absent in new snapshot"})
 		},
@@ -120,7 +169,9 @@ func Diff(old, new Snapshot) []Finding {
 	)
 	diffMaps(
 		keys(old.Properties), keys(new.Properties), "property",
-		func(id string) { out = append(out, Finding{Kind: KindAdditive, ReasonCode: ReasonObjectAdded, ObjectType: "property", ObjectPublicID: id}) },
+		func(id string) {
+			out = append(out, Finding{Kind: KindAdditive, ReasonCode: ReasonObjectAdded, ObjectType: "property", ObjectPublicID: id})
+		},
 		func(id string) {
 			out = append(out, Finding{Kind: KindBreaking, ReasonCode: ReasonObjectRemoved, ObjectType: "property", ObjectPublicID: id, Detail: "property absent in new snapshot"})
 		},
@@ -128,7 +179,9 @@ func Diff(old, new Snapshot) []Finding {
 	)
 	diffMaps(
 		keys(old.Entities), keys(new.Entities), "entity",
-		func(id string) { out = append(out, Finding{Kind: KindAdditive, ReasonCode: ReasonObjectAdded, ObjectType: "entity", ObjectPublicID: id}) },
+		func(id string) {
+			out = append(out, Finding{Kind: KindAdditive, ReasonCode: ReasonObjectAdded, ObjectType: "entity", ObjectPublicID: id})
+		},
 		func(id string) {
 			out = append(out, Finding{Kind: KindBreaking, ReasonCode: ReasonObjectRemoved, ObjectType: "entity", ObjectPublicID: id, Detail: "entity absent in new snapshot"})
 		},
@@ -136,7 +189,9 @@ func Diff(old, new Snapshot) []Finding {
 	)
 	diffMaps(
 		keys(old.Shapes), keys(new.Shapes), "shape",
-		func(id string) { out = append(out, Finding{Kind: KindAdditive, ReasonCode: ReasonObjectAdded, ObjectType: "shape", ObjectPublicID: id}) },
+		func(id string) {
+			out = append(out, Finding{Kind: KindAdditive, ReasonCode: ReasonObjectAdded, ObjectType: "shape", ObjectPublicID: id})
+		},
 		func(id string) {
 			out = append(out, Finding{Kind: KindBreaking, ReasonCode: ReasonObjectRemoved, ObjectType: "shape", ObjectPublicID: id, Detail: "shape absent in new snapshot"})
 		},
@@ -144,11 +199,15 @@ func Diff(old, new Snapshot) []Finding {
 	)
 	diffMaps(
 		keys(old.Statements), keys(new.Statements), "statement",
-		func(id string) { out = append(out, Finding{Kind: KindAdditive, ReasonCode: ReasonObjectAdded, ObjectType: "statement", ObjectPublicID: id}) },
+		func(id string) {
+			out = append(out, Finding{Kind: KindAdditive, ReasonCode: ReasonObjectAdded, ObjectType: "statement", ObjectPublicID: id})
+		},
 		func(id string) {
 			out = append(out, Finding{Kind: KindBreaking, ReasonCode: ReasonObjectRemoved, ObjectType: "statement", ObjectPublicID: id, Detail: "statement absent in new snapshot"})
 		},
-		func(id string) { out = append(out, diffStatement(old.Statements[id], new.Statements[id], new.Properties)...) },
+		func(id string) {
+			out = append(out, diffStatement(old.Statements[id], new.Statements[id], new.Properties)...)
+		},
 	)
 
 	sort.SliceStable(out, func(i, j int) bool {

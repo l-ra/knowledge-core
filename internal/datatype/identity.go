@@ -104,6 +104,9 @@ func NewFallbackIRILocal(prefix string) string {
 }
 
 func PackageDisplayID(packageCode, iriLocal, publicID string) string {
+	if packageCode != "" && IsPackageRootIRILocal(iriLocal) {
+		return packageCode
+	}
 	if packageCode != "" && iriLocal != "" {
 		return packageCode + ":" + iriLocal
 	}

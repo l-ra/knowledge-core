@@ -498,6 +498,69 @@ func TestAcceptanceA7A8A9(t *testing.T) {
 	if cs1.ChangeSet.ID == "" || cs1.ChangeSet.ID != cs2.ChangeSet.ID {
 		t.Fatalf("A9: expected same changeSet id, got %q and %q", cs1.ChangeSet.ID, cs2.ChangeSet.ID)
 	}
+
+	list := doJSON(t, h, http.MethodGet, "/v1/changesets?limit=50", nil, adminHeaders())
+	if list.StatusCode != http.StatusOK {
+		t.Fatalf("list changesets: %d %s", list.StatusCode, list.Body)
+	}
+	var listed struct {
+		Items []struct {
+			ID            string `json:"id"`
+			Actor         string `json:"actor"`
+			OperationType string `json:"operationType"`
+			ItemCount     int    `json:"itemCount"`
+		} `json:"items"`
+		NextCursor string `json:"nextCursor"`
+	}
+	_ = json.Unmarshal([]byte(list.Body), &listed)
+	if len(listed.Items) == 0 {
+		t.Fatal("list changesets: expected at least one item")
+	}
+	found := false
+	for _, it := range listed.Items {
+		if it.ID == cs1.ChangeSet.ID {
+			found = true
+			if it.ItemCount < 1 {
+				t.Fatalf("list item expected itemCount>=1: %+v", it)
+			}
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("list changesets: expected %s in results, got %+v", cs1.ChangeSet.ID, listed.Items)
+	}
+	detail := doJSON(t, h, http.MethodGet, "/v1/changesets/"+cs1.ChangeSet.ID, nil, adminHeaders())
+	if detail.StatusCode != http.StatusOK {
+		t.Fatalf("get changeset: %d %s", detail.StatusCode, detail.Body)
+	}
+	var det struct {
+		ID    string `json:"id"`
+		Items []any  `json:"items"`
+	}
+	_ = json.Unmarshal([]byte(detail.Body), &det)
+	if det.ID != cs1.ChangeSet.ID || len(det.Items) == 0 {
+		t.Fatalf("get changeset detail: %+v", det)
+	}
+	objFilter := doJSON(t, h, http.MethodGet, "/v1/changesets?objectId="+url.QueryEscape(s1)+"&limit=10", nil, adminHeaders())
+	if objFilter.StatusCode != http.StatusOK {
+		t.Fatalf("list by objectId: %d %s", objFilter.StatusCode, objFilter.Body)
+	}
+	var byObj struct {
+		Items []struct {
+			ID string `json:"id"`
+		} `json:"items"`
+	}
+	_ = json.Unmarshal([]byte(objFilter.Body), &byObj)
+	foundObj := false
+	for _, it := range byObj.Items {
+		if it.ID == cs1.ChangeSet.ID {
+			foundObj = true
+			break
+		}
+	}
+	if !foundObj {
+		t.Fatalf("list by objectId=%s: expected %s, got %+v", s1, cs1.ChangeSet.ID, byObj.Items)
+	}
 }
 
 func TestAcceptanceA10(t *testing.T) {
@@ -1096,6 +1159,112 @@ func TestAcceptanceIRIFirstIdentityBundle(t *testing.T) {
 	got := doJSON(t, h, http.MethodGet, entityPath(qid, ""), nil, nil)
 	if got.StatusCode != http.StatusOK {
 		t.Fatalf("get entity by iri: %d %s", got.StatusCode, got.Body)
+	}
+}
+
+func TestAcceptanceEntityLifecycleDeprecateDelete(t *testing.T) {
+	h := setupTestHandler(t)
+
+	lonely := createEntity(t, h, "Lifecycle Lonely")
+	dep := doJSON(t, h, http.MethodPost, entityPath(lonely, "/deprecate"), map[string]any{"expectedRevision": 1}, nil)
+	if dep.StatusCode != http.StatusOK {
+		t.Fatalf("deprecate: %d %s", dep.StatusCode, dep.Body)
+	}
+	got := doJSON(t, h, http.MethodGet, entityPath(lonely, ""), nil, nil)
+	if got.StatusCode != http.StatusOK {
+		t.Fatalf("deprecated entity GET: %d %s", got.StatusCode, got.Body)
+	}
+	var ent struct {
+		Status     string `json:"status"`
+		RevisionNo int    `json:"revisionNo"`
+	}
+	if err := json.Unmarshal([]byte(got.Body), &ent); err != nil {
+		t.Fatal(err)
+	}
+	if ent.Status != "deprecated" || ent.RevisionNo != 2 {
+		t.Fatalf("expected deprecated rev 2, got %+v", ent)
+	}
+	again := doJSON(t, h, http.MethodPost, entityPath(lonely, "/deprecate"), map[string]any{"expectedRevision": 2}, nil)
+	if again.StatusCode != http.StatusConflict {
+		t.Fatalf("re-deprecate want 409, got %d %s", again.StatusCode, again.Body)
+	}
+	listed := doJSON(t, h, http.MethodGet, "/v1/entities?q="+url.QueryEscape("Lifecycle Lonely"), nil, nil)
+	if listed.StatusCode != http.StatusOK || !strings.Contains(listed.Body, lonely) {
+		t.Fatalf("deprecated entity should remain listed: %d %s", listed.StatusCode, listed.Body)
+	}
+
+	del := doJSON(t, h, http.MethodPost, entityPath(lonely, "/delete"), map[string]any{"expectedRevision": 2}, nil)
+	if del.StatusCode != http.StatusOK {
+		t.Fatalf("delete: %d %s", del.StatusCode, del.Body)
+	}
+	gone := doJSON(t, h, http.MethodGet, entityPath(lonely, ""), nil, nil)
+	if gone.StatusCode != http.StatusNotFound {
+		t.Fatalf("deleted entity GET want 404, got %d %s", gone.StatusCode, gone.Body)
+	}
+	hidden := doJSON(t, h, http.MethodGet, "/v1/entities?q="+url.QueryEscape("Lifecycle Lonely"), nil, nil)
+	if hidden.StatusCode != http.StatusOK || strings.Contains(hidden.Body, lonely) {
+		t.Fatalf("deleted entity should not be listed: %d %s", hidden.StatusCode, hidden.Body)
+	}
+	hist := doJSON(t, h, http.MethodGet, entityPath(lonely, "/history"), nil, nil)
+	if hist.StatusCode != http.StatusOK || !strings.Contains(hist.Body, `"deleted"`) {
+		t.Fatalf("history should keep deleted revision: %d %s", hist.StatusCode, hist.Body)
+	}
+
+	subject := createEntity(t, h, "Lifecycle Subject")
+	target := createEntity(t, h, "Lifecycle Target")
+	pid := doJSON(t, h, http.MethodPost, "/v1/properties", map[string]any{
+		"packageCode": "test", "datatype": "EntityReference",
+		"labels": map[string]string{"en": "Lifecycle Rel"},
+	}, nil)
+	if pid.StatusCode != http.StatusCreated {
+		t.Fatalf("create rel property: %d %s", pid.StatusCode, pid.Body)
+	}
+	relPID := parseDataID(t, pid.Body)
+	out := doJSON(t, h, http.MethodPost, "/v1/statements", map[string]any{
+		"packageCode": "test", "subject": subject, "property": relPID,
+		"value": map[string]any{"type": "EntityReference", "entityId": target},
+	}, nil)
+	if out.StatusCode != http.StatusCreated {
+		t.Fatalf("incoming statement: %d %s", out.StatusCode, out.Body)
+	}
+	inSID := parseDataID(t, out.Body)
+
+	blocked := doJSON(t, h, http.MethodPost, entityPath(target, "/delete"), map[string]any{"expectedRevision": 1}, nil)
+	if blocked.StatusCode != http.StatusConflict {
+		t.Fatalf("delete referenced entity want 409, got %d %s", blocked.StatusCode, blocked.Body)
+	}
+
+	depSt := doJSON(t, h, http.MethodPost, statementPath(inSID, "/deprecate"), map[string]any{"expectedRevision": 1}, nil)
+	if depSt.StatusCode != http.StatusOK {
+		t.Fatalf("deprecate incoming: %d %s", depSt.StatusCode, depSt.Body)
+	}
+	stGone := doJSON(t, h, http.MethodGet, "/v1/statements?subject="+url.QueryEscape(subject), nil, nil)
+	if stGone.StatusCode != http.StatusOK || strings.Contains(stGone.Body, inSID) {
+		t.Fatalf("deprecated statement should not list: %d %s", stGone.StatusCode, stGone.Body)
+	}
+
+	okDel := doJSON(t, h, http.MethodPost, entityPath(target, "/delete"), map[string]any{"expectedRevision": 1}, nil)
+	if okDel.StatusCode != http.StatusOK {
+		t.Fatalf("delete after incoming deprecated: %d %s", okDel.StatusCode, okDel.Body)
+	}
+
+	withOut := createEntity(t, h, "Lifecycle With Outgoing")
+	namePID := createProperty(t, h, "Lifecycle Name")
+	outName := createStatement(t, h, withOut, namePID, "hello")
+	cs := doJSON(t, h, http.MethodPost, "/v1/changesets", map[string]any{
+		"operations": []map[string]any{
+			{"op": "deleteEntity", "entity": withOut, "expectedRevision": 1},
+		},
+	}, nil)
+	if cs.StatusCode != http.StatusOK && cs.StatusCode != http.StatusCreated {
+		t.Fatalf("changeset deleteEntity: %d %s", cs.StatusCode, cs.Body)
+	}
+	if got := doJSON(t, h, http.MethodGet, entityPath(withOut, ""), nil, nil); got.StatusCode != http.StatusNotFound {
+		t.Fatalf("changeset-deleted entity want 404, got %d %s", got.StatusCode, got.Body)
+	}
+	st := doJSON(t, h, http.MethodGet, statementPath(outName, ""), nil, nil)
+	if st.StatusCode != http.StatusOK || !strings.Contains(st.Body, `"deprecated"`) {
+		t.Fatalf("outgoing statement should be deprecated: %d %s", st.StatusCode, st.Body)
 	}
 }
 
@@ -2105,5 +2274,107 @@ func TestAcceptanceClassInReleaseAndDraft(t *testing.T) {
 	_ = json.Unmarshal([]byte(ents.Body), &list)
 	if len(list.Items) == 0 {
 		t.Fatal("expected drafted entity after commit")
+	}
+}
+
+func TestAcceptancePackageRoot(t *testing.T) {
+	h := setupTestHandler(t)
+	const base = "https://example.org/root-pkg/"
+
+	create := doJSON(t, h, http.MethodPost, "/v1/packages", map[string]any{
+		"code": "root-pkg", "lifecycle": "continuous", "iriBase": base,
+		"labels":       map[string]string{"en": "Root Pkg"},
+		"descriptions": map[string]string{"en": "Package description on root"},
+	}, nil)
+	if create.StatusCode != http.StatusCreated {
+		t.Fatalf("create package: %d %s", create.StatusCode, create.Body)
+	}
+	if !strings.Contains(create.Body, `"rootEntityId":"`+base+`"`) {
+		t.Fatalf("expected rootEntityId in create response: %s", create.Body)
+	}
+	if !strings.Contains(create.Body, `"Package description on root"`) {
+		t.Fatalf("expected descriptions in create response: %s", create.Body)
+	}
+
+	ent := doJSON(t, h, http.MethodGet, "/v1/entities/"+url.PathEscape(base), nil, nil)
+	if ent.StatusCode != http.StatusOK {
+		t.Fatalf("get root entity: %d %s", ent.StatusCode, ent.Body)
+	}
+	if !strings.Contains(ent.Body, `".package"`) || !strings.Contains(ent.Body, `"Package description on root"`) {
+		t.Fatalf("root entity payload: %s", ent.Body)
+	}
+
+	// Reserved iriLocal must be rejected for normal creates.
+	bad := doJSON(t, h, http.MethodPost, "/v1/entities", map[string]any{
+		"packageCode": "root-pkg",
+		"labels":      map[string]string{"en": "Bad"},
+		"iriLocal":    ".package",
+	}, nil)
+	if bad.StatusCode == http.StatusCreated {
+		t.Fatalf("expected reject reserved iriLocal, got %d %s", bad.StatusCode, bad.Body)
+	}
+
+	dep := doJSON(t, h, http.MethodPost, "/v1/entities/"+url.PathEscape(base)+"/deprecate", map[string]any{
+		"expectedRevision": 1,
+	}, nil)
+	if dep.StatusCode != http.StatusConflict {
+		t.Fatalf("deprecate package root: want 409, got %d %s", dep.StatusCode, dep.Body)
+	}
+
+	// After kc-base vocabulary, typing + packageCode appear.
+	root := filepath.Join("..", "..", "..")
+	raw, err := os.ReadFile(filepath.Join(root, "models/kc-base/releases/kc-base-1.1.0.bundle.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var bundle map[string]any
+	if err := json.Unmarshal(raw, &bundle); err != nil {
+		t.Fatal(err)
+	}
+	imp := doJSON(t, h, http.MethodPost, "/v1/releases/import", bundle, nil)
+	if imp.StatusCode != http.StatusCreated {
+		t.Fatalf("import kc-base: %d %s", imp.StatusCode, imp.Body)
+	}
+	cfg := doJSON(t, h, http.MethodPut, "/v1/admin/schema-config", map[string]any{
+		"instanceOfProperty": "https://knowledge-core.local/kc-base/instanceOf",
+	}, nil)
+	if cfg.StatusCode != http.StatusOK {
+		t.Fatalf("schema-config: %d %s", cfg.StatusCode, cfg.Body)
+	}
+	stIO := doJSON(t, h, http.MethodPost, "/v1/statements", map[string]any{
+		"packageCode": "root-pkg", "subject": base,
+		"property": "https://knowledge-core.local/kc-base/instanceOf",
+		"value":    map[string]any{"type": "EntityReference", "entityId": "https://knowledge-core.local/kc-base/Package"},
+		"upsert":   true,
+	}, nil)
+	if stIO.StatusCode != http.StatusCreated && stIO.StatusCode != http.StatusOK {
+		t.Fatalf("instanceOf: %d %s", stIO.StatusCode, stIO.Body)
+	}
+	stCode := doJSON(t, h, http.MethodPost, "/v1/statements", map[string]any{
+		"packageCode": "root-pkg", "subject": base,
+		"property": "https://knowledge-core.local/kc-base/packageCode",
+		"value":    map[string]any{"type": "String", "string": "root-pkg"},
+		"upsert":   true,
+	}, nil)
+	if stCode.StatusCode != http.StatusCreated && stCode.StatusCode != http.StatusOK {
+		t.Fatalf("packageCode: %d %s", stCode.StatusCode, stCode.Body)
+	}
+	codeID := parseDataID(t, stCode.Body)
+	blocked := doJSON(t, h, http.MethodPost, "/v1/statements/"+url.PathEscape(codeID)+"/deprecate", map[string]any{
+		"expectedRevision": 1,
+	}, nil)
+	if blocked.StatusCode != http.StatusConflict {
+		t.Fatalf("deprecate packageCode: want 409, got %d %s", blocked.StatusCode, blocked.Body)
+	}
+
+	patchLabels := doJSON(t, h, http.MethodPatch, "/v1/packages/root-pkg", map[string]any{
+		"labels": map[string]string{"en": "Root Renamed"},
+	}, nil)
+	if patchLabels.StatusCode != http.StatusOK {
+		t.Fatalf("patch labels: %d %s", patchLabels.StatusCode, patchLabels.Body)
+	}
+	ent2 := doJSON(t, h, http.MethodGet, "/v1/entities/"+url.PathEscape(base), nil, nil)
+	if !strings.Contains(ent2.Body, `"Root Renamed"`) {
+		t.Fatalf("root labels not synced: %s", ent2.Body)
 	}
 }

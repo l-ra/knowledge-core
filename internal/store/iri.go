@@ -147,7 +147,11 @@ func (s *Store) SetEntityIRIAliases(ctx context.Context, publicID string, aliase
 	defer tx.Rollback(ctx)
 
 	var entityID interface{}
-	if err := tx.QueryRow(ctx, `SELECT id FROM entity WHERE public_id = $1`, publicID).Scan(&entityID); err != nil {
+	var status string
+	if err := tx.QueryRow(ctx, `SELECT id, status FROM entity WHERE public_id = $1`, publicID).Scan(&entityID, &status); err != nil {
+		return err
+	}
+	if err := errIfEntityDeleted(status); err != nil {
 		return err
 	}
 	if _, err := tx.Exec(ctx, `DELETE FROM entity_iri_alias WHERE entity_id = $1`, entityID); err != nil {

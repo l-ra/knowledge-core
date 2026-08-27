@@ -53,6 +53,9 @@ func (e *Engine) GetEntity(ctx context.Context, qid string) (*domain.Entity, err
 	if err != nil {
 		return nil, mapErr(err)
 	}
+	if ent.Status == domain.EntityDeleted {
+		return nil, ErrNotFound
+	}
 	classes, err := e.store.EntityEffectiveClasses(ctx, qid)
 	if err != nil {
 		return nil, mapErr(err)
@@ -69,6 +72,34 @@ func (e *Engine) UpdateEntity(ctx context.Context, meta domain.WriteMeta, qid st
 		return nil, err
 	}
 	res, err := e.store.UpdateEntity(ctx, meta, qid, in)
+	if err != nil {
+		return nil, mapErr(err)
+	}
+	return res, nil
+}
+
+func (e *Engine) DeprecateEntity(ctx context.Context, meta domain.WriteMeta, qid string, expectedRevision int) (*domain.WriteResult[domain.Entity], error) {
+	if _, _, err := datatype.ParsePublicGraphID(qid); err != nil {
+		return nil, fmt.Errorf("%w: %v", ErrInvalid, err)
+	}
+	if err := e.authorizeEntity(ctx, auth.OpUpdate, qid); err != nil {
+		return nil, err
+	}
+	res, err := e.store.DeprecateEntity(ctx, meta, qid, expectedRevision)
+	if err != nil {
+		return nil, mapErr(err)
+	}
+	return res, nil
+}
+
+func (e *Engine) DeleteEntity(ctx context.Context, meta domain.WriteMeta, qid string, expectedRevision int) (*domain.WriteResult[domain.Entity], error) {
+	if _, _, err := datatype.ParsePublicGraphID(qid); err != nil {
+		return nil, fmt.Errorf("%w: %v", ErrInvalid, err)
+	}
+	if err := e.authorizeEntity(ctx, auth.OpDelete, qid); err != nil {
+		return nil, err
+	}
+	res, err := e.store.DeleteEntity(ctx, meta, qid, expectedRevision)
 	if err != nil {
 		return nil, mapErr(err)
 	}
@@ -235,8 +266,8 @@ func (e *Engine) GetStatement(ctx context.Context, sid string) (*domain.Statemen
 }
 
 func (e *Engine) ListEntityStatements(ctx context.Context, qid, propertyPID string) ([]domain.Statement, error) {
-	if _, _, err := datatype.ParsePublicGraphID(qid); err != nil {
-		return nil, fmt.Errorf("%w: %v", ErrInvalid, err)
+	if _, err := e.GetEntity(ctx, qid); err != nil {
+		return nil, err
 	}
 	list, err := e.store.ListStatementsBySubject(ctx, qid, propertyPID)
 	if err != nil {
@@ -327,6 +358,17 @@ func (e *Engine) GetChangeSet(ctx context.Context, cid string) (*domain.ChangeSe
 	return cs, nil
 }
 
+func (e *Engine) ListChangeSets(ctx context.Context, opt store.ChangeSetListOptions) ([]domain.ChangeSet, string, error) {
+	if err := e.authorizeGlobal(ctx, auth.OpRead); err != nil {
+		return nil, "", err
+	}
+	items, next, err := e.store.ListChangeSets(ctx, opt)
+	if err != nil {
+		return nil, "", mapErr(err)
+	}
+	return items, next, nil
+}
+
 func (e *Engine) GetEntityHistory(ctx context.Context, qid string) ([]domain.EntityRevision, error) {
 	if _, _, err := datatype.ParsePublicGraphID(qid); err != nil {
 		return nil, fmt.Errorf("%w: %v", ErrInvalid, err)
@@ -414,8 +456,17 @@ func mapErr(err error) error {
 	if errors.Is(err, pgx.ErrNoRows) {
 		return ErrNotFound
 	}
+	if errors.Is(err, store.ErrInvalidCursor) {
+		return fmt.Errorf("%w: %v", ErrInvalid, err)
+	}
 	if errors.Is(err, store.ErrConflict) {
 		return ErrConflict
+	}
+	if errors.Is(err, store.ErrNotActive) || errors.Is(err, store.ErrEntityReferenced) {
+		return fmt.Errorf("%w: %v", ErrConflict, err)
+	}
+	if errors.Is(err, store.ErrPackageRootProtected) || errors.Is(err, store.ErrManagedPackageCode) {
+		return fmt.Errorf("%w: %v", ErrConflict, err)
 	}
 	if errors.Is(err, store.ErrIdempotencyConflict) {
 		return ErrIdempotencyConflict

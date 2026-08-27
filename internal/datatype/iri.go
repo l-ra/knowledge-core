@@ -6,6 +6,15 @@ import (
 	"strings"
 )
 
+// PackageRootIRILocal is the reserved iri_local for the package-root entity.
+// Canonical public IRI of that entity is the package iriBase itself (not iriBase+local).
+const PackageRootIRILocal = ".package"
+
+// IsPackageRootIRILocal reports whether iriLocal is the reserved package-root sentinel.
+func IsPackageRootIRILocal(iriLocal string) bool {
+	return strings.TrimSpace(iriLocal) == PackageRootIRILocal
+}
+
 // NormalizeIRIBase validates an absolute http(s) IRI base ending with "/" or "#".
 // Empty string is allowed (means fallback to platform default namespace).
 func NormalizeIRIBase(raw string) (string, error) {
@@ -50,7 +59,11 @@ func NormalizeIRILocal(raw string) (string, error) {
 }
 
 // ResolveIRI builds canonical export IRI from package base + local (or publicID fallback).
+// Package-root entities (iriLocal == PackageRootIRILocal) resolve to iriBase itself.
 func ResolveIRI(iriBase, iriLocal, publicID, fallbackNS string) string {
+	if IsPackageRootIRILocal(iriLocal) && strings.TrimSpace(iriBase) != "" {
+		return strings.TrimSpace(iriBase)
+	}
 	local := iriLocal
 	if local == "" {
 		local = publicID

@@ -99,3 +99,4 @@ Beze změny konceptu: `change_set`, `entity_revision`, `statement_revision`. Pro
 | `00012` | user ChangeSet draft |
 | `00013` | IRI mapping / aliases |
 | `00014` | incoming index; `shape_profile.package_id` |
+| `00015` | ChangeSet list indexes |

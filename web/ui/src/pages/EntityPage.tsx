@@ -1,5 +1,5 @@
 import { FormEvent, useEffect, useMemo, useState } from "react";
-import { Link, useLocation, useParams, useSearchParams } from "react-router-dom";
+import { Link, useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { apiFetch } from "../api";
 import { pickLabel } from "../labels";
@@ -56,6 +56,7 @@ export function EntityPage() {
   })();
   const { t, i18n } = useTranslation();
   const location = useLocation();
+  const nav = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const { packageCode } = usePackage();
   const { isOpen, runWrite } = useChangeSetDraft();
@@ -213,6 +214,7 @@ export function EntityPage() {
 
   const packageMismatch =
     !!entity?.packageCode && !!packageCode && entity.packageCode !== packageCode;
+  const canMutate = !!packageCode && entity?.status !== "deleted";
 
   async function saveLabels(e: FormEvent) {
     e.preventDefault();
@@ -387,6 +389,87 @@ export function EntityPage() {
     }
   }
 
+  async function deprecateStatement(st: Statement) {
+    if (!window.confirm(t("entity.deprecateStatementConfirm"))) return;
+    setInfo("");
+    try {
+      await runWrite(
+        async () => {
+          await apiFetch(`/v1/statements/${encodeURIComponent(st.id)}/deprecate`, {
+            method: "POST",
+            body: JSON.stringify({ expectedRevision: st.revisionNo }),
+          });
+          await reload();
+          await loadStatements(true);
+        },
+        {
+          op: "deprecateStatement",
+          statement: st.id,
+          expectedRevision: st.revisionNo,
+        },
+      );
+      if (isOpen) {
+        setInfo(t("changeset.queued"));
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : t("common.error"));
+    }
+  }
+
+  async function deprecateEntity() {
+    if (!entity) return;
+    if (!window.confirm(t("entity.deprecateConfirm"))) return;
+    setInfo("");
+    try {
+      await runWrite(
+        async () => {
+          await apiFetch(`/v1/entities/${encodeURIComponent(qid)}/deprecate`, {
+            method: "POST",
+            body: JSON.stringify({ expectedRevision: entity.revisionNo }),
+          });
+          await reload();
+        },
+        {
+          op: "deprecateEntity",
+          entity: qid,
+          expectedRevision: entity.revisionNo,
+        },
+      );
+      if (isOpen) {
+        setInfo(t("changeset.queued"));
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : t("common.error"));
+    }
+  }
+
+  async function deleteEntity() {
+    if (!entity) return;
+    if (!window.confirm(t("entity.deleteConfirm"))) return;
+    setInfo("");
+    try {
+      await runWrite(
+        async () => {
+          await apiFetch(`/v1/entities/${encodeURIComponent(qid)}/delete`, {
+            method: "POST",
+            body: JSON.stringify({ expectedRevision: entity.revisionNo }),
+          });
+          nav("/entities");
+        },
+        {
+          op: "deleteEntity",
+          entity: qid,
+          expectedRevision: entity.revisionNo,
+        },
+      );
+      if (isOpen) {
+        setInfo(t("changeset.queued"));
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : t("common.error"));
+    }
+  }
+
   function renderValue(v: ApiValue) {
     if (v?.type === "EntityReference" && v.entityId) {
       const id = String(v.entityId);
@@ -547,13 +630,13 @@ export function EntityPage() {
             )}
           </div>
           <div className="row">
-            <button type="button" disabled={!packageCode} onClick={() => { setTab("detail"); setMode("editLabels"); }}>
+            <button type="button" disabled={!canMutate} onClick={() => { setTab("detail"); setMode("editLabels"); }}>
               {t("entity.editLabels")}
             </button>
             <button
               type="button"
               className="primary"
-              disabled={!packageCode}
+              disabled={!canMutate}
               onClick={() => {
                 setTab("statements");
                 setMode("addStatement");
@@ -562,6 +645,16 @@ export function EntityPage() {
             >
               {t("entity.addStatement")}
             </button>
+            {entity?.status === "active" && (
+              <button type="button" disabled={!canMutate} onClick={() => void deprecateEntity()}>
+                {t("entity.deprecate")}
+              </button>
+            )}
+            {(entity?.status === "active" || entity?.status === "deprecated") && (
+              <button type="button" className="danger" disabled={!canMutate} onClick={() => void deleteEntity()}>
+                {t("entity.delete")}
+              </button>
+            )}
           </div>
         </div>
       </header>
@@ -581,6 +674,7 @@ export function EntityPage() {
 
       {info && <p className="muted">{info}</p>}
       {error && <p className="error">{error}</p>}
+      {entity?.status === "deprecated" && <p className="muted">{t("entity.deprecatedBanner")}</p>}
       {validationMsg.length > 0 && (
         <div className="panel stack validation-panel">
           <h3>{t("validation.afterSave")}</h3>
@@ -917,17 +1011,27 @@ export function EntityPage() {
                               <span className="statement-meta muted">
                                 <Link to={`/statements/${encodeURIComponent(st.id)}`}>{st.id}</Link> · rev {st.revisionNo}
                               </span>
-                              <button
-                                type="button"
-                                className="statement-revise-button"
-                                disabled={!packageCode}
-                                onClick={() => {
-                                  setMode(`revise:${st.id}`);
-                                  setReviseVal(valueFromApi(p?.datatype || "String", st.value));
-                                }}
-                              >
-                                {t("entity.revise")}
-                              </button>
+                              <div className="statement-actions">
+                                <button
+                                  type="button"
+                                  className="statement-revise-button"
+                                  disabled={!canMutate}
+                                  onClick={() => {
+                                    setMode(`revise:${st.id}`);
+                                    setReviseVal(valueFromApi(p?.datatype || "String", st.value));
+                                  }}
+                                >
+                                  {t("entity.revise")}
+                                </button>
+                                <button
+                                  type="button"
+                                  className="statement-revise-button danger"
+                                  disabled={!canMutate}
+                                  onClick={() => void deprecateStatement(st)}
+                                >
+                                  {t("entity.deprecateStatement")}
+                                </button>
+                              </div>
                             </div>
                             {((st.qualifiers?.length || 0) > 0 || (st.referenceIds?.length || 0) > 0 || st.validFrom || st.validTo) && (
                               <details className="advanced">

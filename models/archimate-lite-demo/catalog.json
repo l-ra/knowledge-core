@@ -1,0 +1,270 @@
+{
+  "version": "1.0.0",
+  "package": {
+    "code": "archimate-lite-demo",
+    "lifecycle": "continuous",
+    "iriBase": "https://knowledge-core.local/archimate-lite-demo/",
+    "labels": {
+      "en": "ArchiMate Lite 2.2.0 demo",
+      "cs": "ArchiMate Lite 2.2.0 demo"
+    },
+    "descriptions": {
+      "en": "Compliance + network acceptance instance against archimate-lite 2.2.0. Not part of the metamodel.",
+      "cs": "Akceptační instance Compliance + síť proti archimate-lite 2.2.0. Není součástí metamodelu."
+    },
+    "dependencies": [
+      {
+        "dependsOnCode": "archimate-lite",
+        "versionRange": "^2.2.0",
+        "releaseVersion": "2.2.0"
+      }
+    ]
+  },
+  "instances": [
+    {
+      "iriLocal": "compliance-dept",
+      "class": "BusinessActor",
+      "labels": {
+        "en": "Odbor Compliance",
+        "cs": "Odbor Compliance"
+      },
+      "properties": {
+        "actorKind": "department",
+        "modelingDepth": "catalog"
+      }
+    },
+    {
+      "iriLocal": "petr-novak",
+      "class": "BusinessActor",
+      "labels": {
+        "en": "Petr Novák",
+        "cs": "Petr Novák"
+      },
+      "properties": {
+        "actorKind": "person",
+        "modelingDepth": "catalog"
+      }
+    },
+    {
+      "iriLocal": "jiri-kreuzman",
+      "class": "BusinessActor",
+      "labels": {
+        "en": "Jiri Kreuzman",
+        "cs": "Jiri Kreuzman"
+      },
+      "properties": {
+        "actorKind": "person",
+        "modelingDepth": "catalog"
+      }
+    },
+    {
+      "iriLocal": "dpo",
+      "class": "BusinessRole",
+      "labels": {
+        "en": "DPO",
+        "cs": "DPO"
+      },
+      "properties": {
+        "modelingDepth": "catalog"
+      }
+    },
+    {
+      "iriLocal": "data-protection",
+      "class": "BusinessFunction",
+      "labels": {
+        "en": "Data Protection",
+        "cs": "Ochrana dat"
+      },
+      "properties": {
+        "modelingDepth": "catalog"
+      }
+    },
+    {
+      "iriLocal": "crm-backend",
+      "class": "ApplicationComponent",
+      "labels": {
+        "en": "CRM Backend"
+      },
+      "properties": {
+        "modelingDepth": "application_detail",
+        "ownership": "internal"
+      }
+    },
+    {
+      "iriLocal": "payment-gateway",
+      "class": "ApplicationComponent",
+      "labels": {
+        "en": "Payment Gateway"
+      },
+      "properties": {
+        "modelingDepth": "application_detail",
+        "ownership": "external"
+      }
+    },
+    {
+      "iriLocal": "customer-data",
+      "class": "DataObject",
+      "labels": {
+        "en": "CustomerData"
+      },
+      "properties": {
+        "modelingDepth": "application_detail"
+      }
+    },
+    {
+      "iriLocal": "app-net",
+      "class": "CommunicationNetwork",
+      "labels": {
+        "en": "APP_NET"
+      },
+      "properties": {
+        "modelingDepth": "network_detail",
+        "networkKind": "vlan",
+        "networkRole": "production",
+        "cidr": "10.1.0.0/16"
+      }
+    },
+    {
+      "iriLocal": "dc-wan",
+      "class": "CommunicationNetwork",
+      "labels": {
+        "en": "DC-WAN"
+      },
+      "properties": {
+        "modelingDepth": "network_detail",
+        "networkKind": "wan",
+        "networkRole": "wan"
+      }
+    },
+    {
+      "iriLocal": "prod-cluster",
+      "class": "Node",
+      "labels": {
+        "en": "prod-cluster"
+      },
+      "properties": {
+        "modelingDepth": "infrastructure_detail"
+      }
+    },
+    {
+      "iriLocal": "wan-path",
+      "class": "Path",
+      "labels": {
+        "en": "wan-path"
+      },
+      "properties": {
+        "modelingDepth": "network_detail"
+      }
+    },
+    {
+      "iriLocal": "rel-dept-petr",
+      "class": "Composition",
+      "labels": {
+        "en": "Odbor Compliance contains Petr Novák"
+      },
+      "properties": {
+        "relSource": {"ref": "compliance-dept"},
+        "relTarget": {"ref": "petr-novak"}
+      }
+    },
+    {
+      "iriLocal": "rel-petr-dpo",
+      "class": "Assignment",
+      "labels": {
+        "en": "Petr Novák assigned to DPO"
+      },
+      "properties": {
+        "relSource": {"ref": "petr-novak"},
+        "relTarget": {"ref": "dpo"}
+      }
+    },
+    {
+      "iriLocal": "rel-dept-function",
+      "class": "Assignment",
+      "labels": {
+        "en": "Odbor Compliance assigned to Data Protection"
+      },
+      "properties": {
+        "relSource": {"ref": "compliance-dept"},
+        "relTarget": {"ref": "data-protection"}
+      }
+    },
+    {
+      "iriLocal": "rel-reports-to",
+      "class": "Association",
+      "labels": {
+        "en": "Petr Novák reports to Jiri Kreuzman"
+      },
+      "properties": {
+        "relSource": {"ref": "petr-novak"},
+        "relTarget": {"ref": "jiri-kreuzman"},
+        "associationKind": "reportsTo"
+      }
+    },
+    {
+      "iriLocal": "rel-orders-flow",
+      "class": "Flow",
+      "labels": {
+        "en": "Customer orders"
+      },
+      "properties": {
+        "relSource": {"ref": "crm-backend"},
+        "relTarget": {"ref": "payment-gateway"},
+        "flowLabel": "Customer orders",
+        "flowKind": "data",
+        "protocol": "HTTPS"
+      }
+    },
+    {
+      "iriLocal": "rel-customer-access",
+      "class": "Access",
+      "labels": {
+        "en": "CRM Backend access CustomerData"
+      },
+      "properties": {
+        "relSource": {"ref": "crm-backend"},
+        "relTarget": {"ref": "customer-data"},
+        "accessMode": "readWrite"
+      }
+    },
+    {
+      "iriLocal": "rel-cluster-net",
+      "class": "Association",
+      "labels": {
+        "en": "prod-cluster member of APP_NET"
+      },
+      "properties": {
+        "relSource": {"ref": "prod-cluster"},
+        "relTarget": {"ref": "app-net"},
+        "associationKind": "memberOf"
+      }
+    },
+    {
+      "iriLocal": "rel-wan-flow",
+      "class": "Flow",
+      "labels": {
+        "en": "Inter-DC replication"
+      },
+      "properties": {
+        "relSource": {"ref": "dc-wan"},
+        "relTarget": {"ref": "app-net"},
+        "flowLabel": "Inter-DC replication",
+        "flowKind": "data",
+        "protocol": "TCP",
+        "port": 5432
+      }
+    },
+    {
+      "iriLocal": "rel-path-spans",
+      "class": "Association",
+      "labels": {
+        "en": "wan-path spans DC-WAN"
+      },
+      "properties": {
+        "relSource": {"ref": "wan-path"},
+        "relTarget": {"ref": "dc-wan"},
+        "associationKind": "spans"
+      }
+    }
+  ]
+}

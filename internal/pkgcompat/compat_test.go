@@ -20,7 +20,7 @@ func baseSnap() pkgcompat.Snapshot {
 		Properties: map[string]domain.BundleProperty{
 			"P1": {
 				PublicID: "P1", IRILocal: "name", Datatype: datatype.String, Status: "active",
-				Labels: map[string]string{"en": "name"},
+				Labels:      map[string]string{"en": "name"},
 				Constraints: domain.PropertyConstraints{MinCount: intp(0), MaxCount: intp(1)},
 			},
 		},
@@ -217,5 +217,39 @@ func TestBreakingError(t *testing.T) {
 	}
 	if pkgcompat.NewBreakingError("", nil) != nil {
 		t.Fatal("no breaking findings → nil")
+	}
+}
+
+func TestFilterByPackage_DropsDependencyObjects(t *testing.T) {
+	s := pkgcompat.Snapshot{
+		Package: "archimate-lite",
+		Version: "2.0.0",
+		Classes: map[string]domain.BundleClass{
+			"aml":  {PublicID: "aml", PackageCode: "archimate-lite", IRILocal: "BusinessActor"},
+			"base": {PublicID: "base", PackageCode: "kc-base", IRILocal: "StringEnum"},
+		},
+		Properties: map[string]domain.BundleProperty{
+			"p1": {PublicID: "p1", PackageCode: "archimate-lite", IRILocal: "actorKind"},
+			"p2": {PublicID: "p2", PackageCode: "kc-base", IRILocal: "instanceOf"},
+		},
+		Shapes: map[string]domain.BundleShape{
+			"aml-element": {Code: "aml-element", PackageCode: "archimate-lite"},
+			"string-enum": {Code: "string-enum", PackageCode: "kc-base"},
+		},
+		Entities:   map[string]domain.BundleEntity{},
+		Statements: map[string]domain.BundleStatement{},
+	}
+	got := pkgcompat.FilterByPackage(s, "archimate-lite")
+	if _, ok := got.Classes["base"]; ok {
+		t.Fatal("kc-base class should be dropped")
+	}
+	if _, ok := got.Properties["p2"]; ok {
+		t.Fatal("kc-base property should be dropped")
+	}
+	if _, ok := got.Shapes["string-enum"]; ok {
+		t.Fatal("kc-base shape should be dropped")
+	}
+	if _, ok := got.Classes["aml"]; !ok {
+		t.Fatal("archimate-lite class should remain")
 	}
 }

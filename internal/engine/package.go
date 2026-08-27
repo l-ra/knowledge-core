@@ -145,3 +145,10 @@ func (e *Engine) MutateRelease(ctx context.Context, code, version string) error 
 	}
 	return mapErr(e.store.MutateRelease(ctx, code, version))
 }
+
+func (e *Engine) EnsurePackageRootTyping(ctx context.Context, meta domain.WriteMeta, packageCode string) error {
+	if err := e.authorizePackage(ctx, auth.OpManage, packageCode); err != nil {
+		return err
+	}
+	return mapErr(e.store.EnsurePackageRootTyping(ctx, meta, packageCode))
+}

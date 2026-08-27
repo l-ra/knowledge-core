@@ -171,12 +171,47 @@ Authorization: Bearer {{token}}
 GET {{baseUrl}}/v1/entities/Q42/graph?depth=1
 Authorization: Bearer {{token}}
 
+### Deprecate statement
+POST {{baseUrl}}/v1/statements/S1/deprecate
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "expectedRevision": 1 }
+
+### Deprecate entity
+POST {{baseUrl}}/v1/entities/Q42/deprecate
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "expectedRevision": 1 }
+
+### Delete entity (logical)
+POST {{baseUrl}}/v1/entities/Q42/delete
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "expectedRevision": 2 }
+
 ### Instances of class (with subclasses)
 GET {{baseUrl}}/v1/entities?instanceOf=C5&includeSubclasses=true
 Authorization: Bearer {{token}}
 
 ### Full-text search
 GET {{baseUrl}}/v1/projections/search?q=crm
+Authorization: Bearer {{token}}
+
+### --- History / ChangeSets ---
+
+### List change sets
+GET {{baseUrl}}/v1/changesets?limit=40
+Authorization: Bearer {{token}}
+
+### Filter change sets by actor / object
+GET {{baseUrl}}/v1/changesets?actor=bootstrap&objectId=Q1&limit=20
+Authorization: Bearer {{token}}
+
+### Get change set detail
+GET {{baseUrl}}/v1/changesets/C1
 Authorization: Bearer {{token}}
 
 ### --- Release ---

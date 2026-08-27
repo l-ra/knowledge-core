@@ -412,8 +412,14 @@ button:disabled {
   white-space: nowrap;
 }
 
-.statement-revise-button {
+.statement-actions {
   margin-left: auto;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+.statement-revise-button {
   padding: 0.25rem 0.6rem;
   font-size: 0.85rem;
 }
@@ -768,4 +774,47 @@ button.linkish {
   border: 1px solid var(--border);
   border-radius: var(--radius);
 }
+
+.changeset-browser {
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr);
+  gap: 1rem;
+  align-items: start;
+}
+
+@media (max-width: 960px) {
+  .changeset-browser {
+    grid-template-columns: 1fr;
+  }
+}
+
+.toolbar.wrap {
+  margin-bottom: 0;
+}
+
+label.field.grow {
+  flex: 2;
+  min-width: 16rem;
+}
+
+.meta-grid {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 0.35rem 1rem;
+  margin: 0;
+}
+
+.meta-grid dt {
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.meta-grid dd {
+  margin: 0;
+}
+
+.table tr.row-active {
+  background: color-mix(in oklab, var(--accent) 12%, transparent);
+}
+
 

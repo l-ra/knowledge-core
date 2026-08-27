@@ -194,11 +194,14 @@ Response `data`:
   "lifecycle": "released",
   "iriBase": "https://example.org/my-domain/",
   "labels": { "en": "My Domain" },
+  "descriptions": { "en": "Optional package description (stored on package-root entity)" },
   "dependencies": [
     { "dependsOnCode": "other-pkg", "versionRange": "^1.0.0" }
   ]
 }
 ```
+
+With `iriBase`, the engine also creates a **package-root** entity (`publicId` = `iriBase`, `iriLocal` = `.package`). Response includes `rootEntityId`. After `kc-base` vocabulary is loaded, root is typed `instanceOf → Package` and gets `packageCode` statement.
 
 ### Create Class
 
@@ -333,8 +336,8 @@ Content-Type: application/json
 | Auth info | `GET /v1/me` |
 | Packages | `GET/POST /v1/packages`, `GET /v1/packages/{code}`, releases, bundle, import |
 | Schema | `GET/POST /v1/classes`, `GET/POST /v1/properties`, `PATCH /v1/properties/{pid}`, shapes, schema-config |
-| Graph CRUD | `GET/POST /v1/entities`, `PATCH /v1/entities/{qid}`, statements, incoming, graph, move, iri-aliases |
-| History | `GET …/history`, `GET/POST /v1/changesets` |
+| Graph CRUD | `GET/POST /v1/entities`, `PATCH /v1/entities/{qid}`, `POST …/deprecate`, `POST …/delete`, statements, incoming, graph, move, iri-aliases |
+| History | `GET …/history`, `GET/POST /v1/changesets`, `GET /v1/changesets/{cid}` |
 | Lenses | `GET/POST /v1/lenses`, instances, patch, GraphQL |
 | Projections | `GET /v1/projections/search`, `/v1/projections/rdf`, rebuild endpoints |
 | Auth policies | `GET/POST /v1/policies`, `GET/PUT/DELETE /v1/policies/{name}` |
