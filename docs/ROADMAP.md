@@ -204,12 +204,12 @@ Detail: [specs/phase-13-web-ui.md](specs/phase-13-web-ui.md)
 
 ---
 
-## Fáze 20 — Open ChangeSet v DB (navrženo)
+## Fáze 20 — Open ChangeSet v DB (implementováno)
 
-- [ ] Zrušit per-user JSON draft (`user_changeset_draft`); open ChangeSet + overlay v DB
-- [ ] Opt-in read merge (`X-Knowledge-Changesets`), write do jednoho open CS (`X-Knowledge-Changeset`)
-- [ ] Exclusive object claim + commit-time optimistic lock; bez rebase
-- [ ] UI: aktivní open CS místo op bufferu
+- [x] Zrušit per-user JSON draft (`user_changeset_draft`); open ChangeSet + overlay v DB
+- [x] Opt-in read merge (`X-Knowledge-Changesets`), write do jednoho open CS (`X-Knowledge-Changeset`)
+- [x] Exclusive object claim + commit-time optimistic lock; bez rebase
+- [x] UI: aktivní open CS místo op bufferu
 - Detail: [specs/phase-20-open-changeset.md](specs/phase-20-open-changeset.md)
 
 ---
@@ -217,7 +217,6 @@ Detail: [specs/phase-13-web-ui.md](specs/phase-13-web-ui.md)
 ## Doporučené pořadí další práce
 
 ```text
-Fáze 20: Open ChangeSet v DB (nahrazuje draft buffer)
 UI v1.1: lens domain editor, OIDC groups→roles, release diff API
 Turtle import; auto-rebuild RDF při změně package.iri_base
 ```

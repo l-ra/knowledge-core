@@ -90,6 +90,11 @@ type CreateShapeInput struct {
 	Document    ShapeDocument
 }
 
+// WellKnownInstanceOfPropertyIRI is the canonical kc-base typing property.
+// When this property is ingested and schema-config.instanceOfProperty is empty,
+// the store sets it automatically.
+const WellKnownInstanceOfPropertyIRI = "https://knowledge-core.local/kc-base/instanceOf"
+
 type ModelSchemaConfig struct {
 	InstanceOfProperty string   `json:"instanceOfProperty"`
 	ModelProperties    []string `json:"modelProperties"`
@@ -119,14 +124,14 @@ func (c ModelSchemaConfig) EffectiveModelProperties() []string {
 }
 
 type ValidationFinding struct {
-	Code       string             `json:"code"`
-	Severity   ValidationSeverity `json:"severity"`
-	Message    string             `json:"message"`
-	EntityID   string             `json:"entityId,omitempty"`
-	PropertyID string             `json:"propertyId,omitempty"`
-	StatementID string            `json:"statementId,omitempty"`
-	ClassID    string             `json:"classId,omitempty"`
-	ShapeCode  string             `json:"shapeCode,omitempty"`
+	Code        string             `json:"code"`
+	Severity    ValidationSeverity `json:"severity"`
+	Message     string             `json:"message"`
+	EntityID    string             `json:"entityId,omitempty"`
+	PropertyID  string             `json:"propertyId,omitempty"`
+	StatementID string             `json:"statementId,omitempty"`
+	ClassID     string             `json:"classId,omitempty"`
+	ShapeCode   string             `json:"shapeCode,omitempty"`
 }
 
 type ValidationSummary struct {
@@ -142,13 +147,13 @@ type ValidationResult struct {
 }
 
 type ValidationReport struct {
-	ID         string
-	Scope      string
-	EntityQID  string
-	Findings   []ValidationFinding
-	Summary    ValidationSummary
-	CreatedBy  string
-	CreatedAt  string
+	ID        string
+	Scope     string
+	EntityQID string
+	Findings  []ValidationFinding
+	Summary   ValidationSummary
+	CreatedBy string
+	CreatedAt string
 }
 
 type CreateValidationReportInput struct {

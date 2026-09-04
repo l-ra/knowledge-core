@@ -340,16 +340,16 @@ Kompletní implementace stejného postupu pro doménu ArchiMate:
 
 | Materiál | Popis |
 |----------|-------|
-| [archimate-lite-kc.md](../models/archimate-lite-kc.md) | Plný kontrakt pro nástroje (endpointy, vzory, validace) |
-| [archimate-lite.md](../models/archimate-lite.md) | Doménový rozsah (granularita L0–L4) |
-| [kc-base](../../models/kc-base/) | Foundation (`instanceOf`, usage anotace, `StringEnum`) |
-| [catalog.json](../../models/archimate-lite/catalog.json) | Seed ArchiMate Lite v gitu |
-| [load.py](../../models/archimate-lite/load.py) | Idempotentní bootstrap (`kc-base` + `archimate-lite`) |
+| [archimate-lite-kc.md](../../../knowledge-models/docs/archimate-lite-kc.md) | Plný kontrakt pro nástroje (endpointy, vzory, validace) |
+| [archimate-lite.md](../../../knowledge-models/docs/archimate-lite.md) | Doménový rozsah (granularita L0–L4) |
+| [kc-base](../../../knowledge-models/kc-base/) | Foundation (`instanceOf`, usage anotace, `StringEnum`) |
+| [catalog.json](../../../knowledge-models/archimate-lite/catalog.json) | Seed ArchiMate Lite v gitu |
+| [load.py](../../../knowledge-models/archimate-lite/load.py) | Idempotentní bootstrap (`kc-base` + `archimate-lite`) |
 
 ```bash
 export KC_BASE_URL=http://localhost:8080
 export KC_TOKEN='…'
-python3 models/archimate-lite/load.py
+python3 ../knowledge-models/archimate-lite/load.py
 ```
 
 Loader demonstruje:

@@ -127,13 +127,22 @@ type QualifierInput struct {
 }
 
 type WriteMeta struct {
-	Actor          string
-	IdempotencyKey string
-	CorrelationID  string
-	OperationType  string
-	RequestHash    string
-	ValidationMode ValidationMode
+	Actor            string
+	IdempotencyKey   string
+	CorrelationID    string
+	OperationType    string
+	RequestHash      string
+	ValidationMode   ValidationMode
+	OpenChangeSetID  string // public id of open ChangeSet; empty = immediate committed write
 }
+
+type ChangeSetStatus string
+
+const (
+	ChangeSetOpen      ChangeSetStatus = "open"
+	ChangeSetCommitted ChangeSetStatus = "committed"
+	ChangeSetCancelled ChangeSetStatus = "cancelled"
+)
 
 type ChangeSet struct {
 	ID             uuid.UUID
@@ -141,11 +150,27 @@ type ChangeSet struct {
 	Actor          string
 	OperationType  string
 	Comment        string
-	CommittedAt    time.Time
+	Status         ChangeSetStatus
+	OpenedAt       time.Time
+	CommittedAt    time.Time // zero when open/cancelled
 	IdempotencyKey string
 	CorrelationID  string
 	ItemCount      int
 	Items          []ChangeSetItem
+	Claims         []ChangeSetClaim // open CS detail only
+}
+
+type ChangeSetClaim struct {
+	ObjectType      string
+	ObjectID        uuid.UUID
+	CanonicalIRI    string
+	BaseRevisionNo  int
+	OpKind          string
+}
+
+type OpenChangeSetInput struct {
+	Comment       string
+	OperationType string
 }
 
 type ChangeSetItem struct {
@@ -281,16 +306,6 @@ type ApplyChangeSetInput struct {
 	OperationType string
 	Comment       string
 	Operations    []ChangeOperation
-}
-
-// ChangeSetDraft is a per-user working document (not a committed ChangeSet).
-type ChangeSetDraft struct {
-	Open        bool              `json:"open"`
-	Title       string            `json:"title,omitempty"`
-	PackageCode string            `json:"packageCode,omitempty"`
-	Operations  []ChangeOperation `json:"operations"`
-	UpdatedAt   string            `json:"updatedAt,omitempty"`
-	CreatedAt   string            `json:"createdAt,omitempty"`
 }
 
 type BundleClass struct {

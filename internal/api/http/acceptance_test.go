@@ -19,6 +19,7 @@ import (
 	"github.com/l-ra/knowledge-core/internal/config"
 	"github.com/l-ra/knowledge-core/internal/engine"
 	"github.com/l-ra/knowledge-core/internal/store"
+	"github.com/l-ra/knowledge-core/internal/testdata"
 )
 
 var (
@@ -57,7 +58,9 @@ func setupTestHandler(t *testing.T) http.Handler {
 			statement_revision, entity_revision,
 			statement_current, statement,
 			entity_label, entity_description,
-			entity, auth_runtime, user_changeset_draft RESTART IDENTITY CASCADE;
+			entity, auth_runtime,
+			changeset_statement_overlay, changeset_entity_overlay, changeset_object_claim
+			RESTART IDENTITY CASCADE;
 		UPDATE id_counter SET last_value = 0;
 		UPDATE model_schema_config SET instance_of_property = '', model_properties = '[]'::jsonb, updated_at = now() WHERE id = 1;
 	`)
@@ -2234,36 +2237,41 @@ func TestAcceptanceClassInReleaseAndDraft(t *testing.T) {
 		t.Fatalf("bundle classes: %+v", b.Classes)
 	}
 
-	// Draft workflow
-	put := doJSON(t, h, http.MethodPut, "/v1/me/changeset-draft", map[string]any{
-		"open": true, "title": "batch", "packageCode": "test",
-		"operations": []map[string]any{
-			{"op": "createEntity", "clientKey": "$e1", "packageCode": "test", "labels": map[string]string{"en": "Drafted"}},
-		},
-	}, adminHeaders())
-	if put.StatusCode != http.StatusOK {
-		t.Fatalf("put draft: %d %s", put.StatusCode, put.Body)
+	// Open ChangeSet workflow
+	open := doJSON(t, h, http.MethodPost, "/v1/changesets/open", map[string]any{"comment": "batch"}, adminHeaders())
+	if open.StatusCode != http.StatusCreated {
+		t.Fatalf("open changeset: %d %s", open.StatusCode, open.Body)
 	}
-	get := doJSON(t, h, http.MethodGet, "/v1/me/changeset-draft", nil, adminHeaders())
-	if get.StatusCode != http.StatusOK {
-		t.Fatalf("get draft: %d %s", get.StatusCode, get.Body)
+	csID := parseDataID(t, open.Body)
+	writeHeaders := adminHeaders()
+	writeHeaders["X-Knowledge-Changeset"] = csID
+	create := doJSON(t, h, http.MethodPost, "/v1/entities", map[string]any{
+		"packageCode": "test",
+		"labels":      map[string]string{"en": "Drafted"},
+	}, writeHeaders)
+	if create.StatusCode != http.StatusCreated {
+		t.Fatalf("create in open cs: %d %s", create.StatusCode, create.Body)
 	}
-	var draft struct {
-		Open       bool  `json:"open"`
-		Operations []any `json:"operations"`
+	eid := parseDataID(t, create.Body)
+
+	without := doJSON(t, h, http.MethodGet, "/v1/entities/"+url.PathEscape(eid), nil, adminHeaders())
+	if without.StatusCode != http.StatusNotFound {
+		t.Fatalf("entity should be hidden without header: %d %s", without.StatusCode, without.Body)
 	}
-	_ = json.Unmarshal([]byte(get.Body), &draft)
-	if !draft.Open || len(draft.Operations) != 1 {
-		t.Fatalf("draft state: %+v", draft)
+	readHeaders := adminHeaders()
+	readHeaders["X-Knowledge-Changesets"] = csID
+	with := doJSON(t, h, http.MethodGet, "/v1/entities/"+url.PathEscape(eid), nil, readHeaders)
+	if with.StatusCode != http.StatusOK {
+		t.Fatalf("entity visible with header: %d %s", with.StatusCode, with.Body)
 	}
-	commit := doJSON(t, h, http.MethodPost, "/v1/me/changeset-draft/commit", map[string]any{}, adminHeaders())
+
+	commit := doJSON(t, h, http.MethodPost, "/v1/changesets/"+csID+"/commit", map[string]any{}, adminHeaders())
 	if commit.StatusCode != http.StatusOK {
-		t.Fatalf("commit draft: %d %s", commit.StatusCode, commit.Body)
+		t.Fatalf("commit open cs: %d %s", commit.StatusCode, commit.Body)
 	}
-	get2 := doJSON(t, h, http.MethodGet, "/v1/me/changeset-draft", nil, adminHeaders())
-	_ = json.Unmarshal([]byte(get2.Body), &draft)
-	if draft.Open {
-		t.Fatal("draft should be closed after commit")
+	after := doJSON(t, h, http.MethodGet, "/v1/entities/"+url.PathEscape(eid), nil, adminHeaders())
+	if after.StatusCode != http.StatusOK {
+		t.Fatalf("entity after commit: %d %s", after.StatusCode, after.Body)
 	}
 	ents := doJSON(t, h, http.MethodGet, "/v1/entities?q=Drafted", nil, adminHeaders())
 	var list struct {
@@ -2322,8 +2330,11 @@ func TestAcceptancePackageRoot(t *testing.T) {
 	}
 
 	// After kc-base vocabulary, typing + packageCode appear.
-	root := filepath.Join("..", "..", "..")
-	raw, err := os.ReadFile(filepath.Join(root, "models/kc-base/releases/kc-base-1.1.0.bundle.json"))
+	path, err := testdata.BundlePath("kc-base/releases/kc-base-1.1.0.bundle.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2335,11 +2346,9 @@ func TestAcceptancePackageRoot(t *testing.T) {
 	if imp.StatusCode != http.StatusCreated {
 		t.Fatalf("import kc-base: %d %s", imp.StatusCode, imp.Body)
 	}
-	cfg := doJSON(t, h, http.MethodPut, "/v1/admin/schema-config", map[string]any{
-		"instanceOfProperty": "https://knowledge-core.local/kc-base/instanceOf",
-	}, nil)
-	if cfg.StatusCode != http.StatusOK {
-		t.Fatalf("schema-config: %d %s", cfg.StatusCode, cfg.Body)
+	cfg := doJSON(t, h, http.MethodGet, "/v1/admin/schema-config", nil, nil)
+	if cfg.StatusCode != http.StatusOK || !strings.Contains(cfg.Body, `"instanceOfProperty":"https://knowledge-core.local/kc-base/instanceOf"`) {
+		t.Fatalf("expected auto instanceOfProperty: %d %s", cfg.StatusCode, cfg.Body)
 	}
 	stIO := doJSON(t, h, http.MethodPost, "/v1/statements", map[string]any{
 		"packageCode": "root-pkg", "subject": base,
@@ -2376,5 +2385,102 @@ func TestAcceptancePackageRoot(t *testing.T) {
 	ent2 := doJSON(t, h, http.MethodGet, "/v1/entities/"+url.PathEscape(base), nil, nil)
 	if !strings.Contains(ent2.Body, `"Root Renamed"`) {
 		t.Fatalf("root labels not synced: %s", ent2.Body)
+	}
+}
+
+func TestAcceptanceOpenChangeSetLifecycle(t *testing.T) {
+	h := setupTestHandler(t)
+
+	openA := doJSON(t, h, http.MethodPost, "/v1/changesets/open", map[string]any{"comment": "a"}, adminHeaders())
+	if openA.StatusCode != http.StatusCreated {
+		t.Fatalf("open A: %d %s", openA.StatusCode, openA.Body)
+	}
+	csA := parseDataID(t, openA.Body)
+	hA := adminHeaders()
+	hA["X-Knowledge-Changeset"] = csA
+
+	ent := createEntity(t, h, "Shared")
+	updA := doJSON(t, h, http.MethodPatch, "/v1/entities/"+url.PathEscape(ent), map[string]any{
+		"labels":           map[string]string{"en": "Shared A"},
+		"expectedRevision": 1,
+	}, hA)
+	if updA.StatusCode != http.StatusOK {
+		t.Fatalf("update in A: %d %s", updA.StatusCode, updA.Body)
+	}
+
+	openB := doJSON(t, h, http.MethodPost, "/v1/changesets/open", map[string]any{"comment": "b"}, adminHeaders())
+	csB := parseDataID(t, openB.Body)
+	hB := adminHeaders()
+	hB["X-Knowledge-Changeset"] = csB
+	updB := doJSON(t, h, http.MethodPatch, "/v1/entities/"+url.PathEscape(ent), map[string]any{
+		"labels":           map[string]string{"en": "Shared B"},
+		"expectedRevision": 1,
+	}, hB)
+	if updB.StatusCode != http.StatusConflict {
+		t.Fatalf("expected 409 claim conflict, got %d %s", updB.StatusCode, updB.Body)
+	}
+
+	// concurrent committed write then commit A → conflict, A stays open
+	openC := doJSON(t, h, http.MethodPost, "/v1/changesets/open", map[string]any{}, adminHeaders())
+	csC := parseDataID(t, openC.Body)
+	hC := adminHeaders()
+	hC["X-Knowledge-Changeset"] = csC
+	other := createEntity(t, h, "Other")
+	_ = doJSON(t, h, http.MethodPatch, "/v1/entities/"+url.PathEscape(other), map[string]any{
+		"labels":           map[string]string{"en": "Other CS"},
+		"expectedRevision": 1,
+	}, hC)
+	_ = doJSON(t, h, http.MethodPatch, "/v1/entities/"+url.PathEscape(other), map[string]any{
+		"labels":           map[string]string{"en": "Other committed"},
+		"expectedRevision": 1,
+	}, adminHeaders())
+	failCommit := doJSON(t, h, http.MethodPost, "/v1/changesets/"+csC+"/commit", map[string]any{}, adminHeaders())
+	if failCommit.StatusCode != http.StatusConflict {
+		t.Fatalf("expected commit conflict: %d %s", failCommit.StatusCode, failCommit.Body)
+	}
+	still := doJSON(t, h, http.MethodGet, "/v1/changesets/"+csC, nil, adminHeaders())
+	if !strings.Contains(still.Body, `"status":"open"`) {
+		t.Fatalf("cs should stay open: %s", still.Body)
+	}
+
+	cancel := doJSON(t, h, http.MethodPost, "/v1/changesets/"+csA+"/cancel", map[string]any{}, adminHeaders())
+	if cancel.StatusCode != http.StatusOK {
+		t.Fatalf("cancel: %d %s", cancel.StatusCode, cancel.Body)
+	}
+	gone := doJSON(t, h, http.MethodGet, "/v1/entities/"+url.PathEscape(ent), nil, map[string]string{
+		"X-Subject": "test-admin", "X-Roles": "admin", "X-Knowledge-Changesets": csA,
+	})
+	// cancelled CS is not open → 400/invalid or entity without overlay (committed labels)
+	if gone.StatusCode == http.StatusOK && strings.Contains(gone.Body, "Shared A") {
+		t.Fatalf("cancelled overlay should not apply: %s", gone.Body)
+	}
+
+	// two open CS on different objects OK
+	openD := doJSON(t, h, http.MethodPost, "/v1/changesets/open", map[string]any{}, adminHeaders())
+	csD := parseDataID(t, openD.Body)
+	hD := adminHeaders()
+	hD["X-Knowledge-Changeset"] = csD
+	createD := doJSON(t, h, http.MethodPost, "/v1/entities", map[string]any{
+		"packageCode": "test",
+		"labels":      map[string]string{"en": "Only D"},
+	}, hD)
+	if createD.StatusCode != http.StatusCreated {
+		t.Fatalf("create D: %d %s", createD.StatusCode, createD.Body)
+	}
+	openE := doJSON(t, h, http.MethodPost, "/v1/changesets/open", map[string]any{}, adminHeaders())
+	csE := parseDataID(t, openE.Body)
+	hE := adminHeaders()
+	hE["X-Knowledge-Changeset"] = csE
+	createE := doJSON(t, h, http.MethodPost, "/v1/entities", map[string]any{
+		"packageCode": "test",
+		"labels":      map[string]string{"en": "Only E"},
+	}, hE)
+	if createE.StatusCode != http.StatusCreated {
+		t.Fatalf("create E: %d %s", createE.StatusCode, createE.Body)
+	}
+
+	draftGone := doJSON(t, h, http.MethodGet, "/v1/me/changeset-draft", nil, adminHeaders())
+	if draftGone.StatusCode != http.StatusNotFound {
+		t.Fatalf("draft endpoint should be gone: %d", draftGone.StatusCode)
 	}
 }

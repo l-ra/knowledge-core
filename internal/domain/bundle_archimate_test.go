@@ -3,21 +3,18 @@ package domain_test
 import (
 	"encoding/json"
 	"os"
-	"path/filepath"
-	"runtime"
 	"testing"
 
 	"github.com/l-ra/knowledge-core/internal/domain"
+	"github.com/l-ra/knowledge-core/internal/testdata"
 )
 
 func TestArchimateLiteBundleUnmarshal(t *testing.T) {
-	_, file, _, ok := runtime.Caller(0)
-	if !ok {
-		t.Fatal("caller")
+	path, err := testdata.BundlePath("archimate-lite/releases/archimate-lite-1.2.0.bundle.json")
+	if err != nil {
+		t.Fatal(err)
 	}
-	// internal/domain -> repo root
-	root := filepath.Clean(filepath.Join(filepath.Dir(file), "../.."))
-	raw, err := os.ReadFile(filepath.Join(root, "models/archimate-lite/releases/archimate-lite-1.2.0.bundle.json"))
+	raw, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -57,12 +54,11 @@ func TestArchimateLiteBundleUnmarshal(t *testing.T) {
 }
 
 func TestArchimateLite210BundleUnmarshal(t *testing.T) {
-	_, file, _, ok := runtime.Caller(0)
-	if !ok {
-		t.Fatal("caller")
+	path, err := testdata.BundlePath("archimate-lite/releases/archimate-lite-2.2.0.bundle.json")
+	if err != nil {
+		t.Fatal(err)
 	}
-	root := filepath.Clean(filepath.Join(filepath.Dir(file), "../.."))
-	raw, err := os.ReadFile(filepath.Join(root, "models/archimate-lite/releases/archimate-lite-2.2.0.bundle.json"))
+	raw, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatal(err)
 	}

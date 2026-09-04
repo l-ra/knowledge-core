@@ -162,7 +162,11 @@ func (s *Store) ListEntities(ctx context.Context, opt ListOptions) ([]domain.Ent
 		next = out[opt.Limit-1].PublicID
 		out = out[:opt.Limit]
 	}
-	return out, next, nil
+	merged, err := s.mergeListEntities(ctx, opt, out)
+	if err != nil {
+		return nil, "", err
+	}
+	return merged, next, nil
 }
 
 func (s *Store) ListProperties(ctx context.Context, opt ListOptions) ([]domain.Property, string, error) {

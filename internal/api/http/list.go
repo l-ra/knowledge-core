@@ -8,6 +8,7 @@ import (
 )
 
 func (s *Server) listEntities(w http.ResponseWriter, r *http.Request) {
+	r = withActiveChangeSets(r)
 	q := r.URL.Query()
 	opt := store.ListOptions{
 		Query:             q.Get("q"),

@@ -434,15 +434,35 @@ paths:
           in: query
           description: RFC3339 / RFC3339Nano upper bound (inclusive)
           schema: { type: string, format: date-time }
+        - name: status
+          in: query
+          description: "open | committed | cancelled | all (default committed)"
+          schema: { type: string }
       responses:
         "200":
           description: OK
     post:
-      summary: Apply change set batch
+      summary: Apply change set batch (immediate committed)
       tags: [history]
       responses:
         "200":
           description: OK
+  /v1/changesets/open:
+    post:
+      summary: Open a progressive ChangeSet (writes go to overlay until commit)
+      tags: [history]
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                comment: { type: string }
+                operationType: { type: string }
+      responses:
+        "201":
+          description: Created open ChangeSet
   /v1/changesets/{cid}:
     get:
       summary: Get change set
@@ -456,6 +476,34 @@ paths:
       responses:
         "200":
           description: OK
+  /v1/changesets/{cid}/commit:
+    post:
+      summary: Commit open ChangeSet into committed history
+      tags: [history]
+      parameters:
+        - name: cid
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Committed
+        "409":
+          description: Optimistic lock / IRI conflict (ChangeSet stays open)
+  /v1/changesets/{cid}/cancel:
+    post:
+      summary: Cancel open ChangeSet and drop overlay
+      tags: [history]
+      parameters:
+        - name: cid
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Cancelled
   /v1/packages:
     get:
       summary: List packages
@@ -863,6 +911,18 @@ components:
       required: true
       schema:
         type: string
+    KnowledgeChangeset:
+      name: X-Knowledge-Changeset
+      in: header
+      required: false
+      description: Target open ChangeSet for progressive writes
+      schema: { type: string }
+    KnowledgeChangesets:
+      name: X-Knowledge-Changesets
+      in: header
+      required: false
+      description: Comma-separated open ChangeSet ids for read-merge
+      schema: { type: string }
   responses:
     NotFound:
       description: Not found

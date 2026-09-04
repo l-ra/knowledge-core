@@ -21,12 +21,18 @@ func errIfEntityDeleted(status string) error {
 }
 
 func (s *Store) DeprecateEntity(ctx context.Context, meta domain.WriteMeta, publicID string, expectedRevision int) (*domain.WriteResult[domain.Entity], error) {
+	if meta.OpenChangeSetID != "" {
+		return s.MutateEntityStatusInOpenChangeSet(ctx, meta, publicID, expectedRevision, domain.EntityDeprecated, "deprecate")
+	}
 	return s.mutateEntityStatus(ctx, meta, func(ctx context.Context, tx pgx.Tx, cs *changeSetTx, meta domain.WriteMeta) (*domain.Entity, error) {
 		return s.deprecateEntityInTx(ctx, tx, cs, meta, publicID, expectedRevision)
 	})
 }
 
 func (s *Store) DeleteEntity(ctx context.Context, meta domain.WriteMeta, publicID string, expectedRevision int) (*domain.WriteResult[domain.Entity], error) {
+	if meta.OpenChangeSetID != "" {
+		return s.MutateEntityStatusInOpenChangeSet(ctx, meta, publicID, expectedRevision, domain.EntityDeleted, "delete")
+	}
 	return s.mutateEntityStatus(ctx, meta, func(ctx context.Context, tx pgx.Tx, cs *changeSetTx, meta domain.WriteMeta) (*domain.Entity, error) {
 		return s.deleteEntityInTx(ctx, tx, cs, meta, publicID, expectedRevision)
 	})

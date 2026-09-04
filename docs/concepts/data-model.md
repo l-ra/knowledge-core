@@ -96,7 +96,8 @@ Beze změny konceptu: `change_set`, `entity_revision`, `statement_revision`. Pro
 | `00005`–`00009` | auth, lenses, outbox, RDF, auth_runtime |
 | `00010` | class_profile, shape_profile, schema config, validation_report |
 | `00011` | schema model properties |
-| `00012` | user ChangeSet draft |
+| `00012` | ~~user ChangeSet draft~~ (dropped in `00016`) |
 | `00013` | IRI mapping / aliases |
 | `00014` | incoming index; `shape_profile.package_id` |
 | `00015` | ChangeSet list indexes |
+| `00016` | Open ChangeSet (`status`, claim + overlay tables) |

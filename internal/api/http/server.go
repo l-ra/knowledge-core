@@ -54,10 +54,6 @@ func New(eng *engine.Engine, st *store.Store, authn Authenticator, cfg config.Co
 	r.Route("/v1", func(r chi.Router) {
 		r.Use(authMiddleware(sw))
 		r.Get("/me", s.me)
-		r.Get("/me/changeset-draft", s.getChangeSetDraft)
-		r.Put("/me/changeset-draft", s.putChangeSetDraft)
-		r.Delete("/me/changeset-draft", s.deleteChangeSetDraft)
-		r.Post("/me/changeset-draft/commit", s.commitChangeSetDraft)
 
 		r.Get("/admin/auth", s.getAdminAuth)
 		r.Put("/admin/auth", s.putAdminAuth)
@@ -112,6 +108,9 @@ func New(eng *engine.Engine, st *store.Store, authn Authenticator, cfg config.Co
 
 		r.Get("/changesets", s.listChangeSets)
 		r.Post("/changesets", s.applyChangeSet)
+		r.Post("/changesets/open", s.openChangeSet)
+		r.Post("/changesets/{cid}/commit", s.commitOpenChangeSet)
+		r.Post("/changesets/{cid}/cancel", s.cancelOpenChangeSet)
 		r.Get("/changesets/{cid}", s.getChangeSet)
 
 		r.Get("/policies", s.listPolicies)
@@ -257,6 +256,7 @@ func (s *Server) createEntity(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) getEntity(w http.ResponseWriter, r *http.Request) {
+	r = withActiveChangeSets(r)
 	ent, err := s.engine.GetEntity(r.Context(), pathParam(r, "qid"))
 	if err != nil {
 		writeEngineError(w, err)
@@ -579,6 +579,7 @@ func (s *Server) deprecateStatement(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) getStatement(w http.ResponseWriter, r *http.Request) {
+	r = withActiveChangeSets(r)
 	st, err := s.engine.GetStatement(r.Context(), pathParam(r, "sid"))
 	if err != nil {
 		writeEngineError(w, err)
@@ -601,6 +602,7 @@ func (s *Server) getStatementHistory(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) listStatements(w http.ResponseWriter, r *http.Request) {
+	r = withActiveChangeSets(r)
 	limit := 50
 	if v := r.URL.Query().Get("limit"); v != "" {
 		if n, err := strconv.Atoi(v); err == nil && n > 0 {
@@ -626,6 +628,7 @@ func (s *Server) listStatements(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) listEntityStatements(w http.ResponseWriter, r *http.Request) {
+	r = withActiveChangeSets(r)
 	limit := 50
 	if v := r.URL.Query().Get("limit"); v != "" {
 		if n, err := strconv.Atoi(v); err == nil && n > 0 {
@@ -807,6 +810,7 @@ func (s *Server) listChangeSets(w http.ResponseWriter, r *http.Request) {
 		OperationType: q.Get("operationType"),
 		CorrelationID: q.Get("correlationId"),
 		ObjectID:      q.Get("objectId"),
+		Status:        q.Get("status"),
 		Limit:         50,
 	}
 	if v := q.Get("limit"); v != "" {
@@ -1299,13 +1303,23 @@ func changeSetDTO(cs *domain.ChangeSet) map[string]any {
 			"op":         it.Op,
 		})
 	}
+	status := string(cs.Status)
+	if status == "" {
+		status = string(domain.ChangeSetCommitted)
+	}
 	out := map[string]any{
 		"id": cs.PublicID, "canonicalId": cs.ID.String(),
 		"displayId": datatype.PackageDisplayID("", "", cs.PublicID),
 		"actor":     cs.Actor, "operationType": cs.OperationType,
-		"committedAt": cs.CommittedAt.UTC().Format(time.RFC3339Nano),
-		"itemCount":   cs.ItemCount,
-		"items":       items,
+		"status":    status,
+		"itemCount": cs.ItemCount,
+		"items":     items,
+	}
+	if !cs.OpenedAt.IsZero() {
+		out["openedAt"] = cs.OpenedAt.UTC().Format(time.RFC3339Nano)
+	}
+	if !cs.CommittedAt.IsZero() {
+		out["committedAt"] = cs.CommittedAt.UTC().Format(time.RFC3339Nano)
 	}
 	if cs.Comment != "" {
 		out["comment"] = cs.Comment
@@ -1315,6 +1329,19 @@ func changeSetDTO(cs *domain.ChangeSet) map[string]any {
 	}
 	if cs.IdempotencyKey != "" {
 		out["idempotencyKey"] = cs.IdempotencyKey
+	}
+	if len(cs.Claims) > 0 {
+		claims := make([]map[string]any, 0, len(cs.Claims))
+		for _, c := range cs.Claims {
+			claims = append(claims, map[string]any{
+				"objectType":     c.ObjectType,
+				"objectId":       c.ObjectID.String(),
+				"canonicalIri":   c.CanonicalIRI,
+				"baseRevisionNo": c.BaseRevisionNo,
+				"opKind":         c.OpKind,
+			})
+		}
+		out["claims"] = claims
 	}
 	return out
 }

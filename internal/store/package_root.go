@@ -193,6 +193,7 @@ func (s *Store) getSchemaConfigTx(ctx context.Context, tx pgx.Tx) (*domain.Model
 	}
 	cfg := &domain.ModelSchemaConfig{InstanceOfProperty: instanceOf}
 	_ = json.Unmarshal(modelProps, &cfg.ModelProperties)
+	normalizeSchemaConfigURIs(cfg)
 	return cfg, nil
 }
 

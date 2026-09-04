@@ -29,8 +29,20 @@ curl -H "Authorization: Bearer $KC_TOKEN" http://localhost:8080/v1/me
 | `X-Actor` | Volitelný actor ID (default = authenticated subject) |
 | `X-Correlation-Id` | Korelace requestů (echo v response) |
 | `X-Validation-Mode` | `relaxed` (default) / `strict` / `off` |
+| `X-Knowledge-Changeset` | Zápis do open ChangeSetu (overlay); bez headeru = okamžitý committed CS |
+| `X-Knowledge-Changesets` | Read-merge: čárkou oddělené open CS id (GET entity/list/statements) |
 
 Alternativa validace: query param `?validation=strict`.
+
+### Open ChangeSet (postupné skládání)
+
+1. `POST /v1/changesets/open` → `{ data: { id, status: "open", … } }`
+2. Mutace s `X-Knowledge-Changeset: <id>` zapisují do overlay (committed graf se nemění)
+3. Čtení s `X-Knowledge-Changesets: <id>` vrací committed ⊕ overlay
+4. `POST /v1/changesets/{id}/commit` — optimistic lock na claimnutých objektech; úspěch = další committed CS; konflikt → 409, CS zůstane open
+5. `POST /v1/changesets/{id}/cancel` — smaže overlay
+
+`GET /v1/changesets?status=open|committed|cancelled|all` (default `committed`).
 
 ---
 
@@ -337,7 +349,7 @@ Content-Type: application/json
 | Packages | `GET/POST /v1/packages`, `GET /v1/packages/{code}`, releases, bundle, import |
 | Schema | `GET/POST /v1/classes`, `GET/POST /v1/properties`, `PATCH /v1/properties/{pid}`, shapes, schema-config |
 | Graph CRUD | `GET/POST /v1/entities`, `PATCH /v1/entities/{qid}`, `POST …/deprecate`, `POST …/delete`, statements, incoming, graph, move, iri-aliases |
-| History | `GET …/history`, `GET/POST /v1/changesets`, `GET /v1/changesets/{cid}` |
+| History | `GET …/history`, `GET/POST /v1/changesets`, `POST /v1/changesets/open`, `POST …/{cid}/commit|cancel`, `GET /v1/changesets/{cid}` |
 | Lenses | `GET/POST /v1/lenses`, instances, patch, GraphQL |
 | Projections | `GET /v1/projections/search`, `/v1/projections/rdf`, rebuild endpoints |
 | Auth policies | `GET/POST /v1/policies`, `GET/PUT/DELETE /v1/policies/{name}` |

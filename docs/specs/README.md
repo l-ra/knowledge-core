@@ -25,7 +25,7 @@
 | 11 | RDF projection, ACL-aware search, outbox worker | **done** |
 | 12 | sqlc, observability, Helm integrační testy | **done** (ADR 0004: manual SQL) |
 | 13 | Built-in web UI `/ui` | **done** (MVP) |
-| 20 | [phase-20-open-changeset.md](phase-20-open-changeset.md) — Open ChangeSet v DB (nahrazuje draft) | **proposed** |
+| 20 | [phase-20-open-changeset.md](phase-20-open-changeset.md) — Open ChangeSet v DB (nahrazuje draft) | **done** |
 
 Rozhodnutí zůstávají v [decisions/](../decisions/).
 

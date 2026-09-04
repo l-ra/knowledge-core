@@ -12,6 +12,9 @@ import (
 )
 
 func (s *Store) CreateClass(ctx context.Context, meta domain.WriteMeta, in domain.CreateClassInput) (*domain.WriteResult[domain.ClassDefinition], error) {
+	if meta.OpenChangeSetID != "" {
+		return s.CreateClassInOpenChangeSet(ctx, meta, in)
+	}
 	labels, err := datatype.NormalizeLabels(in.Labels)
 	if err != nil {
 		return nil, err

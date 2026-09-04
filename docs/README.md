@@ -11,7 +11,7 @@ Tato složka je zdroj pravdy pro vývoj: koncepty, uzavřená implementační ro
 | [concepts/](concepts/) | Stabilní vysvětlení klíčových konceptů + [datový model / ER](concepts/data-model.md) |
 | [decisions/](decisions/) | ADR — konkrétní rozhodnutí (stack, §38, schema) |
 | [specs/](specs/) | Zadání pro vývoj po fázích (API, schema, acceptance) |
-| [models/](models/) | Doménové modely **nad** jádrem (ne součást KC): [ArchiMate Lite](models/archimate-lite.md), [API pro nástroje](models/archimate-lite-kc.md) |
+| [models/](models/) | Pointer na sibling repo [knowledge-models](../../knowledge-models) (ArchiMate Lite, UI traversal, kc-base) |
 
 ## Pořadí čtení
 
@@ -21,7 +21,7 @@ Tato složka je zdroj pravdy pro vývoj: koncepty, uzavřená implementační ro
 2. [integration/concepts.md](integration/concepts.md) — koncepty pro externí konzumenty
 3. [integration/client-guide.md](integration/client-guide.md) — postup vytvoření doménového grafu
 4. [integration/api-contract.md](integration/api-contract.md) — JSON kontrakty, auth, chyby
-5. [models/archimate-lite-kc.md](models/archimate-lite-kc.md) — referenční implementace
+5. [knowledge-models docs](../../knowledge-models/docs/archimate-lite-kc.md) — referenční implementace ArchiMate Lite
 
 ### Pro vývoj jádra
 

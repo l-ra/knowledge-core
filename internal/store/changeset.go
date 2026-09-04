@@ -88,8 +88,8 @@ func (s *Store) beginChangeSetTx(ctx context.Context, tx pgx.Tx, meta domain.Wri
 		idem = &meta.IdempotencyKey
 	}
 	_, err = tx.Exec(ctx, `
-		INSERT INTO change_set (id, public_id, actor, committed_at, operation_type, idempotency_key, correlation_id, request_hash)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+		INSERT INTO change_set (id, public_id, actor, committed_at, operation_type, idempotency_key, correlation_id, request_hash, status, opened_at)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'committed',$4)
 	`, id, publicID, actor, now, opType, idem, corr, reqHash)
 	if err != nil {
 		return nil, err
@@ -138,7 +138,8 @@ func (s *Store) finalizeChangeSet(ctx context.Context, tx pgx.Tx, cs *changeSetT
 func (s *Store) changeSetDomain(cs *changeSetTx, meta domain.WriteMeta) *domain.ChangeSet {
 	return &domain.ChangeSet{
 		ID: cs.id, PublicID: cs.publicID, Actor: meta.Actor,
-		OperationType: meta.OperationType, CommittedAt: cs.committed,
+		OperationType: meta.OperationType, Status: domain.ChangeSetCommitted,
+		OpenedAt: cs.committed, CommittedAt: cs.committed,
 		IdempotencyKey: meta.IdempotencyKey, CorrelationID: meta.CorrelationID,
 		Items: cs.items, ItemCount: len(cs.items),
 	}

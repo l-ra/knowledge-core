@@ -5,10 +5,12 @@ import (
 	"encoding/hex"
 	"io"
 	"net/http"
+	"strings"
 
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/l-ra/knowledge-core/internal/auth"
 	"github.com/l-ra/knowledge-core/internal/domain"
+	"github.com/l-ra/knowledge-core/internal/store"
 )
 
 func writeMetaFromRequest(r *http.Request, operationType string, bodyHash string) domain.WriteMeta {
@@ -30,13 +32,33 @@ func writeMetaFromRequest(r *http.Request, operationType string, bodyHash string
 		mode = domain.ParseValidationMode(q)
 	}
 	return domain.WriteMeta{
-		Actor:          actor,
-		IdempotencyKey: r.Header.Get("Idempotency-Key"),
-		CorrelationID:  corr,
-		OperationType:  operationType,
-		RequestHash:    bodyHash,
-		ValidationMode: mode,
+		Actor:           actor,
+		IdempotencyKey:  r.Header.Get("Idempotency-Key"),
+		CorrelationID:   corr,
+		OperationType:   operationType,
+		RequestHash:     bodyHash,
+		ValidationMode:  mode,
+		OpenChangeSetID: strings.TrimSpace(r.Header.Get("X-Knowledge-Changeset")),
 	}
+}
+
+func withActiveChangeSets(r *http.Request) *http.Request {
+	raw := strings.TrimSpace(r.Header.Get("X-Knowledge-Changesets"))
+	if raw == "" {
+		return r
+	}
+	parts := strings.Split(raw, ",")
+	ids := make([]string, 0, len(parts))
+	for _, p := range parts {
+		p = strings.TrimSpace(p)
+		if p != "" {
+			ids = append(ids, p)
+		}
+	}
+	if len(ids) == 0 {
+		return r
+	}
+	return r.WithContext(store.WithActiveChangeSets(r.Context(), ids))
 }
 
 func hashBody(body []byte) string {

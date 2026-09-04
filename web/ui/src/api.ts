@@ -1,3 +1,5 @@
+import { getActiveChangeSetId } from "./changesetActive";
+
 export type UiConfig = {
   authMode: "dev" | "oidc" | "bootstrap";
   oidcIssuer: string;
@@ -63,6 +65,21 @@ export async function apiFetch<T = unknown>(
   Object.entries(auth).forEach(([k, v]) => headers.set(k, v));
   if (init.body && !headers.has("Content-Type")) {
     headers.set("Content-Type", "application/json");
+  }
+  const method = (init.method || "GET").toUpperCase();
+  const csId = getActiveChangeSetId();
+  if (csId) {
+    const isCsLifecycle =
+      path.endsWith("/v1/changesets/open") ||
+      /\/v1\/changesets\/[^/]+\/(commit|cancel)$/.test(path) ||
+      (method === "POST" && (path === "/v1/changesets" || path.endsWith("/v1/changesets")));
+    if (method === "GET" || method === "HEAD") {
+      if (!headers.has("X-Knowledge-Changesets")) {
+        headers.set("X-Knowledge-Changesets", csId);
+      }
+    } else if (!isCsLifecycle && !headers.has("X-Knowledge-Changeset")) {
+      headers.set("X-Knowledge-Changeset", csId);
+    }
   }
   const res = await fetch(path, { ...init, headers });
   const text = await res.text();

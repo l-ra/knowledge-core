@@ -1,6 +1,6 @@
 # Zadání — Fáze 20: Open ChangeSet v DB (nahrazuje draft buffer)
 
-**Status:** proposed (čeká implementaci)
+**Status:** implemented
 
 ## Cíl
 
@@ -242,14 +242,14 @@ Při selhání revision/IRI → **409**, CS zůstane `open`, overlay beze změny
 
 ## Migrace a deliverables
 
-- [ ] Migrace: `change_set.status|opened_at`, claim + overlay tabulky; drop `user_changeset_draft`
-- [ ] Store: open/commit/cancel; write větev overlay; read merge helper
-- [ ] Engine + authz (owner/admin)
-- [ ] HTTP handlery + OpenAPI
-- [ ] Smazat draft handlery / `internal/store/draft.go` (nebo nahradit)
-- [ ] UI `changeset.tsx` + Layout + i18n
-- [ ] Docs: `integration/api-contract.md`, `client-guide.md`; poznámka v `concepts/data-model.md`
-- [ ] Acceptance testy níže
+- [x] Migrace: `change_set.status|opened_at`, claim + overlay tabulky; drop `user_changeset_draft`
+- [x] Store: open/commit/cancel; write větev overlay; read merge helper
+- [x] Engine + authz (owner/admin)
+- [x] HTTP handlery + OpenAPI
+- [x] Smazat draft handlery / `internal/store/draft.go`
+- [x] UI `changeset.tsx` + Layout + i18n
+- [x] Docs: `integration/api-contract.md`; poznámka v `concepts/data-model.md`
+- [x] Acceptance testy (vyžadují `KC_DATABASE_URL`)
 
 ---
 

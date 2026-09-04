@@ -93,7 +93,10 @@ func (s *Store) importProperty(ctx context.Context, tx pgx.Tx, bp domain.BundleP
 		JOIN entity e ON e.id = pp.entity_id WHERE e.public_id = $1
 	`, bp.PublicID).Scan(&propertyID, &currentRev)
 	if errors.Is(err, pgx.ErrNoRows) {
-		return s.insertImportedProperty(ctx, tx, bp, cs)
+		if err := s.insertImportedProperty(ctx, tx, bp, cs); err != nil {
+			return err
+		}
+		return s.maybeAutoSetInstanceOfPropertyTx(ctx, tx, bp.PublicID)
 	}
 	if err != nil {
 		return err
@@ -109,9 +112,13 @@ func (s *Store) importProperty(ctx context.Context, tx pgx.Tx, bp domain.BundleP
 		if !ok {
 			return fmt.Errorf("%w: property %s revision %d", ErrImportCollision, bp.PublicID, bp.RevisionNo)
 		}
-		return nil
+		// Property already present (e.g. re-import): still fill empty schema-config.
+		return s.maybeAutoSetInstanceOfPropertyTx(ctx, tx, bp.PublicID)
 	}
-	return s.applyImportedProperty(ctx, tx, propertyID, bp, cs)
+	if err := s.applyImportedProperty(ctx, tx, propertyID, bp, cs); err != nil {
+		return err
+	}
+	return s.maybeAutoSetInstanceOfPropertyTx(ctx, tx, bp.PublicID)
 }
 
 func (s *Store) applyImportedProperty(ctx context.Context, tx pgx.Tx, propertyID uuid.UUID, bp domain.BundleProperty, cs *changeSetTx) error {

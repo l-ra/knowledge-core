@@ -2,7 +2,6 @@ package engine
 
 import (
 	"context"
-	"fmt"
 
 	"github.com/l-ra/knowledge-core/internal/auth"
 	"github.com/l-ra/knowledge-core/internal/domain"
@@ -41,58 +40,60 @@ func (e *Engine) ListObjectReleases(ctx context.Context, publicID string) ([]dom
 	return items, nil
 }
 
-func (e *Engine) GetChangeSetDraft(ctx context.Context) (*domain.ChangeSetDraft, error) {
-	sub, ok := auth.SubjectFromContext(ctx)
-	if !ok {
-		return nil, ErrForbidden
-	}
-	d, err := e.store.GetChangeSetDraft(ctx, sub.ID)
-	if err != nil {
-		return nil, mapErr(err)
-	}
-	return d, nil
-}
-
-func (e *Engine) PutChangeSetDraft(ctx context.Context, draft domain.ChangeSetDraft) (*domain.ChangeSetDraft, error) {
-	sub, ok := auth.SubjectFromContext(ctx)
-	if !ok {
-		return nil, ErrForbidden
-	}
-	d, err := e.store.PutChangeSetDraft(ctx, sub.ID, draft)
-	if err != nil {
-		return nil, mapErr(err)
-	}
-	return d, nil
-}
-
-func (e *Engine) DeleteChangeSetDraft(ctx context.Context) error {
+func (e *Engine) authorizeOpenChangeSetActor(ctx context.Context, actor string) error {
 	sub, ok := auth.SubjectFromContext(ctx)
 	if !ok {
 		return ErrForbidden
 	}
-	return mapErr(e.store.DeleteChangeSetDraft(ctx, sub.ID))
+	if actor == "" || actor == sub.ID {
+		return nil
+	}
+	if err := e.authorizeGlobal(ctx, auth.OpUpdate); err == nil {
+		return nil
+	}
+	return ErrForbidden
 }
 
-func (e *Engine) CommitChangeSetDraft(ctx context.Context, meta domain.WriteMeta) (*domain.WriteResult[domain.ChangeSet], error) {
-	sub, ok := auth.SubjectFromContext(ctx)
-	if !ok {
-		return nil, ErrForbidden
+func (e *Engine) OpenChangeSet(ctx context.Context, meta domain.WriteMeta, in domain.OpenChangeSetInput) (*domain.ChangeSet, error) {
+	if err := e.authorizeGlobal(ctx, auth.OpCreate); err != nil {
+		return nil, err
 	}
-	draft, err := e.store.GetChangeSetDraft(ctx, sub.ID)
+	cs, err := e.store.OpenChangeSet(ctx, meta, in)
 	if err != nil {
 		return nil, mapErr(err)
 	}
-	if !draft.Open || len(draft.Operations) == 0 {
-		return nil, fmt.Errorf("%w: draft is empty or not open", ErrInvalid)
-	}
-	res, err := e.ApplyChangeSet(ctx, meta, domain.ApplyChangeSetInput{
-		OperationType: "draftCommit",
-		Comment:       draft.Title,
-		Operations:    draft.Operations,
-	})
+	return cs, nil
+}
+
+func (e *Engine) CommitOpenChangeSet(ctx context.Context, meta domain.WriteMeta, publicID string) (*domain.WriteResult[domain.ChangeSet], error) {
+	cs, err := e.store.GetChangeSetByPublicID(ctx, publicID)
 	if err != nil {
+		return nil, mapErr(err)
+	}
+	if err := e.authorizeOpenChangeSetActor(ctx, cs.Actor); err != nil {
 		return nil, err
 	}
-	_ = e.store.DeleteChangeSetDraft(ctx, sub.ID)
+	if err := e.authorizeGlobal(ctx, auth.OpUpdate); err != nil {
+		return nil, err
+	}
+	res, err := e.store.CommitOpenChangeSet(ctx, meta, publicID)
+	if err != nil {
+		return nil, mapErr(err)
+	}
 	return res, nil
+}
+
+func (e *Engine) CancelOpenChangeSet(ctx context.Context, meta domain.WriteMeta, publicID string) (*domain.ChangeSet, error) {
+	cs, err := e.store.GetChangeSetByPublicID(ctx, publicID)
+	if err != nil {
+		return nil, mapErr(err)
+	}
+	if err := e.authorizeOpenChangeSetActor(ctx, cs.Actor); err != nil {
+		return nil, err
+	}
+	out, err := e.store.CancelOpenChangeSet(ctx, meta, publicID)
+	if err != nil {
+		return nil, mapErr(err)
+	}
+	return out, nil
 }

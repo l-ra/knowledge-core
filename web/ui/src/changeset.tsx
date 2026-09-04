@@ -1,200 +1,145 @@
-import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import { apiFetch } from "./api";
-import { usePackage } from "./package";
+import {
+  getActiveChangeSetId,
+  loadStoredActiveChangeSet,
+  storeActiveChangeSet,
+  type StoredActiveChangeSet,
+} from "./changesetActive";
 
-export type ChangeOperation = {
-  op: string;
-  clientKey?: string;
-  packageCode?: string;
-  entity?: string;
-  statement?: string;
-  subject?: string;
-  property?: string;
-  datatype?: string;
-  constraints?: Record<string, unknown>;
-  subClassOf?: string;
-  value?: unknown;
-  labels?: Record<string, string>;
-  descriptions?: Record<string, string>;
-  expectedRevision?: number;
-  qualifiers?: unknown[];
-  referenceIds?: string[];
-  validFrom?: string;
-  validTo?: string;
-};
-
-export type ChangeSetDraft = {
-  open: boolean;
-  title?: string;
-  packageCode?: string;
-  operations: ChangeOperation[];
-  updatedAt?: string;
-  createdAt?: string;
-};
+export type ActiveChangeSet = StoredActiveChangeSet;
 
 type ChangeSetCtx = {
-  draft: ChangeSetDraft;
   ready: boolean;
   isOpen: boolean;
+  active: ActiveChangeSet | null;
   lastCommittedId: string;
-  openDraft: (opts?: { title?: string; packageCode?: string }) => Promise<void>;
-  closeDraft: () => Promise<void>;
-  saveDraft: () => Promise<void>;
-  commitDraft: () => Promise<string>;
-  queueOp: (op: ChangeOperation) => void;
-  runWrite: <T>(immediateFn: () => Promise<T>, draftOp: ChangeOperation) => Promise<T | void>;
+  openChangeSet: (opts?: { comment?: string }) => Promise<void>;
+  cancelChangeSet: () => Promise<void>;
+  commitChangeSet: () => Promise<string>;
+  /** Always executes the write; when a CS is open, apiFetch adds X-Knowledge-Changeset. */
+  runWrite: <T>(immediateFn: () => Promise<T>, _ignored?: unknown) => Promise<T>;
+  readHeaders: () => Record<string, string>;
 };
 
-const emptyDraft = (): ChangeSetDraft => ({ open: false, operations: [] });
-
 const Ctx = createContext<ChangeSetCtx>({
-  draft: emptyDraft(),
   ready: false,
   isOpen: false,
+  active: null,
   lastCommittedId: "",
-  openDraft: async () => {},
-  closeDraft: async () => {},
-  saveDraft: async () => {},
-  commitDraft: async () => "",
-  queueOp: () => {},
+  openChangeSet: async () => {},
+  cancelChangeSet: async () => {},
+  commitChangeSet: async () => "",
   runWrite: async (fn) => fn(),
+  readHeaders: () => ({}),
 });
 
-let clientKeySeq = 0;
-export function nextClientKey(prefix = "k"): string {
-  clientKeySeq += 1;
-  return `${prefix}-${Date.now()}-${clientKeySeq}`;
-}
+type WriteEnvelope<T> = { data?: T; changeSet?: { id?: string } };
 
 export function ChangeSetDraftProvider({ children }: { children: React.ReactNode }) {
-  const { packageCode } = usePackage();
-  const [draft, setDraft] = useState<ChangeSetDraft>(emptyDraft());
+  const [active, setActive] = useState<ActiveChangeSet | null>(null);
   const [ready, setReady] = useState(false);
   const [lastCommittedId, setLastCommittedId] = useState("");
-  const draftRef = useRef(draft);
-  draftRef.current = draft;
-
-  const reload = useCallback(async () => {
-    try {
-      const d = await apiFetch<ChangeSetDraft>("/v1/me/changeset-draft");
-      setDraft({
-        open: !!d.open,
-        title: d.title,
-        packageCode: d.packageCode,
-        operations: d.operations || [],
-        updatedAt: d.updatedAt,
-        createdAt: d.createdAt,
-      });
-    } catch {
-      setDraft(emptyDraft());
-    } finally {
-      setReady(true);
-    }
-  }, []);
 
   useEffect(() => {
-    void reload();
-  }, [reload]);
+    const stored = loadStoredActiveChangeSet();
+    if (!stored?.id) {
+      setReady(true);
+      return;
+    }
+    void apiFetch<{ id: string; status: string; comment?: string; openedAt?: string; claims?: unknown[] }>(
+      `/v1/changesets/${encodeURIComponent(stored.id)}`,
+    )
+      .then((cs) => {
+        if (cs.status !== "open") {
+          storeActiveChangeSet(null);
+          setActive(null);
+          return;
+        }
+        const next: ActiveChangeSet = {
+          id: cs.id,
+          status: cs.status,
+          comment: cs.comment,
+          openedAt: cs.openedAt,
+          claimCount: Array.isArray(cs.claims) ? cs.claims.length : stored.claimCount,
+        };
+        storeActiveChangeSet(next);
+        setActive(next);
+      })
+      .catch(() => {
+        storeActiveChangeSet(null);
+        setActive(null);
+      })
+      .finally(() => setReady(true));
+  }, []);
 
-  const putDraft = useCallback(async (next: ChangeSetDraft) => {
-    const saved = await apiFetch<ChangeSetDraft>("/v1/me/changeset-draft", {
-      method: "PUT",
-      body: JSON.stringify({
-        open: next.open,
-        title: next.title || undefined,
-        packageCode: next.packageCode || undefined,
-        operations: next.operations || [],
-      }),
-    });
-    const normalized: ChangeSetDraft = {
-      open: !!saved.open,
-      title: saved.title,
-      packageCode: saved.packageCode,
-      operations: saved.operations || [],
-      updatedAt: saved.updatedAt,
-      createdAt: saved.createdAt,
+  const openChangeSet = useCallback(async (opts?: { comment?: string }) => {
+    const res = await apiFetch<WriteEnvelope<{ id: string; status: string; comment?: string; openedAt?: string }>>(
+      "/v1/changesets/open",
+      {
+        method: "POST",
+        body: JSON.stringify({ comment: opts?.comment || undefined }),
+      },
+    );
+    const cs = res.data || (res as unknown as { id: string; status: string; comment?: string; openedAt?: string });
+    const next: ActiveChangeSet = {
+      id: cs.id,
+      status: cs.status || "open",
+      comment: cs.comment,
+      openedAt: cs.openedAt,
+      claimCount: 0,
     };
-    setDraft(normalized);
-    return normalized;
+    storeActiveChangeSet(next);
+    setActive(next);
   }, []);
 
-  const openDraft = useCallback(
-    async (opts?: { title?: string; packageCode?: string }) => {
-      await putDraft({
-        open: true,
-        title: opts?.title,
-        packageCode: opts?.packageCode || packageCode || undefined,
-        operations: draftRef.current.open ? draftRef.current.operations : [],
-      });
-    },
-    [packageCode, putDraft],
-  );
-
-  const closeDraft = useCallback(async () => {
-    await apiFetch("/v1/me/changeset-draft", { method: "DELETE" });
-    setDraft(emptyDraft());
+  const cancelChangeSet = useCallback(async () => {
+    const id = getActiveChangeSetId();
+    if (!id) {
+      setActive(null);
+      return;
+    }
+    await apiFetch(`/v1/changesets/${encodeURIComponent(id)}/cancel`, { method: "POST", body: "{}" });
+    storeActiveChangeSet(null);
+    setActive(null);
   }, []);
 
-  const saveDraft = useCallback(async () => {
-    await putDraft(draftRef.current);
-  }, [putDraft]);
-
-  const commitDraft = useCallback(async () => {
-    const res = await apiFetch<{ changeSet?: string; id?: string }>("/v1/me/changeset-draft/commit", {
-      method: "POST",
-      body: "{}",
-    });
-    const id = res.changeSet || res.id || "";
-    setLastCommittedId(id);
-    setDraft(emptyDraft());
-    return id;
+  const commitChangeSet = useCallback(async () => {
+    const id = getActiveChangeSetId();
+    if (!id) return "";
+    const res = await apiFetch<WriteEnvelope<{ id: string }>>(
+      `/v1/changesets/${encodeURIComponent(id)}/commit`,
+      { method: "POST", body: "{}" },
+    );
+    const committed = res.data?.id || res.changeSet?.id || id;
+    setLastCommittedId(committed);
+    storeActiveChangeSet(null);
+    setActive(null);
+    return committed;
   }, []);
 
-  const queueOp = useCallback(
-    (op: ChangeOperation) => {
-      const withKey: ChangeOperation = {
-        ...op,
-        clientKey: op.clientKey || nextClientKey("op"),
-      };
-      const next: ChangeSetDraft = {
-        ...draftRef.current,
-        open: true,
-        packageCode: draftRef.current.packageCode || packageCode || undefined,
-        operations: [...(draftRef.current.operations || []), withKey],
-      };
-      setDraft(next);
-      void putDraft(next).catch(() => {
-        // keep optimistic state; caller may surface errors on next action
-      });
-    },
-    [packageCode, putDraft],
-  );
+  const runWrite = useCallback(async <T,>(immediateFn: () => Promise<T>, _ignored?: unknown): Promise<T> => {
+    return immediateFn();
+  }, []);
 
-  const runWrite = useCallback(
-    async <T,>(immediateFn: () => Promise<T>, draftOp: ChangeOperation): Promise<T | void> => {
-      if (draftRef.current.open) {
-        queueOp(draftOp);
-        return;
-      }
-      return immediateFn();
-    },
-    [queueOp],
-  );
+  const readHeaders = useCallback((): Record<string, string> => {
+    const id = getActiveChangeSetId();
+    return id ? { "X-Knowledge-Changesets": id } : {};
+  }, []);
 
   const value = useMemo(
     () => ({
-      draft,
       ready,
-      isOpen: !!draft.open,
+      isOpen: !!active?.id,
+      active,
       lastCommittedId,
-      openDraft,
-      closeDraft,
-      saveDraft,
-      commitDraft,
-      queueOp,
+      openChangeSet,
+      cancelChangeSet,
+      commitChangeSet,
       runWrite,
+      readHeaders,
     }),
-    [draft, ready, lastCommittedId, openDraft, closeDraft, saveDraft, commitDraft, queueOp, runWrite],
+    [ready, active, lastCommittedId, openChangeSet, cancelChangeSet, commitChangeSet, runWrite, readHeaders],
   );
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
@@ -202,4 +147,8 @@ export function ChangeSetDraftProvider({ children }: { children: React.ReactNode
 
 export function useChangeSetDraft() {
   return useContext(Ctx);
+}
+
+export function nextClientKey(prefix = "k"): string {
+  return `${prefix}-${Date.now()}`;
 }

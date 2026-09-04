@@ -23,6 +23,7 @@ type ChangeSetListOptions struct {
 	OperationType string
 	CorrelationID string
 	ObjectID      string
+	Status        string // default committed
 	CommittedFrom *time.Time
 	CommittedTo   *time.Time
 }
@@ -30,13 +31,19 @@ type ChangeSetListOptions struct {
 func (s *Store) GetChangeSetByPublicID(ctx context.Context, cid string) (*domain.ChangeSet, error) {
 	var cs domain.ChangeSet
 	var idem, corr *string
+	var status string
+	var committedAt *time.Time
 	err := s.pool.QueryRow(ctx, `
 		SELECT id, public_id, COALESCE(actor,''), operation_type, COALESCE(comment,''),
-			committed_at, idempotency_key, correlation_id
+			status, COALESCE(opened_at, committed_at, now()), committed_at, idempotency_key, correlation_id
 		FROM change_set WHERE public_id = $1
-	`, cid).Scan(&cs.ID, &cs.PublicID, &cs.Actor, &cs.OperationType, &cs.Comment, &cs.CommittedAt, &idem, &corr)
+	`, cid).Scan(&cs.ID, &cs.PublicID, &cs.Actor, &cs.OperationType, &cs.Comment, &status, &cs.OpenedAt, &committedAt, &idem, &corr)
 	if err != nil {
 		return nil, err
+	}
+	cs.Status = domain.ChangeSetStatus(status)
+	if committedAt != nil {
+		cs.CommittedAt = *committedAt
 	}
 	if idem != nil {
 		cs.IdempotencyKey = *idem
@@ -63,6 +70,26 @@ func (s *Store) GetChangeSetByPublicID(ctx context.Context, cid string) (*domain
 		return nil, err
 	}
 	cs.ItemCount = len(cs.Items)
+	if cs.Status == domain.ChangeSetOpen {
+		claimRows, err := s.pool.Query(ctx, `
+			SELECT object_type, object_id, canonical_iri, base_revision_no, op_kind
+			FROM changeset_object_claim WHERE changeset_id = $1 ORDER BY created_at
+		`, cs.ID)
+		if err != nil {
+			return nil, err
+		}
+		defer claimRows.Close()
+		for claimRows.Next() {
+			var c domain.ChangeSetClaim
+			if err := claimRows.Scan(&c.ObjectType, &c.ObjectID, &c.CanonicalIRI, &c.BaseRevisionNo, &c.OpKind); err != nil {
+				return nil, err
+			}
+			cs.Claims = append(cs.Claims, c)
+		}
+		if err := claimRows.Err(); err != nil {
+			return nil, err
+		}
+	}
 	return &cs, nil
 }
 
@@ -76,6 +103,14 @@ func (s *Store) ListChangeSets(ctx context.Context, opt ChangeSetListOptions) ([
 
 	args := []any{}
 	where := `TRUE`
+	status := strings.TrimSpace(opt.Status)
+	if status == "" {
+		status = string(domain.ChangeSetCommitted)
+	}
+	if !strings.EqualFold(status, "all") {
+		args = append(args, status)
+		where += ` AND cs.status = $` + strconv.Itoa(len(args))
+	}
 	if actor := strings.TrimSpace(opt.Actor); actor != "" {
 		args = append(args, actor)
 		where += ` AND cs.actor = $` + strconv.Itoa(len(args))
@@ -123,7 +158,7 @@ func (s *Store) ListChangeSets(ctx context.Context, opt ChangeSetListOptions) ([
 		args = append(args, ts, pid)
 		tsN := strconv.Itoa(len(args) - 1)
 		pidN := strconv.Itoa(len(args))
-		where += ` AND (cs.committed_at, cs.public_id) < ($` + tsN + `::timestamptz, $` + pidN + `)`
+		where += ` AND (COALESCE(cs.committed_at, cs.opened_at), cs.public_id) < ($` + tsN + `::timestamptz, $` + pidN + `)`
 	}
 
 	args = append(args, opt.Limit+1)
@@ -131,11 +166,11 @@ func (s *Store) ListChangeSets(ctx context.Context, opt ChangeSetListOptions) ([
 
 	rows, err := s.pool.Query(ctx, `
 		SELECT cs.id, cs.public_id, COALESCE(cs.actor,''), cs.operation_type, COALESCE(cs.comment,''),
-			cs.committed_at, cs.idempotency_key, cs.correlation_id,
+			cs.status, COALESCE(cs.opened_at, cs.committed_at, now()), cs.committed_at, cs.idempotency_key, cs.correlation_id,
 			(SELECT count(*)::int FROM change_set_item csi WHERE csi.change_set_id = cs.id)
 		FROM change_set cs
 		WHERE `+where+`
-		ORDER BY cs.committed_at DESC, cs.public_id DESC
+		ORDER BY COALESCE(cs.committed_at, cs.opened_at) DESC, cs.public_id DESC
 		LIMIT `+limitArg+`
 	`, args...)
 	if err != nil {
@@ -147,11 +182,17 @@ func (s *Store) ListChangeSets(ctx context.Context, opt ChangeSetListOptions) ([
 	for rows.Next() {
 		var cs domain.ChangeSet
 		var idem, corr *string
+		var status string
+		var committedAt *time.Time
 		if err := rows.Scan(
 			&cs.ID, &cs.PublicID, &cs.Actor, &cs.OperationType, &cs.Comment,
-			&cs.CommittedAt, &idem, &corr, &cs.ItemCount,
+			&status, &cs.OpenedAt, &committedAt, &idem, &corr, &cs.ItemCount,
 		); err != nil {
 			return nil, "", err
+		}
+		cs.Status = domain.ChangeSetStatus(status)
+		if committedAt != nil {
+			cs.CommittedAt = *committedAt
 		}
 		if idem != nil {
 			cs.IdempotencyKey = *idem
@@ -167,7 +208,11 @@ func (s *Store) ListChangeSets(ctx context.Context, opt ChangeSetListOptions) ([
 	next := ""
 	if len(out) > opt.Limit {
 		last := out[opt.Limit-1]
-		next = encodeChangeSetCursor(last.CommittedAt, last.PublicID)
+		ts := last.CommittedAt
+		if ts.IsZero() {
+			ts = last.OpenedAt
+		}
+		next = encodeChangeSetCursor(ts, last.PublicID)
 		out = out[:opt.Limit]
 	}
 	return out, next, nil

@@ -58,7 +58,7 @@ Major SemVer **neobchází** BC, pokud v prostředí už je release.
 
 ## Seed bundly
 
-`models/archimate-lite/build_bundle.py` při rebuildu bere baseline předchozího bundle (pokud existuje) a u změněného obsahu **bumpne `revisionNo`**.
+`knowledge-models/archimate-lite/build_bundle.py` při rebuildu bere baseline předchozího bundle (pokud existuje) a u změněného obsahu **bumpne `revisionNo`**.
 
 ## Acceptance
 

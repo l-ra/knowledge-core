@@ -17,6 +17,7 @@ import { LensesPage } from "./pages/LensesPage";
 import { PoliciesPage } from "./pages/PoliciesPage";
 import { OpsPage } from "./pages/OpsPage";
 import { ShapesPage } from "./pages/ShapesPage";
+import { ClassPropertiesPage } from "./pages/ClassPropertiesPage";
 import { SchemaConfigPage } from "./pages/SchemaConfigPage";
 import { ValidationPage } from "./pages/ValidationPage";
 import { ChangesetsPage } from "./pages/ChangesetsPage";
@@ -59,6 +60,7 @@ export function App() {
         <Route path="model/properties" element={<Navigate to="/entities?kind=property" replace />} />
         <Route path="model/classes" element={<Navigate to="/entities?kind=class" replace />} />
         <Route path="model/shapes" element={<ShapesPage />} />
+        <Route path="model/class-properties" element={<ClassPropertiesPage />} />
         <Route path="model/packages" element={<PackagesPage />} />
         <Route path="model/packages/:code" element={<PackageDetailPage />} />
         <Route path="model/lenses" element={<LensesPage />} />

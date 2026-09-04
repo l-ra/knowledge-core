@@ -154,6 +154,24 @@ export function PackagesPage() {
     }
   }
 
+  async function exportBundle(code: string, version: string) {
+    setError("");
+    try {
+      const bundle = await apiFetch<unknown>(
+        `/v1/packages/${encodeURIComponent(code)}/releases/${encodeURIComponent(version)}/bundle`,
+      );
+      const blob = new Blob([JSON.stringify(bundle, null, 2)], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `${code}-${version}-bundle.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : t("common.error"));
+    }
+  }
+
   async function onImportFile(file: File | null) {
     setImportError("");
     setImportOk("");
@@ -631,9 +649,26 @@ export function PackagesPage() {
                 )}
               </td>
               <td>
-                <button type="button" className="danger" onClick={() => void removePackage(p.code)}>
-                  {t("packages.delete")}
-                </button>
+                <div className="row">
+                  <button
+                    type="button"
+                    disabled={!p.latestReleaseVersion}
+                    title={
+                      p.latestReleaseVersion
+                        ? t("packages.exportBundle")
+                        : t("packages.noReleases")
+                    }
+                    onClick={() => {
+                      if (!p.latestReleaseVersion) return;
+                      void exportBundle(p.code, p.latestReleaseVersion);
+                    }}
+                  >
+                    {t("packages.exportBundle")}
+                  </button>
+                  <button type="button" className="danger" onClick={() => void removePackage(p.code)}>
+                    {t("packages.delete")}
+                  </button>
+                </div>
               </td>
             </tr>
           ))}

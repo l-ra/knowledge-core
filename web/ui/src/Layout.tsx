@@ -10,13 +10,11 @@ export function Layout() {
   const { t } = useTranslation();
   const { session, setSession } = useAuth();
   const { packages, packageCode, setPackageCode } = usePackage();
-  const { draft, isOpen, openDraft, closeDraft, commitDraft, lastCommittedId } = useChangeSetDraft();
-  const [opsOpen, setOpsOpen] = useState(false);
+  const { isOpen, active, openChangeSet, cancelChangeSet, commitChangeSet, lastCommittedId } = useChangeSetDraft();
   const [draftMsg, setDraftMsg] = useState("");
   const [draftError, setDraftError] = useState("");
   const [hideObjectIds, setHideObjectIds] = useState(() => localStorage.getItem("kc.hideObjectIds") === "1");
   const displayName = session?.displayName || session?.subject || session?.mode || "—";
-  const opCount = draft.operations?.length || 0;
 
   function toggleObjectIds() {
     setHideObjectIds((prev) => {
@@ -29,7 +27,7 @@ export function Layout() {
   async function onOpen() {
     setDraftError("");
     try {
-      await openDraft({ packageCode: packageCode || undefined });
+      await openChangeSet();
       setDraftMsg("");
     } catch (err) {
       setDraftError(err instanceof Error ? err.message : t("common.error"));
@@ -39,9 +37,8 @@ export function Layout() {
   async function onComplete() {
     setDraftError("");
     try {
-      const id = await commitDraft();
+      const id = await commitChangeSet();
       setDraftMsg(id ? `${t("changeset.committed")}: ${id}` : t("changeset.committed"));
-      setOpsOpen(false);
     } catch (err) {
       setDraftError(err instanceof Error ? err.message : t("common.error"));
     }
@@ -50,9 +47,8 @@ export function Layout() {
   async function onCancel() {
     setDraftError("");
     try {
-      await closeDraft();
+      await cancelChangeSet();
       setDraftMsg("");
-      setOpsOpen(false);
     } catch (err) {
       setDraftError(err instanceof Error ? err.message : t("common.error"));
     }
@@ -75,6 +71,7 @@ export function Layout() {
         <div className="nav-section">
           <h2>{t("nav.model")}</h2>
           <NavLink to="/model/shapes">{t("nav.shapes")}</NavLink>
+          <NavLink to="/model/class-properties">{t("nav.classProperties")}</NavLink>
           <NavLink to="/model/packages">{t("nav.packages")}</NavLink>
           <NavLink to="/model/lenses">{t("nav.lenses")}</NavLink>
           <NavLink to="/model/policies">{t("nav.policies")}</NavLink>
@@ -110,17 +107,19 @@ export function Layout() {
             {isOpen ? (
               <>
                 <span className="topbar-badge">
-                  {t("changeset.openStatus", { count: opCount })}
+                  {t("changeset.openStatus", { id: active?.id || "" })}
                 </span>
-                <button type="button" className="topbar-btn primary" onClick={() => void onComplete()} disabled={opCount === 0}>
+                <button type="button" className="topbar-btn primary" onClick={() => void onComplete()}>
                   {t("changeset.complete")}
                 </button>
                 <button type="button" className="topbar-btn danger" onClick={() => void onCancel()}>
                   {t("changeset.cancel")}
                 </button>
-                <button type="button" className="topbar-btn" onClick={() => setOpsOpen((v) => !v)}>
-                  {opsOpen ? t("changeset.hideOps") : t("changeset.showOps")}
-                </button>
+                {active?.id && (
+                  <Link className="topbar-muted" to={`/changesets/${encodeURIComponent(active.id)}`}>
+                    <code>{active.id}</code>
+                  </Link>
+                )}
               </>
             ) : (
               <>
@@ -168,27 +167,6 @@ export function Layout() {
           </div>
         </header>
 
-        {opsOpen && isOpen && (
-          <div className="panel stack" style={{ margin: "0 clamp(1rem, 3vw, 2.5rem)", marginBottom: "0.5rem" }}>
-            <h3>{t("changeset.operations")}</h3>
-            {opCount === 0 ? (
-              <p className="muted">{t("changeset.noOps")}</p>
-            ) : (
-              <ol className="draft-ops">
-                {draft.operations.map((op, i) => (
-                  <li key={op.clientKey || `${op.op}-${i}`}>
-                    <code>{op.op}</code>
-                    {op.entity ? ` · ${op.entity}` : ""}
-                    {op.subject ? ` · ${op.subject}` : ""}
-                    {op.statement ? ` · ${op.statement}` : ""}
-                    {op.property ? ` · ${op.property}` : ""}
-                    {op.packageCode ? ` · ${op.packageCode}` : ""}
-                  </li>
-                ))}
-              </ol>
-            )}
-          </div>
-        )}
         {draftMsg && <p className="muted" style={{ padding: "0 clamp(1rem, 3vw, 2.5rem)" }}>{draftMsg}</p>}
         {draftError && <p className="error" style={{ padding: "0 clamp(1rem, 3vw, 2.5rem)" }}>{draftError}</p>}
 

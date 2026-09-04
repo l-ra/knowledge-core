@@ -456,6 +456,15 @@ func mapErr(err error) error {
 	if errors.Is(err, pgx.ErrNoRows) {
 		return ErrNotFound
 	}
+	if errors.Is(err, store.ErrOpenChangeSetNotFound) {
+		return ErrNotFound
+	}
+	if errors.Is(err, store.ErrOpenChangeSetClosed) {
+		return fmt.Errorf("%w: %v", ErrInvalid, err)
+	}
+	if errors.Is(err, store.ErrOpenChangeSetForbidden) {
+		return ErrForbidden
+	}
 	if errors.Is(err, store.ErrInvalidCursor) {
 		return fmt.Errorf("%w: %v", ErrInvalid, err)
 	}

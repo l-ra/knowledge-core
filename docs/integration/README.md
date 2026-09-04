@@ -14,7 +14,7 @@ Lehké knowledge-graph jádro (Wikibase-inspired): entity–property–value mod
 | 2 | [client-guide.md](client-guide.md) | Implementace | Vývojář |
 | 3 | [api-contract.md](api-contract.md) | Implementace | Vývojář |
 | 4 | [../ops/post-install.md](../ops/post-install.md) | Provoz | DevOps, první zápis |
-| 5 | [../models/archimate-lite-kc.md](../models/archimate-lite-kc.md) | Referenční příklad | Vývojář doménového nástroje |
+| 5 | [../../../knowledge-models/docs/archimate-lite-kc.md](../../../knowledge-models/docs/archimate-lite-kc.md) | Referenční příklad | Vývojář doménového nástroje |
 
 ## Artefakty pro integraci
 
@@ -22,8 +22,8 @@ Lehké knowledge-graph jádro (Wikibase-inspired): entity–property–value mod
 |----------|-------|------|
 | OpenAPI | [`api/openapi.yaml`](../../api/openapi.yaml) | Katalog endpointů + schémata request/response |
 | HTTP příklady | [`examples.http`](examples.http) | Spustitelné requesty (REST Client / IntelliJ / VS Code) |
-| Referenční loader | [`models/archimate-lite/load.py`](../../models/archimate-lite/load.py) | Idempotentní bootstrap metamodelu z JSON katalogu |
-| Seed katalog | [`models/archimate-lite/catalog.json`](../../models/archimate-lite/catalog.json) | Ukázka struktury doménového slovníku |
+| Referenční loader | [`archimate-lite/load.py`](../../../knowledge-models/archimate-lite/load.py) in knowledge-models | Idempotentní bootstrap metamodelu z JSON katalogu |
+| Seed katalog | [`archimate-lite/catalog.json`](../../../knowledge-models/archimate-lite/catalog.json) | Ukázka struktury doménového slovníku |
 | Post-install | [../ops/post-install.md](../ops/post-install.md) | Auth, bootstrap admin, OIDC, první oprávnění |
 
 ## Dvouúrovňová struktura
@@ -52,7 +52,7 @@ export KC_TOKEN='<bootstrap-heslo>'
 curl -s -H "Authorization: Bearer $KC_TOKEN" "$KC_BASE_URL/v1/me"
 
 # 3. Nahraj referenční metamodel (volitelně — ukázka celého workflow)
-python3 models/archimate-lite/load.py
+python3 ../knowledge-models/archimate-lite/load.py
 
 # 4. Prozkoumej API příklady
 #    docs/integration/examples.http
@@ -67,7 +67,7 @@ python3 models/archimate-lite/load.py
 | **Instance packages** | data v KC | Konkrétní systémy, vazby, views |
 | **Klientský nástroj** | mimo KC | Editor, export XML, validace doménových pravidel |
 
-ArchiMate Lite ilustruje všechny čtyři vrstvy — viz [archimate-lite-kc.md](../models/archimate-lite-kc.md).
+ArchiMate Lite ilustruje všechny čtyři vrstvy — viz [archimate-lite-kc.md](../../../knowledge-models/docs/archimate-lite-kc.md).
 
 ## Související interní dokumentace
 

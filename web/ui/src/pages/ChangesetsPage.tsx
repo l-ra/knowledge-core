@@ -1,7 +1,11 @@
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, type ReactNode, useEffect, useMemo, useState } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { apiFetch } from "../api";
+import { pickLabel } from "../labels";
+import { EntityLink, StatementLink } from "../links";
+import { ApiValue, displayValueText } from "../ValueEditor";
+import { useEntityLookup, type EntitySummary } from "../useEntityLookup";
 
 type ChangeSetItem = {
   objectType: string;
@@ -26,6 +30,14 @@ type ChangeSetDetail = ChangeSetSummary & {
   items?: ChangeSetItem[];
 };
 
+type StatementDetail = {
+  id: string;
+  displayId?: string;
+  subject: string;
+  property: string;
+  value?: ApiValue;
+};
+
 type Filters = {
   q: string;
   actor: string;
@@ -46,6 +58,8 @@ const emptyFilters = (): Filters => ({
   committedTo: "",
 });
 
+const ENTITY_OBJECT_TYPES = new Set(["entity", "property", "class"]);
+
 function objectHref(objectType: string, publicId: string): string | null {
   if (!publicId) return null;
   switch (objectType) {
@@ -62,6 +76,99 @@ function objectHref(objectType: string, publicId: string): string | null {
     default:
       return null;
   }
+}
+
+function entityLabel(entities: Record<string, EntitySummary>, id: string, lang: string): string {
+  const ent = entities[id];
+  return pickLabel(ent?.labels, lang, ent?.displayId || id);
+}
+
+function ChangeSetObjectCell({
+  item,
+  entities,
+  statements,
+  lang,
+}: {
+  item: ChangeSetItem;
+  entities: Record<string, EntitySummary>;
+  statements: Record<string, StatementDetail>;
+  lang: string;
+}) {
+  const href = objectHref(item.objectType, item.publicId);
+  const fallbackId = item.publicId || item.objectId;
+
+  if (ENTITY_OBJECT_TYPES.has(item.objectType) && item.publicId) {
+    const ent = entities[item.publicId];
+    const typeIds = ent?.effectiveClasses || [];
+    const typeLabels = typeIds
+      .map((cid) => entityLabel(entities, cid, lang))
+      .filter((label, idx, arr) => label && arr.indexOf(label) === idx);
+    return (
+      <span className="stack compact">
+        {typeLabels.length > 0 && <span className="muted">{typeLabels.join(", ")}</span>}
+        <EntityLink
+          id={item.publicId}
+          displayId={ent?.displayId || item.publicId}
+          labels={ent?.labels}
+          lang={lang}
+        />
+      </span>
+    );
+  }
+
+  if (item.objectType === "statement" && item.publicId) {
+    const st = statements[item.publicId];
+    if (!st) {
+      return (
+        <StatementLink id={item.publicId} displayId={item.publicId} text={fallbackId} />
+      );
+    }
+    const subject = entities[st.subject];
+    const property = entities[st.property];
+    let valueNode: ReactNode;
+    if (st.value?.type === "EntityReference" && st.value.entityId) {
+      const vid = String(st.value.entityId);
+      const vent = entities[vid];
+      valueNode = (
+        <EntityLink id={vid} displayId={vent?.displayId} labels={vent?.labels} lang={lang} />
+      );
+    } else {
+      valueNode = <span>{displayValueText(st.value, lang)}</span>;
+    }
+    return (
+      <span className="stack compact">
+        <span className="row compact" style={{ flexWrap: "wrap", alignItems: "baseline", gap: "0.35rem" }}>
+          <EntityLink
+            id={st.subject}
+            displayId={subject?.displayId}
+            labels={subject?.labels}
+            lang={lang}
+          />
+          <span className="muted">→</span>
+          <EntityLink
+            id={st.property}
+            displayId={property?.displayId}
+            labels={property?.labels}
+            lang={lang}
+          />
+          <span className="muted">→</span>
+          {valueNode}
+        </span>
+        <Link to={`/statements/${encodeURIComponent(st.id)}`}>
+          <code className="object-id">{st.displayId || item.publicId}</code>
+        </Link>
+      </span>
+    );
+  }
+
+  if (href) {
+    return (
+      <Link to={href}>
+        <code>{fallbackId}</code>
+      </Link>
+    );
+  }
+  return <code>{fallbackId}</code>;
 }
 
 export function ChangesetsPage() {
@@ -90,6 +197,7 @@ export function ChangesetsPage() {
   const [items, setItems] = useState<ChangeSetSummary[]>([]);
   const [next, setNext] = useState("");
   const [detail, setDetail] = useState<ChangeSetDetail | null>(null);
+  const [statements, setStatements] = useState<Record<string, StatementDetail>>({});
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
@@ -133,17 +241,22 @@ export function ChangesetsPage() {
   useEffect(() => {
     if (!selectedId) {
       setDetail(null);
+      setStatements({});
       return;
     }
     let cancelled = false;
     setError("");
     void apiFetch<ChangeSetDetail>(`/v1/changesets/${encodeURIComponent(selectedId)}`)
       .then((res) => {
-        if (!cancelled) setDetail(res);
+        if (!cancelled) {
+          setDetail(res);
+          setStatements({});
+        }
       })
       .catch((err) => {
         if (!cancelled) {
           setDetail(null);
+          setStatements({});
           setError(err instanceof Error ? err.message : t("common.error"));
         }
       });
@@ -151,6 +264,67 @@ export function ChangesetsPage() {
       cancelled = true;
     };
   }, [selectedId, t]);
+
+  const statementIds = useMemo(() => {
+    const ids: string[] = [];
+    for (const it of detail?.items || []) {
+      if (it.objectType === "statement" && it.publicId) ids.push(it.publicId);
+    }
+    return ids;
+  }, [detail]);
+
+  useEffect(() => {
+    if (statementIds.length === 0) {
+      setStatements({});
+      return;
+    }
+    let cancelled = false;
+    void Promise.all(
+      statementIds.map(async (id) => {
+        try {
+          return await apiFetch<StatementDetail>(`/v1/statements/${encodeURIComponent(id)}`);
+        } catch {
+          return null;
+        }
+      }),
+    ).then((rows) => {
+      if (cancelled) return;
+      const nextMap: Record<string, StatementDetail> = {};
+      for (const st of rows) {
+        if (st?.id) nextMap[st.id] = st;
+      }
+      setStatements(nextMap);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [statementIds]);
+
+  const relatedEntityIds = useMemo(() => {
+    const ids: string[] = [];
+    for (const it of detail?.items || []) {
+      if (ENTITY_OBJECT_TYPES.has(it.objectType) && it.publicId) ids.push(it.publicId);
+    }
+    for (const st of Object.values(statements)) {
+      ids.push(st.subject, st.property);
+      if (st.value?.type === "EntityReference" && st.value.entityId) {
+        ids.push(String(st.value.entityId));
+      }
+    }
+    return ids;
+  }, [detail, statements]);
+
+  const entities = useEntityLookup(relatedEntityIds);
+
+  const classIds = useMemo(() => {
+    const ids: string[] = [];
+    for (const id of relatedEntityIds) {
+      for (const cid of entities[id]?.effectiveClasses || []) ids.push(cid);
+    }
+    return ids;
+  }, [relatedEntityIds, entities]);
+
+  const entitiesWithClasses = useEntityLookup([...relatedEntityIds, ...classIds]);
 
   function onFilter(e: FormEvent) {
     e.preventDefault();
@@ -171,6 +345,7 @@ export function ChangesetsPage() {
   });
 
   const querySuffix = params.toString() ? `?${params}` : "";
+  const lang = i18n.language || "en";
 
   return (
     <div className="stack">
@@ -337,30 +512,26 @@ export function ChangesetsPage() {
                     <tr>
                       <th>{t("changesets.col.op")}</th>
                       <th>{t("changesets.col.objectType")}</th>
-                      <th>{t("changesets.col.object")}</th>
+                      <th>{t("changesets.col.summary")}</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {(detail.items || []).map((it, idx) => {
-                      const href = objectHref(it.objectType, it.publicId);
-                      return (
-                        <tr key={`${it.objectId}-${idx}`}>
-                          <td>
-                            <code>{it.op}</code>
-                          </td>
-                          <td>{it.objectType}</td>
-                          <td>
-                            {href ? (
-                              <Link to={href}>
-                                <code>{it.publicId || it.objectId}</code>
-                              </Link>
-                            ) : (
-                              <code>{it.publicId || it.objectId}</code>
-                            )}
-                          </td>
-                        </tr>
-                      );
-                    })}
+                    {(detail.items || []).map((it, idx) => (
+                      <tr key={`${it.objectId}-${idx}`}>
+                        <td>
+                          <code>{it.op}</code>
+                        </td>
+                        <td>{it.objectType}</td>
+                        <td>
+                          <ChangeSetObjectCell
+                            item={it}
+                            entities={entitiesWithClasses}
+                            statements={statements}
+                            lang={lang}
+                          />
+                        </td>
+                      </tr>
+                    ))}
                   </tbody>
                 </table>
               )}

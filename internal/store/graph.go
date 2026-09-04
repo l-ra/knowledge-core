@@ -45,6 +45,9 @@ func (s *Store) nextPublicID(ctx context.Context, tx pgx.Tx, kind, prefix string
 }
 
 func (s *Store) CreateEntity(ctx context.Context, meta domain.WriteMeta, in domain.CreateEntityInput) (*domain.WriteResult[domain.Entity], error) {
+	if meta.OpenChangeSetID != "" {
+		return s.CreateEntityInOpenChangeSet(ctx, meta, in)
+	}
 	labels, err := datatype.NormalizeLabels(in.Labels)
 	if err != nil {
 		return nil, err
@@ -153,35 +156,7 @@ func (s *Store) CreateEntity(ctx context.Context, meta domain.WriteMeta, in doma
 }
 
 func (s *Store) GetEntityByPublicID(ctx context.Context, qid string) (*domain.Entity, error) {
-	var e domain.Entity
-	var pkgCode *string
-	err := s.pool.QueryRow(ctx, `
-		SELECT e.id, e.public_id, e.status, e.current_revision_no, e.created_at, e.updated_at, p.code, COALESCE(e.iri_local,'')
-		FROM entity e
-		LEFT JOIN package p ON p.id = e.package_id
-		WHERE e.public_id = $1
-	`, qid).Scan(&e.ID, &e.PublicID, &e.Status, &e.RevisionNo, &e.CreatedAt, &e.UpdatedAt, &pkgCode, &e.IRILocal)
-	if err != nil {
-		return nil, err
-	}
-	if pkgCode != nil {
-		e.PackageCode = *pkgCode
-	}
-	e.Labels, err = s.loadLabels(ctx, `SELECT lang, text FROM entity_label WHERE entity_id = $1`, e.ID)
-	if err != nil {
-		return nil, err
-	}
-	e.Descriptions, err = s.loadLabels(ctx, `SELECT lang, text FROM entity_description WHERE entity_id = $1`, e.ID)
-	if err != nil {
-		return nil, err
-	}
-	if err := s.attachEntityProfiles(ctx, &e); err != nil {
-		return nil, err
-	}
-	if err := s.fillEntityIRI(ctx, &e); err != nil {
-		return nil, err
-	}
-	return &e, nil
+	return s.mergeGetEntity(ctx, qid)
 }
 
 func (s *Store) attachEntityProfiles(ctx context.Context, e *domain.Entity) error {
@@ -217,6 +192,9 @@ func (s *Store) attachEntityProfiles(ctx context.Context, e *domain.Entity) erro
 }
 
 func (s *Store) CreateProperty(ctx context.Context, meta domain.WriteMeta, in domain.CreatePropertyInput) (*domain.WriteResult[domain.Property], error) {
+	if meta.OpenChangeSetID != "" {
+		return s.CreatePropertyInOpenChangeSet(ctx, meta, in)
+	}
 	if _, err := datatype.ParseType(string(in.Datatype)); err != nil {
 		return nil, err
 	}
@@ -550,6 +528,9 @@ func decodeValue(sv storedValue) (datatype.Value, error) {
 }
 
 func (s *Store) CreateStatement(ctx context.Context, meta domain.WriteMeta, in domain.CreateStatementInput) (*domain.WriteResult[domain.Statement], error) {
+	if meta.OpenChangeSetID != "" {
+		return s.CreateStatementInOpenChangeSet(ctx, meta, in)
+	}
 	tx, err := s.pool.Begin(ctx)
 	if err != nil {
 		return nil, err
@@ -726,6 +707,13 @@ func (s *Store) CreateStatement(ctx context.Context, meta domain.WriteMeta, in d
 }
 
 func (s *Store) GetStatementByPublicID(ctx context.Context, sid string) (*domain.Statement, error) {
+	if len(ActiveChangeSetsFrom(ctx)) > 0 {
+		return s.mergeGetStatement(ctx, sid)
+	}
+	return s.getStatementByPublicIDCommitted(ctx, sid)
+}
+
+func (s *Store) getStatementByPublicIDCommitted(ctx context.Context, sid string) (*domain.Statement, error) {
 	row := s.pool.QueryRow(ctx, `
 		SELECT st.id, st.public_id, st.subject_id, e.public_id, st.property_id, p.public_id, st.status,
 			st.value_type, st.value_bool, st.value_int64, st.value_numeric, st.value_date, st.value_timestamptz,
@@ -816,7 +804,14 @@ func (s *Store) ListStatements(ctx context.Context, opt StatementListOptions) ([
 		}
 		out = append(out, *st)
 	}
-	return out, next, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, "", err
+	}
+	merged, err := s.mergeListStatements(ctx, opt, out)
+	if err != nil {
+		return nil, "", err
+	}
+	return merged, next, nil
 }
 
 func (s *Store) ListStatementsBySubject(ctx context.Context, qid string, propertyPID string) ([]domain.Statement, error) {

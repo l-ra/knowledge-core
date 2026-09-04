@@ -374,6 +374,9 @@ func (s *Store) createPropertyInTx(ctx context.Context, tx pgx.Tx, cs *changeSet
 	if err := cs.addItem(ctx, tx, "property", id, publicID, "create", nil); err != nil {
 		return nil, err
 	}
+	if err := s.maybeAutoSetInstanceOfPropertyTx(ctx, tx, publicID); err != nil {
+		return nil, err
+	}
 	return &domain.Property{
 		ID: id, PublicID: publicID, Datatype: in.Datatype, Status: domain.PropertyActive,
 		Labels: labels, Descriptions: descs, Constraints: in.Constraints, RevisionNo: 1,

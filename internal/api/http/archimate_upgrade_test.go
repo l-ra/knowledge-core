@@ -8,16 +8,18 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/l-ra/knowledge-core/internal/testdata"
 )
 
 // Seed archimate-lite 1.2.0 is an additive upgrade of 1.1.0. Import must succeed
 // after 1.1.0 is installed (BC gate compares against release export).
 func TestAcceptanceArchimateLiteUpgrade110to120(t *testing.T) {
 	h := setupTestHandler(t)
-	root := filepath.Join("..", "..", "..")
+	root := testdata.MustModelsRoot(t.Fatalf)
 	load := func(name string) map[string]any {
 		t.Helper()
-		raw, err := os.ReadFile(filepath.Join(root, "models/archimate-lite/releases", name))
+		raw, err := os.ReadFile(filepath.Join(root, "archimate-lite", "releases", name))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -75,10 +77,10 @@ func TestAcceptanceArchimateLiteUpgrade110to120(t *testing.T) {
 
 func TestAcceptanceArchimateLiteUpgrade200to210(t *testing.T) {
 	h := setupTestHandler(t)
-	root := filepath.Join("..", "..", "..")
+	root := testdata.MustModelsRoot(t.Fatalf)
 	load := func(rel string) map[string]any {
 		t.Helper()
-		raw, err := os.ReadFile(filepath.Join(root, rel))
+		raw, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(strings.TrimPrefix(rel, "models/"))))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -89,23 +91,17 @@ func TestAcceptanceArchimateLiteUpgrade200to210(t *testing.T) {
 		return m
 	}
 
-	impBase := doJSON(t, h, http.MethodPost, "/v1/releases/import", load("models/kc-base/releases/kc-base-1.0.0.bundle.json"), nil)
+	impBase := doJSON(t, h, http.MethodPost, "/v1/releases/import", load("kc-base/releases/kc-base-1.0.0.bundle.json"), nil)
 	if impBase.StatusCode != http.StatusCreated {
 		t.Fatalf("import kc-base 1.0.0: %d %s", impBase.StatusCode, impBase.Body)
 	}
-	cfg := doJSON(t, h, http.MethodPut, "/v1/admin/schema-config", map[string]any{
-		"instanceOfProperty": "https://knowledge-core.local/kc-base/instanceOf",
-	}, nil)
-	if cfg.StatusCode != http.StatusOK {
-		t.Fatalf("schema-config: %d %s", cfg.StatusCode, cfg.Body)
-	}
 
-	imp20 := doJSON(t, h, http.MethodPost, "/v1/releases/import", load("models/archimate-lite/releases/archimate-lite-2.0.0.bundle.json"), nil)
+	imp20 := doJSON(t, h, http.MethodPost, "/v1/releases/import", load("archimate-lite/releases/archimate-lite-2.0.0.bundle.json"), nil)
 	if imp20.StatusCode != http.StatusCreated {
 		t.Fatalf("import 2.0.0: %d %s", imp20.StatusCode, imp20.Body)
 	}
 
-	imp21 := doJSON(t, h, http.MethodPost, "/v1/releases/import", load("models/archimate-lite/releases/archimate-lite-2.1.0.bundle.json"), nil)
+	imp21 := doJSON(t, h, http.MethodPost, "/v1/releases/import", load("archimate-lite/releases/archimate-lite-2.1.0.bundle.json"), nil)
 	if imp21.StatusCode != http.StatusCreated {
 		t.Fatalf("import 2.1.0: %d %s", imp21.StatusCode, imp21.Body)
 	}
@@ -118,11 +114,11 @@ func TestAcceptanceArchimateLiteUpgrade200to210(t *testing.T) {
 		t.Fatalf("expected latestReleaseVersion 2.1.0 in list, got %s", pkgs.Body)
 	}
 
-	impBase11 := doJSON(t, h, http.MethodPost, "/v1/releases/import", load("models/kc-base/releases/kc-base-1.1.0.bundle.json"), nil)
+	impBase11 := doJSON(t, h, http.MethodPost, "/v1/releases/import", load("kc-base/releases/kc-base-1.1.0.bundle.json"), nil)
 	if impBase11.StatusCode != http.StatusCreated {
 		t.Fatalf("import kc-base 1.1.0: %d %s", impBase11.StatusCode, impBase11.Body)
 	}
-	imp22 := doJSON(t, h, http.MethodPost, "/v1/releases/import", load("models/archimate-lite/releases/archimate-lite-2.2.0.bundle.json"), nil)
+	imp22 := doJSON(t, h, http.MethodPost, "/v1/releases/import", load("archimate-lite/releases/archimate-lite-2.2.0.bundle.json"), nil)
 	if imp22.StatusCode != http.StatusCreated {
 		t.Fatalf("import 2.2.0: %d %s", imp22.StatusCode, imp22.Body)
 	}
@@ -368,5 +364,136 @@ func TestAcceptanceArchimateLiteUpgrade200to210(t *testing.T) {
 			val := doJSON(t, h, http.MethodGet, entityPath(id, "/validation"), nil, nil)
 			t.Fatalf("demo entity %s has %d validation errors: %s", id, n, val.Body)
 		}
+	}
+}
+
+func TestAcceptanceArchimateLiteUpgrade220to230(t *testing.T) {
+	h := setupTestHandler(t)
+	root := testdata.MustModelsRoot(t.Fatalf)
+	load := func(rel string) map[string]any {
+		t.Helper()
+		raw, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(strings.TrimPrefix(rel, "models/"))))
+		if err != nil {
+			t.Fatal(err)
+		}
+		var m map[string]any
+		if err := json.Unmarshal(raw, &m); err != nil {
+			t.Fatal(err)
+		}
+		return m
+	}
+
+	impBase := doJSON(t, h, http.MethodPost, "/v1/releases/import", load("kc-base/releases/kc-base-1.1.0.bundle.json"), nil)
+	if impBase.StatusCode != http.StatusCreated {
+		t.Fatalf("import kc-base 1.1.0: %d %s", impBase.StatusCode, impBase.Body)
+	}
+
+	imp22 := doJSON(t, h, http.MethodPost, "/v1/releases/import", load("archimate-lite/releases/archimate-lite-2.2.0.bundle.json"), nil)
+	if imp22.StatusCode != http.StatusCreated {
+		t.Fatalf("import 2.2.0: %d %s", imp22.StatusCode, imp22.Body)
+	}
+
+	imp23 := doJSON(t, h, http.MethodPost, "/v1/releases/import", load("archimate-lite/releases/archimate-lite-2.3.0.bundle.json"), nil)
+	if imp23.StatusCode != http.StatusCreated {
+		t.Fatalf("import 2.3.0: %d %s", imp23.StatusCode, imp23.Body)
+	}
+
+	imp231 := doJSON(t, h, http.MethodPost, "/v1/releases/import", load("archimate-lite/releases/archimate-lite-2.3.1.bundle.json"), nil)
+	if imp231.StatusCode != http.StatusCreated {
+		t.Fatalf("import 2.3.1: %d %s", imp231.StatusCode, imp231.Body)
+	}
+
+	pkgs := doJSON(t, h, http.MethodGet, "/v1/packages", nil, nil)
+	if pkgs.StatusCode != http.StatusOK || !strings.Contains(pkgs.Body, `"latestReleaseVersion":"2.3.1"`) {
+		t.Fatalf("expected latestReleaseVersion 2.3.1 in list, got %s", pkgs.Body)
+	}
+
+	for _, code := range []string{"aml-ui-navigation-profile", "aml-ui-traversal-template", "aml-ui-stage", "aml-ui-transition", "aml-ui-add-action"} {
+		sh := doJSON(t, h, http.MethodGet, "/v1/shapes/"+url.PathEscape(code)+"?package=archimate-lite", nil, nil)
+		if sh.StatusCode != http.StatusOK {
+			t.Fatalf("shape %s: %d %s", code, sh.StatusCode, sh.Body)
+		}
+	}
+
+	profile := doJSON(t, h, http.MethodGet, "/v1/entities?package=archimate-lite&iriLocal="+url.QueryEscape("ui-profile-itmap-default"), nil, nil)
+	if profile.StatusCode != http.StatusOK || !strings.Contains(profile.Body, "ui-profile-itmap-default") {
+		t.Fatalf("ui-profile-itmap-default: %d %s", profile.StatusCode, profile.Body)
+	}
+
+	templates := doJSON(t, h, http.MethodGet, "/v1/entities?package=archimate-lite&instanceOf="+url.QueryEscape("https://knowledge-core.local/archimate-lite/UiTraversalTemplate"), nil, nil)
+	if templates.StatusCode != http.StatusOK {
+		t.Fatalf("list templates: %d %s", templates.StatusCode, templates.Body)
+	}
+	for _, code := range []string{"business-exploration", "application-impact", "infrastructure"} {
+		if !strings.Contains(templates.Body, code) {
+			t.Fatalf("expected template %s in %s", code, templates.Body)
+		}
+	}
+
+	orgNav := doJSON(t, h, http.MethodGet, "/v1/properties/"+url.PathEscape("https://knowledge-core.local/archimate-lite/orgNavigationProfile"), nil, nil)
+	if orgNav.StatusCode != http.StatusOK || !strings.Contains(orgNav.Body, "Package") {
+		t.Fatalf("orgNavigationProfile property: %d %s", orgNav.StatusCode, orgNav.Body)
+	}
+}
+
+func TestAcceptanceArchimateLite300AndUITraversal(t *testing.T) {
+	h := setupTestHandler(t)
+	root := testdata.MustModelsRoot(t.Fatalf)
+	load := func(rel string) map[string]any {
+		t.Helper()
+		raw, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(rel)))
+		if err != nil {
+			t.Fatal(err)
+		}
+		var m map[string]any
+		if err := json.Unmarshal(raw, &m); err != nil {
+			t.Fatal(err)
+		}
+		return m
+	}
+
+	impBase := doJSON(t, h, http.MethodPost, "/v1/releases/import", load("kc-base/releases/kc-base-1.1.0.bundle.json"), nil)
+	if impBase.StatusCode != http.StatusCreated {
+		t.Fatalf("import kc-base: %d %s", impBase.StatusCode, impBase.Body)
+	}
+	cfg := doJSON(t, h, http.MethodGet, "/v1/admin/schema-config", nil, nil)
+	if cfg.StatusCode != http.StatusOK || !strings.Contains(cfg.Body, `"instanceOfProperty":"https://knowledge-core.local/kc-base/instanceOf"`) {
+		t.Fatalf("expected auto instanceOfProperty after kc-base import: %d %s", cfg.StatusCode, cfg.Body)
+	}
+
+	impLite := doJSON(t, h, http.MethodPost, "/v1/releases/import", load("archimate-lite/releases/archimate-lite-3.0.0.bundle.json"), nil)
+	if impLite.StatusCode != http.StatusCreated {
+		t.Fatalf("import archimate-lite 3.0.0: %d %s", impLite.StatusCode, impLite.Body)
+	}
+	impUI := doJSON(t, h, http.MethodPost, "/v1/releases/import", load("archimate-ui-traversal/releases/archimate-ui-traversal-1.0.0.bundle.json"), nil)
+	if impUI.StatusCode != http.StatusCreated {
+		t.Fatalf("import archimate-ui-traversal 1.0.0: %d %s", impUI.StatusCode, impUI.Body)
+	}
+
+	for _, code := range []string{"aml-ui-navigation-profile", "aml-ui-traversal-template", "aml-ui-stage", "aml-ui-transition", "aml-ui-add-action"} {
+		sh := doJSON(t, h, http.MethodGet, "/v1/shapes/"+url.PathEscape(code)+"?package=archimate-ui-traversal", nil, nil)
+		if sh.StatusCode != http.StatusOK {
+			t.Fatalf("shape %s: %d %s", code, sh.StatusCode, sh.Body)
+		}
+	}
+
+	profile := doJSON(t, h, http.MethodGet, "/v1/entities?package=archimate-ui-traversal&iriLocal="+url.QueryEscape("ui-profile-itmap-default"), nil, nil)
+	if profile.StatusCode != http.StatusOK || !strings.Contains(profile.Body, "ui-profile-itmap-default") {
+		t.Fatalf("ui-profile-itmap-default: %d %s", profile.StatusCode, profile.Body)
+	}
+
+	templates := doJSON(t, h, http.MethodGet, "/v1/entities?package=archimate-ui-traversal&instanceOf="+url.QueryEscape("https://knowledge-core.local/archimate-ui-traversal/UiTraversalTemplate"), nil, nil)
+	if templates.StatusCode != http.StatusOK {
+		t.Fatalf("list templates: %d %s", templates.StatusCode, templates.Body)
+	}
+	for _, code := range []string{"business-exploration", "application-impact", "infrastructure"} {
+		if !strings.Contains(templates.Body, code) {
+			t.Fatalf("expected template %s in %s", code, templates.Body)
+		}
+	}
+
+	orgNav := doJSON(t, h, http.MethodGet, "/v1/properties/"+url.PathEscape("https://knowledge-core.local/archimate-ui-traversal/orgNavigationProfile"), nil, nil)
+	if orgNav.StatusCode != http.StatusOK {
+		t.Fatalf("orgNavigationProfile: %d %s", orgNav.StatusCode, orgNav.Body)
 	}
 }

@@ -56,46 +56,30 @@ func (s *Server) listObjectReleases(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"items": out})
 }
 
-func (s *Server) getChangeSetDraft(w http.ResponseWriter, r *http.Request) {
-	d, err := s.engine.GetChangeSetDraft(r.Context())
-	if err != nil {
-		writeEngineError(w, err)
-		return
-	}
-	writeJSON(w, http.StatusOK, d)
-}
-
-func (s *Server) putChangeSetDraft(w http.ResponseWriter, r *http.Request) {
-	body, err := readBody(r)
-	if err != nil {
-		writeError(w, http.StatusBadRequest, "invalid body")
-		return
-	}
-	var draft domain.ChangeSetDraft
-	if err := json.Unmarshal(body, &draft); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid JSON")
-		return
-	}
-	d, err := s.engine.PutChangeSetDraft(r.Context(), draft)
-	if err != nil {
-		writeEngineError(w, err)
-		return
-	}
-	writeJSON(w, http.StatusOK, d)
-}
-
-func (s *Server) deleteChangeSetDraft(w http.ResponseWriter, r *http.Request) {
-	if err := s.engine.DeleteChangeSetDraft(r.Context()); err != nil {
-		writeEngineError(w, err)
-		return
-	}
-	w.WriteHeader(http.StatusNoContent)
-}
-
-func (s *Server) commitChangeSetDraft(w http.ResponseWriter, r *http.Request) {
+func (s *Server) openChangeSet(w http.ResponseWriter, r *http.Request) {
 	body, _ := readBody(r)
-	meta := writeMetaFromRequest(r, "draftCommit", hashBody(body))
-	res, err := s.engine.CommitChangeSetDraft(r.Context(), meta)
+	var req struct {
+		Comment       string `json:"comment"`
+		OperationType string `json:"operationType"`
+	}
+	if len(body) > 0 {
+		_ = json.Unmarshal(body, &req)
+	}
+	meta := writeMetaFromRequest(r, "open", hashBody(body))
+	cs, err := s.engine.OpenChangeSet(r.Context(), meta, domain.OpenChangeSetInput{
+		Comment: req.Comment, OperationType: req.OperationType,
+	})
+	if err != nil {
+		writeEngineError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusCreated, writeResponse(changeSetDTO(cs), cs))
+}
+
+func (s *Server) commitOpenChangeSet(w http.ResponseWriter, r *http.Request) {
+	body, _ := readBody(r)
+	meta := writeMetaFromRequest(r, "openCommit", hashBody(body))
+	res, err := s.engine.CommitOpenChangeSet(r.Context(), meta, pathParam(r, "cid"))
 	if err != nil {
 		writeEngineError(w, err)
 		return
@@ -106,5 +90,16 @@ func (s *Server) commitChangeSetDraft(w http.ResponseWriter, r *http.Request) {
 		_, _ = w.Write(res.ResponseRaw)
 		return
 	}
-	writeJSON(w, http.StatusOK, changeSetDTO(&res.Value))
+	writeJSON(w, http.StatusOK, writeResponse(changeSetDTO(&res.Value), res.ChangeSet))
+}
+
+func (s *Server) cancelOpenChangeSet(w http.ResponseWriter, r *http.Request) {
+	body, _ := readBody(r)
+	meta := writeMetaFromRequest(r, "openCancel", hashBody(body))
+	cs, err := s.engine.CancelOpenChangeSet(r.Context(), meta, pathParam(r, "cid"))
+	if err != nil {
+		writeEngineError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, writeResponse(changeSetDTO(cs), cs))
 }

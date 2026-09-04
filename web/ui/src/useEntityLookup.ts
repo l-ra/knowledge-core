@@ -8,6 +8,7 @@ export type EntitySummary = {
   labels?: Record<string, string>;
   packageCode?: string;
   iriLocal?: string;
+  effectiveClasses?: string[];
 };
 
 const entityCache = new Map<string, EntitySummary>();

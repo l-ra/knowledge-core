@@ -3,11 +3,55 @@ package store
 import (
 	"context"
 	"encoding/json"
+	"strings"
 	"time"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/l-ra/knowledge-core/internal/datatype"
 	"github.com/l-ra/knowledge-core/internal/domain"
 )
+
+func normalizeSchemaConfigURIs(cfg *domain.ModelSchemaConfig) {
+	if cfg == nil {
+		return
+	}
+	cfg.InstanceOfProperty = strings.TrimSpace(cfg.InstanceOfProperty)
+	if cfg.ModelProperties == nil {
+		cfg.ModelProperties = []string{}
+		return
+	}
+	out := make([]string, 0, len(cfg.ModelProperties))
+	for _, pid := range cfg.ModelProperties {
+		pid = strings.TrimSpace(pid)
+		if pid == "" {
+			continue
+		}
+		out = append(out, pid)
+	}
+	cfg.ModelProperties = out
+}
+
+// maybeAutoSetInstanceOfPropertyTx sets schema-config.instanceOfProperty when
+// the well-known kc-base instanceOf property is ingested and config is empty.
+func (s *Store) maybeAutoSetInstanceOfPropertyTx(ctx context.Context, tx pgx.Tx, propertyPublicID string) error {
+	if strings.TrimSpace(propertyPublicID) != domain.WellKnownInstanceOfPropertyIRI {
+		return nil
+	}
+	cfg, err := s.getSchemaConfigTx(ctx, tx)
+	if err != nil {
+		return err
+	}
+	if strings.TrimSpace(cfg.InstanceOfProperty) != "" {
+		return nil
+	}
+	now := time.Now().UTC()
+	_, err = tx.Exec(ctx, `
+		UPDATE model_schema_config
+		SET instance_of_property = $1, updated_at = $2
+		WHERE id = 1 AND COALESCE(TRIM(instance_of_property),'') = ''
+	`, domain.WellKnownInstanceOfPropertyIRI, now)
+	return err
+}
 
 func (s *Store) GetSchemaConfig(ctx context.Context) (*domain.ModelSchemaConfig, error) {
 	var instanceOf string
@@ -28,17 +72,15 @@ func (s *Store) GetSchemaConfig(ctx context.Context) (*domain.ModelSchemaConfig,
 		ModelProperties:    modelProps,
 		UpdatedAt:          updatedAt.UTC().Format(time.RFC3339Nano),
 	}
+	normalizeSchemaConfigURIs(cfg)
 	cfg.ModelProperties = cfg.EffectiveModelProperties()
 	return cfg, nil
 }
 
 func (s *Store) UpdateSchemaConfig(ctx context.Context, cfg domain.ModelSchemaConfig) (*domain.ModelSchemaConfig, error) {
 	now := time.Now().UTC()
-	modelProps := cfg.ModelProperties
-	if modelProps == nil {
-		modelProps = []string{}
-	}
-	modelPropsJSON, err := json.Marshal(modelProps)
+	normalizeSchemaConfigURIs(&cfg)
+	modelPropsJSON, err := json.Marshal(cfg.ModelProperties)
 	if err != nil {
 		return nil, err
 	}
@@ -52,7 +94,7 @@ func (s *Store) UpdateSchemaConfig(ctx context.Context, cfg domain.ModelSchemaCo
 	}
 	out := &domain.ModelSchemaConfig{
 		InstanceOfProperty: cfg.InstanceOfProperty,
-		ModelProperties:    modelProps,
+		ModelProperties:    cfg.ModelProperties,
 		UpdatedAt:          now.Format(time.RFC3339Nano),
 	}
 	out.ModelProperties = out.EffectiveModelProperties()

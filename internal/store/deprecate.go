@@ -12,6 +12,9 @@ import (
 )
 
 func (s *Store) DeprecateStatement(ctx context.Context, meta domain.WriteMeta, publicID string, expectedRevision int) (*domain.WriteResult[domain.Statement], error) {
+	if meta.OpenChangeSetID != "" {
+		return s.DeprecateStatementInOpenChangeSet(ctx, meta, publicID, expectedRevision)
+	}
 	tx, err := s.pool.Begin(ctx)
 	if err != nil {
 		return nil, err

@@ -13,6 +13,9 @@ import (
 )
 
 func (s *Store) UpdateEntity(ctx context.Context, meta domain.WriteMeta, publicID string, in domain.UpdateEntityInput) (*domain.WriteResult[domain.Entity], error) {
+	if meta.OpenChangeSetID != "" {
+		return s.UpdateEntityInOpenChangeSet(ctx, meta, publicID, in)
+	}
 	tx, err := s.pool.Begin(ctx)
 	if err != nil {
 		return nil, err
@@ -143,6 +146,9 @@ func (s *Store) UpdateEntity(ctx context.Context, meta domain.WriteMeta, publicI
 }
 
 func (s *Store) ReviseStatement(ctx context.Context, meta domain.WriteMeta, publicID string, in domain.ReviseStatementInput) (*domain.WriteResult[domain.Statement], error) {
+	if meta.OpenChangeSetID != "" {
+		return s.ReviseStatementInOpenChangeSet(ctx, meta, publicID, in)
+	}
 	tx, err := s.pool.Begin(ctx)
 	if err != nil {
 		return nil, err
