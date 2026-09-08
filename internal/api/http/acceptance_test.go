@@ -2484,3 +2484,129 @@ func TestAcceptanceOpenChangeSetLifecycle(t *testing.T) {
 		t.Fatalf("draft endpoint should be gone: %d", draftGone.StatusCode)
 	}
 }
+
+func TestAcceptanceOpenChangeSetGraphWrites(t *testing.T) {
+	h := setupTestHandler(t)
+
+	pkgReject := doJSON(t, h, http.MethodPost, "/v1/changesets/open", map[string]any{"comment": "gate"}, adminHeaders())
+	if pkgReject.StatusCode != http.StatusCreated {
+		t.Fatalf("open: %d %s", pkgReject.StatusCode, pkgReject.Body)
+	}
+	csGate := parseDataID(t, pkgReject.Body)
+	hGate := adminHeaders()
+	hGate["X-Knowledge-Changeset"] = csGate
+	rej := doJSON(t, h, http.MethodPost, "/v1/packages", map[string]any{
+		"code": "should-fail", "labels": map[string]string{"en": "Nope"},
+	}, hGate)
+	if rej.StatusCode != http.StatusBadRequest || !strings.Contains(rej.Body, "unsupported_in_open_changeset") {
+		t.Fatalf("expected 400 unsupported package create, got %d %s", rej.StatusCode, rej.Body)
+	}
+	stillOpen := doJSON(t, h, http.MethodGet, "/v1/changesets/"+csGate, nil, adminHeaders())
+	if stillOpen.StatusCode != http.StatusOK || !strings.Contains(stillOpen.Body, `"status":"open"`) {
+		t.Fatalf("open CS should remain intact: %d %s", stillOpen.StatusCode, stillOpen.Body)
+	}
+	_ = doJSON(t, h, http.MethodPost, "/v1/changesets/"+csGate+"/cancel", map[string]any{}, adminHeaders())
+
+	prop := doJSON(t, h, http.MethodPost, "/v1/properties", map[string]any{
+		"packageCode": "test",
+		"datatype":    "String",
+		"labels":      map[string]string{"en": "Note"},
+	}, adminHeaders())
+	if prop.StatusCode != http.StatusCreated {
+		t.Fatalf("create property: %d %s", prop.StatusCode, prop.Body)
+	}
+	pid := parseDataID(t, prop.Body)
+
+	open := doJSON(t, h, http.MethodPost, "/v1/changesets/open", map[string]any{"comment": "aliases"}, adminHeaders())
+	if open.StatusCode != http.StatusCreated {
+		t.Fatalf("open: %d %s", open.StatusCode, open.Body)
+	}
+	csID := parseDataID(t, open.Body)
+	wh := adminHeaders()
+	wh["X-Knowledge-Changeset"] = csID
+	rh := adminHeaders()
+	rh["X-Knowledge-Changesets"] = csID
+
+	missing := doJSON(t, h, http.MethodPut, "/v1/entities/"+url.PathEscape("urn:kc:missing:nope")+"/iri-aliases", map[string]any{
+		"aliases": []map[string]string{{"iri": "https://archimate.openexchange/id/x", "kind": "imported"}},
+	}, wh)
+	if missing.StatusCode != http.StatusNotFound {
+		t.Fatalf("alias without entity: %d %s", missing.StatusCode, missing.Body)
+	}
+
+	create := doJSON(t, h, http.MethodPost, "/v1/entities", map[string]any{
+		"packageCode": "test",
+		"labels":      map[string]string{"en": "Alias Target"},
+	}, wh)
+	if create.StatusCode != http.StatusCreated {
+		t.Fatalf("create: %d %s", create.StatusCode, create.Body)
+	}
+	eid := parseDataID(t, create.Body)
+	aliasIRI := "https://archimate.openexchange/id/alias-target-1"
+	alias := doJSON(t, h, http.MethodPut, "/v1/entities/"+url.PathEscape(eid)+"/iri-aliases", map[string]any{
+		"aliases": []map[string]string{{"iri": aliasIRI, "kind": "imported"}},
+	}, wh)
+	if alias.StatusCode != http.StatusOK {
+		t.Fatalf("put aliases in open cs: %d %s", alias.StatusCode, alias.Body)
+	}
+
+	getBefore := doJSON(t, h, http.MethodGet, "/v1/entities/"+url.PathEscape(eid), nil, rh)
+	if getBefore.StatusCode != http.StatusOK || !strings.Contains(getBefore.Body, aliasIRI) {
+		t.Fatalf("GET with read header should show aliases: %d %s", getBefore.StatusCode, getBefore.Body)
+	}
+	listBefore := doJSON(t, h, http.MethodGet, "/v1/entities?iri="+url.QueryEscape(aliasIRI), nil, rh)
+	if listBefore.StatusCode != http.StatusOK || !strings.Contains(listBefore.Body, eid) {
+		t.Fatalf("list ?iri= should match overlay alias: %d %s", listBefore.StatusCode, listBefore.Body)
+	}
+
+	stmt := doJSON(t, h, http.MethodPost, "/v1/statements", map[string]any{
+		"packageCode": "test",
+		"subject":     eid,
+		"property":    pid,
+		"value":       map[string]any{"type": "String", "string": "hello"},
+		"qualifiers": []map[string]any{
+			{"property": pid, "value": map[string]any{"type": "String", "string": "q"}},
+		},
+	}, wh)
+	if stmt.StatusCode != http.StatusCreated {
+		t.Fatalf("create statement: %d %s", stmt.StatusCode, stmt.Body)
+	}
+	sid := parseDataID(t, stmt.Body)
+
+	commit := doJSON(t, h, http.MethodPost, "/v1/changesets/"+csID+"/commit", map[string]any{}, adminHeaders())
+	if commit.StatusCode != http.StatusOK {
+		t.Fatalf("commit: %d %s", commit.StatusCode, commit.Body)
+	}
+
+	after := doJSON(t, h, http.MethodGet, "/v1/entities/"+url.PathEscape(eid), nil, adminHeaders())
+	if after.StatusCode != http.StatusOK || !strings.Contains(after.Body, aliasIRI) {
+		t.Fatalf("committed entity aliases: %d %s", after.StatusCode, after.Body)
+	}
+	stAfter := doJSON(t, h, http.MethodGet, "/v1/statements/"+url.PathEscape(sid), nil, adminHeaders())
+	if stAfter.StatusCode != http.StatusOK || !strings.Contains(stAfter.Body, `"q"`) {
+		t.Fatalf("committed statement quals: %d %s", stAfter.StatusCode, stAfter.Body)
+	}
+
+	// Cancel drops pending aliases
+	open2 := doJSON(t, h, http.MethodPost, "/v1/changesets/open", map[string]any{}, adminHeaders())
+	cs2 := parseDataID(t, open2.Body)
+	wh2 := adminHeaders()
+	wh2["X-Knowledge-Changeset"] = cs2
+	create2 := doJSON(t, h, http.MethodPost, "/v1/entities", map[string]any{
+		"packageCode": "test",
+		"labels":      map[string]string{"en": "Cancel Me"},
+	}, wh2)
+	eid2 := parseDataID(t, create2.Body)
+	alias2 := "https://archimate.openexchange/id/cancel-me"
+	_ = doJSON(t, h, http.MethodPut, "/v1/entities/"+url.PathEscape(eid2)+"/iri-aliases", map[string]any{
+		"aliases": []map[string]string{{"iri": alias2, "kind": "imported"}},
+	}, wh2)
+	cancel := doJSON(t, h, http.MethodPost, "/v1/changesets/"+cs2+"/cancel", map[string]any{}, adminHeaders())
+	if cancel.StatusCode != http.StatusOK {
+		t.Fatalf("cancel: %d %s", cancel.StatusCode, cancel.Body)
+	}
+	gone := doJSON(t, h, http.MethodGet, "/v1/entities/"+url.PathEscape(eid2), nil, adminHeaders())
+	if gone.StatusCode != http.StatusNotFound {
+		t.Fatalf("cancelled overlay entity should be gone: %d %s", gone.StatusCode, gone.Body)
+	}
+}

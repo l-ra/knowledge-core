@@ -442,6 +442,9 @@ func (s *Store) resolveAndEncodeValue(ctx context.Context, tx pgx.Tx, dtype data
 }
 
 func (s *Store) UpdateProperty(ctx context.Context, meta domain.WriteMeta, pid string, in domain.UpdatePropertyInput) (*domain.WriteResult[domain.Property], error) {
+	if meta.OpenChangeSetID != "" {
+		return s.UpdatePropertyInOpenChangeSet(ctx, meta, pid, in)
+	}
 	tx, err := s.pool.Begin(ctx)
 	if err != nil {
 		return nil, err
@@ -520,6 +523,9 @@ func (s *Store) UpdateProperty(ctx context.Context, meta domain.WriteMeta, pid s
 func (s *Store) MoveEntity(ctx context.Context, meta domain.WriteMeta, publicID string, in domain.MoveEntityInput) (*domain.WriteResult[domain.Entity], error) {
 	if in.PackageCode == "" {
 		return nil, fmt.Errorf("packageCode required")
+	}
+	if meta.OpenChangeSetID != "" {
+		return s.MoveEntityInOpenChangeSet(ctx, meta, publicID, in)
 	}
 	tx, err := s.pool.Begin(ctx)
 	if err != nil {

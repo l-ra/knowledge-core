@@ -42,7 +42,13 @@ Alternativa validace: query param `?validation=strict`.
 4. `POST /v1/changesets/{id}/commit` — optimistic lock na claimnutých objektech; úspěch = další committed CS; konflikt → 409, CS zůstane open
 5. `POST /v1/changesets/{id}/cancel` — smaže overlay
 
+Grafové zápisy do overlay: entity/statement CRUD, property/class create, `PATCH /properties/{pid}`, `PUT …/iri-aliases`, `POST …/move`.
+
+S open-CS headerem → **400** `unsupported_in_open_changeset` (ne tichý committed write): packages, releases, RDF import, shapes, lens create, schema-config, reference create, batch `POST /v1/changesets`.
+
 `GET /v1/changesets?status=open|committed|cancelled|all` (default `committed`).
+
+Detail: [phase-20-open-changeset.md](../specs/phase-20-open-changeset.md).
 
 ---
 

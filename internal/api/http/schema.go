@@ -104,6 +104,10 @@ func (s *Server) createShape(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid JSON")
 		return
 	}
+	meta := writeMetaFromRequest(r, "createShape", hashBody(body))
+	if rejectIfOpenChangeSet(w, meta, "createShape") {
+		return
+	}
 	sh, err := s.engine.CreateShape(r.Context(), domain.CreateShapeInput{
 		Code: req.Code, ClassID: req.ClassID, PackageCode: req.PackageCode, Document: req.Document,
 	})
@@ -146,6 +150,10 @@ func (s *Server) putSchemaConfig(w http.ResponseWriter, r *http.Request) {
 	var req updateSchemaConfigReq
 	if err := json.Unmarshal(body, &req); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid JSON")
+		return
+	}
+	meta := writeMetaFromRequest(r, "updateSchemaConfig", hashBody(body))
+	if rejectIfOpenChangeSet(w, meta, "updateSchemaConfig") {
 		return
 	}
 	cfg, err := s.engine.UpdateSchemaConfig(r.Context(), domain.ModelSchemaConfig{

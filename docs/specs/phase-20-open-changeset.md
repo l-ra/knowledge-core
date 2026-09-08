@@ -143,7 +143,17 @@ Commit = apply + DELETE overlay + claimy, `status=committed`.
 
 ### Write (header `X-Knowledge-Changeset: <cs-id>`)
 
-Platí pro mutační endpointy grafu (entity/statement/property/class create|patch|revise|deprecate|delete) ve stejném rozsahu jako dnešní `ApplyChangeSet` ops.
+Platí pro **grafové** mutace:
+
+| Podporováno (overlay) | S headerem **400** `unsupported_in_open_changeset` |
+|------------------------|-----------------------------------------------------|
+| Entity/statement create, update/revise, deprecate, delete | Packages CRUD |
+| Property/class create; **PATCH property** (constraints) | Releases publish/mutate/import |
+| **PUT iri-aliases** | RDF import |
+| **POST …/move** | Shapes / lens definitions create; schema-config |
+| | Batch `POST /v1/changesets`; reference create |
+
+Open/commit/cancel CS = lifecycle (header se na ně nepoužívá jako cíl zápisu).
 
 V transakci:
 
@@ -151,10 +161,11 @@ V transakci:
 2. Vyřešit cílový objekt (UUID / IRI)
 3. **Claim** — konflikt jiný open CS nebo IRI kolize → **409**
 4. Při prvním claimu na existující committed objekt uložit `base_revision_no = current_revision_no`
-5. Upsert overlay (create: nový UUID + IRI dle create pravidel)
+5. Upsert overlay (create: nový UUID + IRI dle create pravidel); u aliasů `iri_aliases_json` (replace-all)
 6. Committed `entity` / `statement` / `statement_current` **neměnit**
 
 Bez headeru: chování jako dnes (okamžitý committed ChangeSet).
+**Nesmí** dojít k tichému bypassu — pokud operace overlay neumí a header je přítomen → **400**, ne committed write.
 
 ### Read (header `X-Knowledge-Changesets: <id>[,<id>…]`)
 

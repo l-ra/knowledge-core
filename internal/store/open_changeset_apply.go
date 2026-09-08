@@ -507,22 +507,35 @@ func (s *Store) assertClaimAgainstCommitted(ctx context.Context, tx pgx.Tx, c cl
 
 func (s *Store) applyEntityOverlayTx(ctx context.Context, tx pgx.Tx, cs *changeSetTx, actor string, c claimRow) error {
 	var publicID, pkgCode, iriLocal, status, kind string
-	var labelsJSON, descJSON, constraintsJSON []byte
+	var labelsJSON, descJSON, constraintsJSON, aliasesJSON []byte
 	var datatypeStr, subclassOf *string
 	var rev int
 	var created, updated time.Time
 	err := tx.QueryRow(ctx, `
 		SELECT public_id, package_code, iri_local, status, labels, descriptions, kind,
-			datatype, constraints, subclass_of, revision_no, created_at, updated_at
+			datatype, constraints, subclass_of, revision_no, created_at, updated_at, iri_aliases_json
 		FROM changeset_entity_overlay WHERE changeset_id = $1 AND object_id = $2
 	`, cs.id, c.objectID).Scan(&publicID, &pkgCode, &iriLocal, &status, &labelsJSON, &descJSON, &kind,
-		&datatypeStr, &constraintsJSON, &subclassOf, &rev, &created, &updated)
+		&datatypeStr, &constraintsJSON, &subclassOf, &rev, &created, &updated, &aliasesJSON)
 	if err != nil {
 		return err
 	}
 	labels, _ := jsonToLabels(labelsJSON)
 	descs, _ := jsonToLabels(descJSON)
 	now := time.Now().UTC()
+
+	var aliases []domain.EntityIRIAlias
+	aliasesSet := aliasesJSON != nil
+	if aliasesSet && len(aliasesJSON) > 0 {
+		_ = json.Unmarshal(aliasesJSON, &aliases)
+	}
+
+	applyAliases := func() error {
+		if !aliasesSet {
+			return nil
+		}
+		return s.replaceEntityIRIAliasesTx(ctx, tx, c.objectID, aliases)
+	}
 
 	if c.baseRevision == 0 {
 		pkgID, err := s.resolvePackageIDRequired(ctx, tx, pkgCode)
@@ -580,15 +593,34 @@ func (s *Store) applyEntityOverlayTx(ctx context.Context, tx pgx.Tx, cs *changeS
 		if err != nil {
 			return err
 		}
+		if err := applyAliases(); err != nil {
+			return err
+		}
 		return cs.addItem(ctx, tx, objectType, c.objectID, publicID, "create", payload)
 	}
 
 	nextRev := c.baseRevision + 1
-	_, err = tx.Exec(ctx, `
-		UPDATE entity SET status = $2, iri_local = $3, current_revision_no = $4, updated_at = $5 WHERE id = $1
-	`, c.objectID, status, iriLocal, nextRev, now)
+	pkgID, err := s.resolvePackageIDRequired(ctx, tx, pkgCode)
 	if err != nil {
 		return err
+	}
+	var oldPkg *uuid.UUID
+	if err := tx.QueryRow(ctx, `SELECT package_id FROM entity WHERE id = $1`, c.objectID).Scan(&oldPkg); err != nil {
+		return err
+	}
+	_, err = tx.Exec(ctx, `
+		UPDATE entity SET status = $2, iri_local = $3, package_id = $4, current_revision_no = $5, updated_at = $6 WHERE id = $1
+	`, c.objectID, status, iriLocal, pkgID, nextRev, now)
+	if err != nil {
+		return err
+	}
+	if oldPkg != nil && *oldPkg != pkgID {
+		if _, err := tx.Exec(ctx, `
+			UPDATE statement SET package_id = $2, updated_at = $3
+			WHERE subject_id = $1 AND package_id = $4
+		`, c.objectID, pkgID, now, *oldPkg); err != nil {
+			return err
+		}
 	}
 	if _, err := tx.Exec(ctx, `DELETE FROM entity_label WHERE entity_id = $1`, c.objectID); err != nil {
 		return err
@@ -606,6 +638,15 @@ func (s *Store) applyEntityOverlayTx(ctx context.Context, tx pgx.Tx, cs *changeS
 			return err
 		}
 	}
+	if kind == "property" && datatypeStr != nil {
+		_, err = tx.Exec(ctx, `
+			INSERT INTO property_profile (entity_id, datatype, constraints) VALUES ($1,$2,$3)
+			ON CONFLICT (entity_id) DO UPDATE SET datatype = EXCLUDED.datatype, constraints = EXCLUDED.constraints
+		`, c.objectID, *datatypeStr, constraintsJSON)
+		if err != nil {
+			return err
+		}
+	}
 	_, err = tx.Exec(ctx, `
 		INSERT INTO entity_revision (id, entity_id, revision_no, status, labels, descriptions, change_set_id, actor, created_at)
 		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
@@ -613,11 +654,18 @@ func (s *Store) applyEntityOverlayTx(ctx context.Context, tx pgx.Tx, cs *changeS
 	if err != nil {
 		return err
 	}
+	if err := applyAliases(); err != nil {
+		return err
+	}
 	op := c.opKind
 	if op == "" {
 		op = "update"
 	}
-	return cs.addItem(ctx, tx, "entity", c.objectID, publicID, op, nil)
+	payload := any(nil)
+	if op == "move" {
+		payload = map[string]any{"packageCode": pkgCode, "revisionNo": nextRev}
+	}
+	return cs.addItem(ctx, tx, "entity", c.objectID, publicID, op, payload)
 }
 
 func (s *Store) applyStatementOverlayTx(ctx context.Context, tx pgx.Tx, cs *changeSetTx, actor string, c claimRow) error {
@@ -636,6 +684,10 @@ func (s *Store) applyStatementOverlayTx(ctx context.Context, tx pgx.Tx, cs *chan
 	}
 	var val datatype.Value
 	_ = json.Unmarshal(valueJSON, &val)
+	var quals []domain.Qualifier
+	_ = json.Unmarshal(qualJSON, &quals)
+	var refIDs []string
+	_ = json.Unmarshal(refJSON, &refIDs)
 
 	var subjectID, propertyID uuid.UUID
 	if err := tx.QueryRow(ctx, `SELECT id FROM entity WHERE public_id = $1`, subjectPID).Scan(&subjectID); err != nil {
@@ -657,6 +709,21 @@ func (s *Store) applyStatementOverlayTx(ctx context.Context, tx pgx.Tx, cs *chan
 	}
 	now := time.Now().UTC()
 
+	applyQualsRefs := func() error {
+		qin := make([]domain.QualifierInput, 0, len(quals))
+		for _, q := range quals {
+			prop := q.PropertyPID
+			if prop == "" {
+				continue
+			}
+			qin = append(qin, domain.QualifierInput{Property: prop, Value: q.Value})
+		}
+		if err := s.replaceStatementQualifiers(ctx, tx, c.objectID, qin); err != nil {
+			return err
+		}
+		return s.replaceStatementReferences(ctx, tx, c.objectID, refIDs)
+	}
+
 	if c.baseRevision == 0 {
 		_, err = tx.Exec(ctx, `
 			INSERT INTO statement (
@@ -673,6 +740,9 @@ func (s *Store) applyStatementOverlayTx(ctx context.Context, tx pgx.Tx, cs *chan
 			sv.Bool, sv.Int64, sv.Numeric, sv.Date, sv.Timestamptz,
 			sv.Text, sv.EntityID, sv.JSON, vf, vt, pkgID, created, now)
 		if err != nil {
+			return err
+		}
+		if err := applyQualsRefs(); err != nil {
 			return err
 		}
 		if status == string(domain.StatementActive) {
@@ -708,6 +778,9 @@ func (s *Store) applyStatementOverlayTx(ctx context.Context, tx pgx.Tx, cs *chan
 		sv.Bool, sv.Int64, sv.Numeric, sv.Date, sv.Timestamptz,
 		sv.Text, sv.EntityID, sv.JSON, vf, vt, nextRev, now)
 	if err != nil {
+		return err
+	}
+	if err := applyQualsRefs(); err != nil {
 		return err
 	}
 	if status == string(domain.StatementActive) {

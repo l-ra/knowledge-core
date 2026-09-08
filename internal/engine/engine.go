@@ -20,6 +20,9 @@ var (
 	ErrConflict            = errors.New("conflict")
 	ErrIdempotencyConflict = errors.New("idempotency conflict")
 	ErrReleaseImmutable    = store.ErrReleaseImmutable
+	// ErrUnsupportedInOpenChangeSet is returned when X-Knowledge-Changeset is set
+	// but the operation cannot write into open-changeset overlay.
+	ErrUnsupportedInOpenChangeSet = errors.New("unsupported in open changeset")
 )
 
 type Engine struct {
@@ -106,21 +109,18 @@ func (e *Engine) DeleteEntity(ctx context.Context, meta domain.WriteMeta, qid st
 	return res, nil
 }
 
-func (e *Engine) SetEntityIRIAliases(ctx context.Context, qid string, aliases []domain.EntityIRIAlias) (*domain.Entity, error) {
+func (e *Engine) SetEntityIRIAliases(ctx context.Context, meta domain.WriteMeta, qid string, aliases []domain.EntityIRIAlias) (*domain.WriteResult[domain.Entity], error) {
 	if _, _, err := datatype.ParsePublicGraphID(qid); err != nil {
 		return nil, fmt.Errorf("%w: %v", ErrInvalid, err)
 	}
 	if err := e.authorizeEntity(ctx, auth.OpUpdate, qid); err != nil {
 		return nil, err
 	}
-	if err := e.store.SetEntityIRIAliases(ctx, qid, aliases); err != nil {
-		return nil, mapErr(err)
-	}
-	ent, err := e.store.GetEntityByPublicID(ctx, qid)
+	res, err := e.store.SetEntityIRIAliases(ctx, meta, qid, aliases)
 	if err != nil {
 		return nil, mapErr(err)
 	}
-	return ent, nil
+	return res, nil
 }
 
 func (e *Engine) CreateProperty(ctx context.Context, meta domain.WriteMeta, in domain.CreatePropertyInput) (*domain.WriteResult[domain.Property], error) {

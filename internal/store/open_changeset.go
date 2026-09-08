@@ -210,11 +210,16 @@ func (s *Store) upsertEntityOverlayTx(
 	if kind == "" {
 		kind = "entity"
 	}
+	var aliasesJSON []byte
+	if ent.IRIAliases != nil {
+		aliasesJSON, _ = json.Marshal(ent.IRIAliases)
+	}
 	_, err := tx.Exec(ctx, `
 		INSERT INTO changeset_entity_overlay (
 			changeset_id, object_id, public_id, package_code, iri_local, status,
-			labels, descriptions, kind, datatype, constraints, subclass_of, revision_no, created_at, updated_at
-		) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$14)
+			labels, descriptions, kind, datatype, constraints, subclass_of, revision_no,
+			iri_aliases_json, created_at, updated_at
+		) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$15)
 		ON CONFLICT (changeset_id, object_id) DO UPDATE SET
 			public_id = EXCLUDED.public_id,
 			package_code = EXCLUDED.package_code,
@@ -227,10 +232,11 @@ func (s *Store) upsertEntityOverlayTx(
 			constraints = EXCLUDED.constraints,
 			subclass_of = EXCLUDED.subclass_of,
 			revision_no = EXCLUDED.revision_no,
+			iri_aliases_json = COALESCE(EXCLUDED.iri_aliases_json, changeset_entity_overlay.iri_aliases_json),
 			updated_at = EXCLUDED.updated_at
 	`, csID, ent.ID, ent.PublicID, ent.PackageCode, ent.IRILocal, string(ent.Status),
 		labelsJSON, descJSON, kind, nullIfEmpty(datatypeStr), constraintsJSON, nullIfEmpty(subclassOf),
-		ent.RevisionNo, time.Now().UTC())
+		ent.RevisionNo, aliasesJSON, time.Now().UTC())
 	return err
 }
 
@@ -434,16 +440,16 @@ func entityOverlayProfile(ent *domain.Entity) (string, []byte, string) {
 func (s *Store) resolveEntityForOpenWrite(ctx context.Context, tx pgx.Tx, csID uuid.UUID, publicID string) (*domain.Entity, int, bool, error) {
 	var objectID uuid.UUID
 	var ovPublicID, pkgCode, iriLocal, status, kind string
-	var labelsJSON, descJSON, constraintsJSON []byte
+	var labelsJSON, descJSON, constraintsJSON, aliasesJSON []byte
 	var datatypeStr, subclassOf *string
 	var rev int
 	err := tx.QueryRow(ctx, `
 		SELECT object_id, public_id, package_code, iri_local, status, labels, descriptions, kind,
-			datatype, constraints, subclass_of, revision_no
+			datatype, constraints, subclass_of, revision_no, iri_aliases_json
 		FROM changeset_entity_overlay
 		WHERE changeset_id = $1 AND public_id = $2
 	`, csID, publicID).Scan(&objectID, &ovPublicID, &pkgCode, &iriLocal, &status, &labelsJSON, &descJSON, &kind,
-		&datatypeStr, &constraintsJSON, &subclassOf, &rev)
+		&datatypeStr, &constraintsJSON, &subclassOf, &rev, &aliasesJSON)
 	if err == nil {
 		ent := &domain.Entity{
 			ID: objectID, PublicID: ovPublicID, PackageCode: pkgCode, IRILocal: iriLocal,
@@ -452,6 +458,9 @@ func (s *Store) resolveEntityForOpenWrite(ctx context.Context, tx pgx.Tx, csID u
 		ent.Labels, _ = jsonToLabels(labelsJSON)
 		ent.Descriptions, _ = jsonToLabels(descJSON)
 		attachOverlayProfiles(ent, datatypeStr, constraintsJSON, subclassOf)
+		if len(aliasesJSON) > 0 {
+			_ = json.Unmarshal(aliasesJSON, &ent.IRIAliases)
+		}
 		var baseRev int
 		_ = tx.QueryRow(ctx, `SELECT base_revision_no FROM changeset_object_claim WHERE changeset_id = $1 AND object_id = $2`, csID, objectID).Scan(&baseRev)
 		return ent, baseRev, true, nil
@@ -591,9 +600,7 @@ func (s *Store) CreatePropertyInOpenChangeSet(ctx context.Context, meta domain.W
 	if err := s.upsertEntityOverlayTx(ctx, tx, row.id, ent, string(in.Datatype), constraintsJSON, ""); err != nil {
 		return nil, err
 	}
-	if err := s.maybeAutoSetInstanceOfPropertyTx(ctx, tx, publicID); err != nil {
-		return nil, err
-	}
+	// Open CS must not mutate committed schema-config (instanceOf auto-set).
 	if err := tx.Commit(ctx); err != nil {
 		return nil, err
 	}
@@ -679,4 +686,120 @@ func (s *Store) CreateClassInOpenChangeSet(ctx context.Context, meta domain.Writ
 		UpdatedAt: now.UTC().Format(time.RFC3339Nano),
 	}
 	return &domain.WriteResult[domain.ClassDefinition]{Value: c, ChangeSet: s.openChangeSetDomain(row)}, nil
+}
+
+func (s *Store) UpdatePropertyInOpenChangeSet(ctx context.Context, meta domain.WriteMeta, pid string, in domain.UpdatePropertyInput) (*domain.WriteResult[domain.Property], error) {
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback(ctx)
+
+	row, err := s.loadOpenChangeSetTx(ctx, tx, meta.OpenChangeSetID)
+	if err != nil {
+		return nil, err
+	}
+	if err := s.assertOpenChangeSetActor(row, meta.Actor); err != nil {
+		return nil, err
+	}
+
+	ent, baseRev, fromOverlay, err := s.resolveEntityForOpenWrite(ctx, tx, row.id, pid)
+	if err != nil {
+		return nil, err
+	}
+	if ent.Kind != domain.EntityKindProperty || ent.PropertyProfile == nil {
+		return nil, fmt.Errorf("not a property")
+	}
+	if in.ExpectedRevision > 0 && !fromOverlay && ent.RevisionNo != in.ExpectedRevision {
+		return nil, fmt.Errorf("%w: entity revision %d expected %d", ErrConflict, ent.RevisionNo, in.ExpectedRevision)
+	}
+	if in.Constraints != nil {
+		ent.PropertyProfile.Constraints = *in.Constraints
+	}
+	ent.UpdatedAt = time.Now().UTC()
+	if !fromOverlay {
+		ent.RevisionNo = baseRev + 1
+	}
+	opKind := "update"
+	if fromOverlay && baseRev == 0 {
+		opKind = "create"
+	}
+	if err := s.claimObjectTx(ctx, tx, row.id, "entity", ent.ID, ent.PublicID, baseRev, opKind); err != nil {
+		return nil, err
+	}
+	dt, cons, sub := entityOverlayProfile(ent)
+	if err := s.upsertEntityOverlayTx(ctx, tx, row.id, *ent, dt, cons, sub); err != nil {
+		return nil, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return nil, err
+	}
+	p := domain.Property{
+		ID: ent.ID, PublicID: ent.PublicID, Datatype: ent.PropertyProfile.Datatype,
+		Status: domain.PropertyActive, PackageCode: ent.PackageCode, IRILocal: ent.IRILocal, IRI: ent.PublicID,
+		Labels: ent.Labels, Descriptions: ent.Descriptions, Constraints: ent.PropertyProfile.Constraints,
+		RevisionNo: ent.RevisionNo, CreatedAt: ent.CreatedAt, UpdatedAt: ent.UpdatedAt,
+	}
+	return &domain.WriteResult[domain.Property]{Value: p, ChangeSet: s.openChangeSetDomain(row)}, nil
+}
+
+func (s *Store) MoveEntityInOpenChangeSet(ctx context.Context, meta domain.WriteMeta, publicID string, in domain.MoveEntityInput) (*domain.WriteResult[domain.Entity], error) {
+	if in.PackageCode == "" {
+		return nil, fmt.Errorf("packageCode required")
+	}
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback(ctx)
+
+	row, err := s.loadOpenChangeSetTx(ctx, tx, meta.OpenChangeSetID)
+	if err != nil {
+		return nil, err
+	}
+	if err := s.assertOpenChangeSetActor(row, meta.Actor); err != nil {
+		return nil, err
+	}
+	if _, err := s.resolvePackageIDRequired(ctx, tx, in.PackageCode); err != nil {
+		return nil, err
+	}
+
+	ent, baseRev, fromOverlay, err := s.resolveEntityForOpenWrite(ctx, tx, row.id, publicID)
+	if err != nil {
+		return nil, err
+	}
+	if err := errIfEntityDeleted(string(ent.Status)); err != nil {
+		return nil, err
+	}
+	if in.ExpectedRevision > 0 && !fromOverlay && ent.RevisionNo != in.ExpectedRevision {
+		return nil, fmt.Errorf("%w: entity revision %d expected %d", ErrConflict, ent.RevisionNo, in.ExpectedRevision)
+	}
+	ent.PackageCode = in.PackageCode
+	ent.UpdatedAt = time.Now().UTC()
+	if !fromOverlay {
+		ent.RevisionNo = baseRev + 1
+	}
+	opKind := "move"
+	if fromOverlay && baseRev == 0 {
+		opKind = "create"
+	}
+	if err := s.claimObjectTx(ctx, tx, row.id, "entity", ent.ID, ent.PublicID, baseRev, opKind); err != nil {
+		return nil, err
+	}
+	dt, cons, sub := entityOverlayProfile(ent)
+	if err := s.upsertEntityOverlayTx(ctx, tx, row.id, *ent, dt, cons, sub); err != nil {
+		return nil, err
+	}
+	// Keep subject statement overlays in the same package as the moved entity.
+	if _, err := tx.Exec(ctx, `
+		UPDATE changeset_statement_overlay
+		SET package_code = $3, updated_at = $4
+		WHERE changeset_id = $1 AND subject_public_id = $2
+	`, row.id, ent.PublicID, in.PackageCode, time.Now().UTC()); err != nil {
+		return nil, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return nil, err
+	}
+	return &domain.WriteResult[domain.Entity]{Value: *ent, ChangeSet: s.openChangeSetDomain(row)}, nil
 }

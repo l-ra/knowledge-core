@@ -3,6 +3,7 @@ package apihttp
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"fmt"
 	"io"
 	"net/http"
 	"strings"
@@ -40,6 +41,21 @@ func writeMetaFromRequest(r *http.Request, operationType string, bodyHash string
 		ValidationMode:  mode,
 		OpenChangeSetID: strings.TrimSpace(r.Header.Get("X-Knowledge-Changeset")),
 	}
+}
+
+// rejectIfOpenChangeSet returns true and writes 400 when an open-CS header is present
+// for an operation that must not silently write to committed tables.
+func rejectIfOpenChangeSet(w http.ResponseWriter, meta domain.WriteMeta, op string) bool {
+	if meta.OpenChangeSetID == "" {
+		return false
+	}
+	writeJSON(w, http.StatusBadRequest, map[string]any{
+		"error": map[string]any{
+			"code":    "unsupported_in_open_changeset",
+			"message": fmt.Sprintf("%s cannot run inside an open ChangeSet (%s); omit X-Knowledge-Changeset or use a supported graph write", op, meta.OpenChangeSetID),
+		},
+	})
+	return true
 }
 
 func withActiveChangeSets(r *http.Request) *http.Request {

@@ -2,9 +2,12 @@ package store
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
+	"time"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/l-ra/knowledge-core/internal/datatype"
 	"github.com/l-ra/knowledge-core/internal/domain"
@@ -139,24 +142,9 @@ func generatedIRILocal(kind string) string {
 	}
 }
 
-func (s *Store) SetEntityIRIAliases(ctx context.Context, publicID string, aliases []domain.EntityIRIAlias) error {
-	tx, err := s.pool.Begin(ctx)
-	if err != nil {
-		return err
-	}
-	defer tx.Rollback(ctx)
-
-	var entityID interface{}
-	var status string
-	if err := tx.QueryRow(ctx, `SELECT id, status FROM entity WHERE public_id = $1`, publicID).Scan(&entityID, &status); err != nil {
-		return err
-	}
-	if err := errIfEntityDeleted(status); err != nil {
-		return err
-	}
-	if _, err := tx.Exec(ctx, `DELETE FROM entity_iri_alias WHERE entity_id = $1`, entityID); err != nil {
-		return err
-	}
+func normalizeEntityIRIAliases(aliases []domain.EntityIRIAlias) ([]domain.EntityIRIAlias, error) {
+	out := make([]domain.EntityIRIAlias, 0, len(aliases))
+	seen := map[string]struct{}{}
 	for _, a := range aliases {
 		iri := strings.TrimSpace(a.IRI)
 		kind := strings.TrimSpace(a.Kind)
@@ -167,23 +155,175 @@ func (s *Store) SetEntityIRIAliases(ctx context.Context, publicID string, aliase
 			kind = "sameAs"
 		}
 		if kind != "sameAs" && kind != "imported" && kind != "canonical_export" {
-			return fmt.Errorf("invalid alias kind %q", kind)
+			return nil, fmt.Errorf("invalid alias kind %q", kind)
 		}
 		if !strings.HasPrefix(iri, "http://") && !strings.HasPrefix(iri, "https://") {
-			return fmt.Errorf("alias iri must be absolute http(s)")
+			return nil, fmt.Errorf("alias iri must be absolute http(s)")
 		}
 		if strings.ContainsAny(iri, " \t\n\r") {
-			return fmt.Errorf("alias iri must not contain whitespace")
+			return nil, fmt.Errorf("alias iri must not contain whitespace")
 		}
+		if _, ok := seen[iri]; ok {
+			continue
+		}
+		seen[iri] = struct{}{}
+		out = append(out, domain.EntityIRIAlias{IRI: iri, Kind: kind})
+	}
+	return out, nil
+}
+
+func (s *Store) replaceEntityIRIAliasesTx(ctx context.Context, tx pgx.Tx, entityID interface{}, aliases []domain.EntityIRIAlias) error {
+	norm, err := normalizeEntityIRIAliases(aliases)
+	if err != nil {
+		return err
+	}
+	if _, err := tx.Exec(ctx, `DELETE FROM entity_iri_alias WHERE entity_id = $1`, entityID); err != nil {
+		return err
+	}
+	for _, a := range norm {
 		if _, err := tx.Exec(ctx, `
 			INSERT INTO entity_iri_alias (entity_id, iri, kind) VALUES ($1,$2,$3)
-		`, entityID, iri, kind); err != nil {
+		`, entityID, a.IRI, a.Kind); err != nil {
+			if isUniqueViolation(err) {
+				return fmt.Errorf("%w: alias IRI already used by another entity", ErrConflict)
+			}
 			return err
 		}
 	}
+	return nil
+}
+
+func (s *Store) assertAliasIRIsAvailableTx(
+	ctx context.Context,
+	tx pgx.Tx,
+	csID uuid.UUID,
+	entityID uuid.UUID,
+	aliases []domain.EntityIRIAlias,
+) error {
+	for _, a := range aliases {
+		var otherID uuid.UUID
+		err := tx.QueryRow(ctx, `
+			SELECT entity_id FROM entity_iri_alias WHERE iri = $1 AND entity_id <> $2
+		`, a.IRI, entityID).Scan(&otherID)
+		if err == nil {
+			return fmt.Errorf("%w: alias IRI %q already used by another entity", ErrConflict, a.IRI)
+		}
+		if !errors.Is(err, pgx.ErrNoRows) {
+			return err
+		}
+		var ownerPub string
+		err = tx.QueryRow(ctx, `
+			SELECT o.public_id
+			FROM changeset_entity_overlay o
+			JOIN change_set cs ON cs.id = o.changeset_id AND cs.status = 'open'
+			WHERE o.object_id <> $1
+			  AND o.iri_aliases_json IS NOT NULL
+			  AND EXISTS (
+				SELECT 1 FROM jsonb_array_elements(o.iri_aliases_json) el
+				WHERE el->>'iri' = $2
+			  )
+			LIMIT 1
+		`, entityID, a.IRI).Scan(&ownerPub)
+		if err == nil {
+			return fmt.Errorf("%w: alias IRI %q already pending on %s", ErrConflict, a.IRI, ownerPub)
+		}
+		if !errors.Is(err, pgx.ErrNoRows) {
+			return err
+		}
+		_ = csID
+	}
+	return nil
+}
+
+func (s *Store) SetEntityIRIAliases(ctx context.Context, meta domain.WriteMeta, publicID string, aliases []domain.EntityIRIAlias) (*domain.WriteResult[domain.Entity], error) {
+	if meta.OpenChangeSetID != "" {
+		return s.SetEntityIRIAliasesInOpenChangeSet(ctx, meta, publicID, aliases)
+	}
+
+	norm, err := normalizeEntityIRIAliases(aliases)
+	if err != nil {
+		return nil, err
+	}
+
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback(ctx)
+
+	var entityID uuid.UUID
+	var status string
+	if err := tx.QueryRow(ctx, `SELECT id, status FROM entity WHERE public_id = $1`, publicID).Scan(&entityID, &status); err != nil {
+		return nil, err
+	}
+	if err := errIfEntityDeleted(status); err != nil {
+		return nil, err
+	}
+	if err := s.replaceEntityIRIAliasesTx(ctx, tx, entityID, norm); err != nil {
+		return nil, err
+	}
 	if err := tx.Commit(ctx); err != nil {
-		return err
+		return nil, err
 	}
 	_ = s.projectEntityRDF(ctx, publicID)
-	return nil
+	ent, err := s.GetEntityByPublicID(ctx, publicID)
+	if err != nil {
+		return nil, err
+	}
+	return &domain.WriteResult[domain.Entity]{Value: *ent}, nil
+}
+
+func (s *Store) SetEntityIRIAliasesInOpenChangeSet(
+	ctx context.Context,
+	meta domain.WriteMeta,
+	publicID string,
+	aliases []domain.EntityIRIAlias,
+) (*domain.WriteResult[domain.Entity], error) {
+	norm, err := normalizeEntityIRIAliases(aliases)
+	if err != nil {
+		return nil, err
+	}
+
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback(ctx)
+
+	row, err := s.loadOpenChangeSetTx(ctx, tx, meta.OpenChangeSetID)
+	if err != nil {
+		return nil, err
+	}
+	if err := s.assertOpenChangeSetActor(row, meta.Actor); err != nil {
+		return nil, err
+	}
+
+	ent, baseRev, fromOverlay, err := s.resolveEntityForOpenWrite(ctx, tx, row.id, publicID)
+	if err != nil {
+		return nil, err
+	}
+	if err := errIfEntityDeleted(string(ent.Status)); err != nil {
+		return nil, err
+	}
+	if err := s.assertAliasIRIsAvailableTx(ctx, tx, row.id, ent.ID, norm); err != nil {
+		return nil, err
+	}
+
+	ent.IRIAliases = norm
+	ent.UpdatedAt = time.Now().UTC()
+	opKind := "update"
+	if fromOverlay && baseRev == 0 {
+		opKind = "create"
+	}
+	if err := s.claimObjectTx(ctx, tx, row.id, "entity", ent.ID, ent.PublicID, baseRev, opKind); err != nil {
+		return nil, err
+	}
+	dt, cons, sub := entityOverlayProfile(ent)
+	if err := s.upsertEntityOverlayTx(ctx, tx, row.id, *ent, dt, cons, sub); err != nil {
+		return nil, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return nil, err
+	}
+	return &domain.WriteResult[domain.Entity]{Value: *ent, ChangeSet: s.openChangeSetDomain(row)}, nil
 }

@@ -72,18 +72,18 @@ func (s *Store) resolveActiveChangeSetIDs(ctx context.Context, publicIDs []strin
 func (s *Store) loadEntityOverlayByPublicID(ctx context.Context, csIDs []uuid.UUID, publicID string) (*domain.Entity, error) {
 	var objectID uuid.UUID
 	var ovPublicID, pkgCode, iriLocal, status, kind string
-	var labelsJSON, descJSON, constraintsJSON []byte
+	var labelsJSON, descJSON, constraintsJSON, aliasesJSON []byte
 	var datatypeStr, subclassOf *string
 	var rev int
 	var created, updated time.Time
 	err := s.pool.QueryRow(ctx, `
 		SELECT object_id, public_id, package_code, iri_local, status, labels, descriptions, kind,
-			datatype, constraints, subclass_of, revision_no, created_at, updated_at
+			datatype, constraints, subclass_of, revision_no, created_at, updated_at, iri_aliases_json
 		FROM changeset_entity_overlay
 		WHERE changeset_id = ANY($1) AND public_id = $2
 		LIMIT 1
 	`, csIDs, publicID).Scan(&objectID, &ovPublicID, &pkgCode, &iriLocal, &status, &labelsJSON, &descJSON, &kind,
-		&datatypeStr, &constraintsJSON, &subclassOf, &rev, &created, &updated)
+		&datatypeStr, &constraintsJSON, &subclassOf, &rev, &created, &updated, &aliasesJSON)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, nil
 	}
@@ -98,6 +98,18 @@ func (s *Store) loadEntityOverlayByPublicID(ctx context.Context, csIDs []uuid.UU
 	ent.Labels, _ = jsonToLabels(labelsJSON)
 	ent.Descriptions, _ = jsonToLabels(descJSON)
 	attachOverlayProfiles(ent, datatypeStr, constraintsJSON, subclassOf)
+	if aliasesJSON != nil {
+		_ = json.Unmarshal(aliasesJSON, &ent.IRIAliases)
+		if ent.IRIAliases == nil {
+			ent.IRIAliases = []domain.EntityIRIAlias{}
+		}
+	} else {
+		aliases, err := s.loadEntityIRIAliases(ctx, objectID)
+		if err != nil {
+			return nil, err
+		}
+		ent.IRIAliases = aliases
+	}
 	return ent, nil
 }
 
@@ -203,7 +215,7 @@ func (s *Store) mergeListEntities(ctx context.Context, opt ListOptions, committe
 	}
 	rows, err := s.pool.Query(ctx, `
 		SELECT object_id, public_id, package_code, iri_local, status, labels, descriptions, kind,
-			datatype, constraints, subclass_of, revision_no, created_at, updated_at
+			datatype, constraints, subclass_of, revision_no, created_at, updated_at, iri_aliases_json
 		FROM changeset_entity_overlay WHERE changeset_id = ANY($1)
 	`, csIDs)
 	if err != nil {
@@ -213,12 +225,12 @@ func (s *Store) mergeListEntities(ctx context.Context, opt ListOptions, committe
 	for rows.Next() {
 		var objectID uuid.UUID
 		var publicID, pkgCode, iriLocal, status, kind string
-		var labelsJSON, descJSON, constraintsJSON []byte
+		var labelsJSON, descJSON, constraintsJSON, aliasesJSON []byte
 		var datatypeStr, subclassOf *string
 		var rev int
 		var created, updated time.Time
 		if err := rows.Scan(&objectID, &publicID, &pkgCode, &iriLocal, &status, &labelsJSON, &descJSON, &kind,
-			&datatypeStr, &constraintsJSON, &subclassOf, &rev, &created, &updated); err != nil {
+			&datatypeStr, &constraintsJSON, &subclassOf, &rev, &created, &updated, &aliasesJSON); err != nil {
 			return nil, err
 		}
 		if status == string(domain.EntityDeleted) {
@@ -252,6 +264,16 @@ func (s *Store) mergeListEntities(ctx context.Context, opt ListOptions, committe
 		ent.Labels, _ = jsonToLabels(labelsJSON)
 		ent.Descriptions, _ = jsonToLabels(descJSON)
 		attachOverlayProfiles(&ent, datatypeStr, constraintsJSON, subclassOf)
+		if aliasesJSON != nil {
+			_ = json.Unmarshal(aliasesJSON, &ent.IRIAliases)
+			if ent.IRIAliases == nil {
+				ent.IRIAliases = []domain.EntityIRIAlias{}
+			}
+		} else {
+			if aliases, err := s.loadEntityIRIAliases(ctx, objectID); err == nil {
+				ent.IRIAliases = aliases
+			}
+		}
 		if q := strings.TrimSpace(opt.Query); q != "" {
 			lq := strings.ToLower(q)
 			match := strings.Contains(strings.ToLower(publicID), lq) || strings.Contains(strings.ToLower(iriLocal), lq)
@@ -270,11 +292,38 @@ func (s *Store) mergeListEntities(ctx context.Context, opt ListOptions, committe
 	if err := rows.Err(); err != nil {
 		return nil, err
 	}
+
+	if iri := strings.TrimSpace(opt.IRI); iri != "" {
+		for id, e := range byID {
+			if e.IRIAliases == nil {
+				if aliases, err := s.loadEntityIRIAliases(ctx, e.ID); err == nil {
+					e.IRIAliases = aliases
+					byID[id] = e
+				}
+			}
+			if !entityMatchesListIRI(byID[id], iri) {
+				delete(byID, id)
+			}
+		}
+	}
+
 	out := make([]domain.Entity, 0, len(byID))
 	for _, e := range byID {
 		out = append(out, e)
 	}
 	return out, nil
+}
+
+func entityMatchesListIRI(e domain.Entity, iri string) bool {
+	if e.PublicID == iri || e.IRI == iri {
+		return true
+	}
+	for _, a := range e.IRIAliases {
+		if a.IRI == iri {
+			return true
+		}
+	}
+	return false
 }
 
 func (s *Store) mergeGetStatement(ctx context.Context, sid string) (*domain.Statement, error) {

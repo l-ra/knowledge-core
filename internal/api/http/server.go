@@ -364,12 +364,13 @@ func (s *Server) putEntityIRIAliases(w http.ResponseWriter, r *http.Request) {
 	for _, a := range req.Aliases {
 		aliases = append(aliases, domain.EntityIRIAlias{IRI: a.IRI, Kind: a.Kind})
 	}
-	ent, err := s.engine.SetEntityIRIAliases(r.Context(), pathParam(r, "qid"), aliases)
+	meta := writeMetaFromRequest(r, "setEntityIRIAliases", hashBody(body))
+	res, err := s.engine.SetEntityIRIAliases(r.Context(), meta, pathParam(r, "qid"), aliases)
 	if err != nil {
 		writeEngineError(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, entityDTO(ent))
+	writeJSON(w, http.StatusOK, writeResponse(entityDTO(&res.Value), res.ChangeSet))
 }
 
 func (s *Server) getEntityHistory(w http.ResponseWriter, r *http.Request) {
@@ -500,6 +501,9 @@ func (s *Server) createReference(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	meta := writeMetaFromRequest(r, "createReference", hashBody(body))
+	if rejectIfOpenChangeSet(w, meta, "createReference") {
+		return
+	}
 	res, err := s.engine.CreateReference(r.Context(), meta, domain.CreateReferenceInput{Fields: req.Fields})
 	if err != nil {
 		writeEngineError(w, err)
@@ -783,6 +787,9 @@ func (s *Server) applyChangeSet(w http.ResponseWriter, r *http.Request) {
 	if meta.OperationType == "" {
 		meta.OperationType = "batch"
 	}
+	if rejectIfOpenChangeSet(w, meta, "applyChangeSet") {
+		return
+	}
 	res, err := s.engine.ApplyChangeSet(r.Context(), meta, domain.ApplyChangeSetInput{
 		OperationType: req.OperationType,
 		Comment:       req.Comment,
@@ -886,6 +893,9 @@ func (s *Server) createPackage(w http.ResponseWriter, r *http.Request) {
 		lc = domain.PackageReleased
 	}
 	meta := writeMetaFromRequest(r, "createPackage", hashBody(body))
+	if rejectIfOpenChangeSet(w, meta, "createPackage") {
+		return
+	}
 	res, err := s.engine.CreatePackage(r.Context(), meta, domain.CreatePackageInput{
 		Code: req.Code, Lifecycle: lc, IRIBase: req.IRIBase, Labels: req.Labels,
 		Descriptions: req.Descriptions, Dependencies: req.Dependencies,
@@ -914,6 +924,9 @@ func (s *Server) updatePackage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	meta := writeMetaFromRequest(r, "updatePackage", hashBody(body))
+	if rejectIfOpenChangeSet(w, meta, "updatePackage") {
+		return
+	}
 	res, err := s.engine.UpdatePackage(r.Context(), meta, pathParam(r, "code"), domain.UpdatePackageInput{
 		IRIBase: req.IRIBase, Labels: req.Labels,
 	})
@@ -926,6 +939,9 @@ func (s *Server) updatePackage(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) deletePackage(w http.ResponseWriter, r *http.Request) {
 	meta := writeMetaFromRequest(r, "deletePackage", "")
+	if rejectIfOpenChangeSet(w, meta, "deletePackage") {
+		return
+	}
 	res, err := s.engine.DeletePackage(r.Context(), meta, pathParam(r, "code"))
 	if err != nil {
 		writeEngineError(w, err)
@@ -955,6 +971,9 @@ func (s *Server) importPackageRDF(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	meta := writeMetaFromRequest(r, "importRDF", hashBody(body))
+	if rejectIfOpenChangeSet(w, meta, "importRDF") {
+		return
+	}
 	res, err := s.engine.ImportRDF(r.Context(), meta, pathParam(r, "code"), domain.RDFImportInput{
 		NTriples: req.NTriples, DryRun: req.DryRun,
 	})
@@ -1036,6 +1055,9 @@ func (s *Server) importRDFGlobal(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	meta := writeMetaFromRequest(r, "importRDFGlobal", hashBody(body))
+	if rejectIfOpenChangeSet(w, meta, "importRDFGlobal") {
+		return
+	}
 	res, err := s.engine.ImportRDFGlobal(r.Context(), meta, domain.RDFGlobalImportInput{
 		NTriples: req.NTriples, DryRun: req.DryRun, Assignments: req.Assignments,
 	})
@@ -1075,6 +1097,9 @@ func (s *Server) publishRelease(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	meta := writeMetaFromRequest(r, "publishRelease", hashBody(body))
+	if rejectIfOpenChangeSet(w, meta, "publishRelease") {
+		return
+	}
 	res, err := s.engine.PublishRelease(r.Context(), meta, pathParam(r, "code"), domain.PublishReleaseInput{
 		Version: req.Version,
 	})
@@ -1104,6 +1129,10 @@ func (s *Server) exportReleaseBundle(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) mutateRelease(w http.ResponseWriter, r *http.Request) {
+	meta := writeMetaFromRequest(r, "mutateRelease", "")
+	if rejectIfOpenChangeSet(w, meta, "mutateRelease") {
+		return
+	}
 	err := s.engine.MutateRelease(r.Context(), pathParam(r, "code"), pathParam(r, "version"))
 	if err != nil {
 		writeEngineError(w, err)
@@ -1124,6 +1153,9 @@ func (s *Server) importRelease(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	meta := writeMetaFromRequest(r, "importRelease", hashBody(body))
+	if rejectIfOpenChangeSet(w, meta, "importRelease") {
+		return
+	}
 	res, err := s.engine.ImportReleaseBundle(r.Context(), meta, bundle)
 	if err != nil {
 		writeEngineError(w, err)
@@ -1416,6 +1448,13 @@ func writeEngineError(w http.ResponseWriter, err error) {
 	switch {
 	case errors.Is(err, engine.ErrNotFound):
 		writeError(w, http.StatusNotFound, err.Error())
+	case errors.Is(err, engine.ErrUnsupportedInOpenChangeSet):
+		writeJSON(w, http.StatusBadRequest, map[string]any{
+			"error": map[string]any{
+				"code":    "unsupported_in_open_changeset",
+				"message": err.Error(),
+			},
+		})
 	case errors.Is(err, engine.ErrInvalid):
 		writeError(w, http.StatusBadRequest, err.Error())
 	case errors.Is(err, engine.ErrConflict):

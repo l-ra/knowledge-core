@@ -24,6 +24,10 @@ func (s *Server) createLens(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid JSON")
 		return
 	}
+	meta := writeMetaFromRequest(r, "createLens", hashBody(body))
+	if rejectIfOpenChangeSet(w, meta, "createLens") {
+		return
+	}
 	lens, err := s.engine.CreateLens(r.Context(), domain.CreateLensInput{
 		Code: req.Code, Labels: req.Labels, Document: req.Document,
 	})
