@@ -446,9 +446,22 @@ type claimRow struct {
 }
 
 func (s *Store) lockClaimsTx(ctx context.Context, tx pgx.Tx, csID uuid.UUID) ([]claimRow, error) {
+	// Entities (incl. properties/classes) must materialize before statements that
+	// reference them. Unordered SELECT made large open-CS commits fail with
+	// ErrNoRows → misleading HTTP 404 "not found".
 	rows, err := tx.Query(ctx, `
 		SELECT object_type, object_id, canonical_iri, base_revision_no, op_kind
-		FROM changeset_object_claim WHERE changeset_id = $1 FOR UPDATE
+		FROM changeset_object_claim
+		WHERE changeset_id = $1
+		ORDER BY
+			CASE object_type
+				WHEN 'entity' THEN 0
+				WHEN 'statement' THEN 1
+				ELSE 2
+			END,
+			base_revision_no ASC,
+			object_id ASC
+		FOR UPDATE
 	`, csID)
 	if err != nil {
 		return nil, err

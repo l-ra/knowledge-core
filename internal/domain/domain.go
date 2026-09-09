@@ -298,8 +298,12 @@ type ChangeOperation struct {
 	Labels           map[string]string    `json:"labels,omitempty"`
 	Descriptions     map[string]string    `json:"descriptions,omitempty"`
 	IRILocal         string               `json:"iriLocal,omitempty"`
-	ExpectedRevision int                  `json:"expectedRevision,omitempty"`
-	Upsert           bool                 `json:"upsert,omitempty"`
+	ExpectedRevision  int                  `json:"expectedRevision,omitempty"`
+	Upsert            bool                 `json:"upsert,omitempty"`
+	Aliases           []EntityIRIAlias     `json:"aliases,omitempty"`
+	ReplaceQualifiers bool                 `json:"replaceQualifiers,omitempty"`
+	ReplaceReferences bool                 `json:"replaceReferences,omitempty"`
+	ReplaceValidTime  bool                 `json:"replaceValidTime,omitempty"`
 }
 
 type ApplyChangeSetInput struct {

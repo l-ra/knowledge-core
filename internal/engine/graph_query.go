@@ -2,7 +2,6 @@ package engine
 
 import (
 	"context"
-	"fmt"
 
 	"github.com/l-ra/knowledge-core/internal/auth"
 	"github.com/l-ra/knowledge-core/internal/datatype"
@@ -95,33 +94,3 @@ func (e *Engine) GetEntityGraph(ctx context.Context, qid string, depth int) (*do
 	return g, nil
 }
 
-func (e *Engine) UpdateProperty(ctx context.Context, meta domain.WriteMeta, pid string, in domain.UpdatePropertyInput) (*domain.WriteResult[domain.Property], error) {
-	if _, err := datatype.ParsePublicPropertyID(pid); err != nil {
-		return nil, fmt.Errorf("%w: %v", ErrInvalid, err)
-	}
-	if err := e.authorizeGlobal(ctx, auth.OpUpdate); err != nil {
-		return nil, err
-	}
-	res, err := e.store.UpdateProperty(ctx, meta, pid, in)
-	if err != nil {
-		return nil, mapErr(err)
-	}
-	return res, nil
-}
-
-func (e *Engine) MoveEntity(ctx context.Context, meta domain.WriteMeta, qid string, in domain.MoveEntityInput) (*domain.WriteResult[domain.Entity], error) {
-	if _, _, err := datatype.ParsePublicGraphID(qid); err != nil {
-		return nil, fmt.Errorf("%w: %v", ErrInvalid, err)
-	}
-	if err := e.authorizeEntity(ctx, auth.OpUpdate, qid); err != nil {
-		return nil, err
-	}
-	if err := e.authorizePackage(ctx, auth.OpUpdate, in.PackageCode); err != nil {
-		return nil, err
-	}
-	res, err := e.store.MoveEntity(ctx, meta, qid, in)
-	if err != nil {
-		return nil, mapErr(err)
-	}
-	return res, nil
-}

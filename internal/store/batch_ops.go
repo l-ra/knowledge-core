@@ -13,70 +13,6 @@ import (
 	"github.com/l-ra/knowledge-core/internal/domain"
 )
 
-func (s *Store) ApplyChangeSet(ctx context.Context, meta domain.WriteMeta, in domain.ApplyChangeSetInput) (*domain.WriteResult[domain.ChangeSet], error) {
-	tx, err := s.pool.Begin(ctx)
-	if err != nil {
-		return nil, err
-	}
-	defer tx.Rollback(ctx)
-
-	if hit, err := s.checkIdempotency(ctx, tx, meta); err != nil {
-		return nil, err
-	} else if hit != nil {
-		if err := tx.Commit(ctx); err != nil {
-			return nil, err
-		}
-		cs, err := s.GetChangeSetByPublicID(ctx, hit.publicID)
-		if err != nil {
-			return nil, err
-		}
-		return &domain.WriteResult[domain.ChangeSet]{Value: *cs, Replay: true, ResponseRaw: hit.responseBody}, nil
-	}
-
-	meta.OperationType = in.OperationType
-	if meta.OperationType == "" {
-		meta.OperationType = "batch"
-	}
-	cs, err := s.beginChangeSetTx(ctx, tx, meta)
-	if err != nil {
-		return nil, err
-	}
-	if comment := strings.TrimSpace(in.Comment); comment != "" {
-		if _, err := tx.Exec(ctx, `UPDATE change_set SET comment = $2 WHERE id = $1`, cs.id, comment); err != nil {
-			return nil, err
-		}
-	}
-
-	keys := map[string]string{}
-	results := make([]map[string]any, 0, len(in.Operations))
-	for _, op := range in.Operations {
-		res, err := s.applyOneOp(ctx, tx, cs, meta, op, keys)
-		if err != nil {
-			return nil, err
-		}
-		results = append(results, res)
-	}
-
-	response := map[string]any{
-		"changeSet": cs.publicID,
-		"results":   results,
-	}
-	responseBody, _ := json.Marshal(response)
-	domainCS := s.changeSetDomain(cs, meta)
-	domainCS.Comment = strings.TrimSpace(in.Comment)
-	domainCS.Items = cs.items
-	domainCS.ItemCount = len(cs.items)
-	if err := s.finalizeChangeSet(ctx, tx, cs, response); err != nil {
-		return nil, err
-	}
-	if err := tx.Commit(ctx); err != nil {
-		return nil, err
-	}
-	return &domain.WriteResult[domain.ChangeSet]{
-		Value: *domainCS, ChangeSet: domainCS, ResponseRaw: responseBody,
-	}, nil
-}
-
 func resolveKey(keys map[string]string, ref string) string {
 	if ref == "" {
 		return ""
@@ -147,6 +83,7 @@ func (s *Store) applyOneOp(ctx context.Context, tx pgx.Tx, cs *changeSetTx, meta
 			resolved := resolveKey(keys, *val.EntityID)
 			val.EntityID = &resolved
 		}
+		itemCountBefore := len(cs.items)
 		st, err := s.createStatementInTx(ctx, tx, cs, meta, domain.CreateStatementInput{
 			PackageCode: op.PackageCode, SubjectPublicID: subject, PropertyPublicID: property,
 			Value: val, Qualifiers: op.Qualifiers, ReferenceIDs: op.ReferenceIDs,
@@ -158,7 +95,11 @@ func (s *Store) applyOneOp(ctx context.Context, tx pgx.Tx, cs *changeSetTx, meta
 		if op.ClientKey != "" {
 			keys[op.ClientKey] = st.PublicID
 		}
-		return map[string]any{"op": op.Op, "statement": st.PublicID, "revisionNo": st.RevisionNo, "clientKey": op.ClientKey}, nil
+		out := map[string]any{"op": op.Op, "statement": st.PublicID, "revisionNo": st.RevisionNo, "clientKey": op.ClientKey}
+		if op.Upsert && len(cs.items) == itemCountBefore {
+			out["upsertHit"] = true
+		}
+		return out, nil
 
 	case "reviseStatement":
 		sid := resolveKey(keys, op.Statement)
@@ -170,11 +111,21 @@ func (s *Store) applyOneOp(ctx context.Context, tx pgx.Tx, cs *changeSetTx, meta
 			resolved := resolveKey(keys, *val.EntityID)
 			val.EntityID = &resolved
 		}
-		stRes, err := s.reviseStatementInTx(ctx, tx, cs, meta, sid, domain.ReviseStatementInput{
-			Value: &val, ExpectedRevision: op.ExpectedRevision,
-			Qualifiers: op.Qualifiers, ReplaceQualifiers: len(op.Qualifiers) > 0,
-			ReferenceIDs: op.ReferenceIDs, ReplaceReferences: len(op.ReferenceIDs) > 0,
-		})
+		in := domain.ReviseStatementInput{
+			ExpectedRevision:  op.ExpectedRevision,
+			Qualifiers:        op.Qualifiers,
+			ReplaceQualifiers: op.ReplaceQualifiers || len(op.Qualifiers) > 0,
+			ReferenceIDs:      op.ReferenceIDs,
+			ReplaceReferences: op.ReplaceReferences || len(op.ReferenceIDs) > 0,
+			ValidFrom:         op.ValidFrom,
+			ValidTo:           op.ValidTo,
+			ReplaceValidTime:  op.ReplaceValidTime || op.ValidFrom != nil || op.ValidTo != nil,
+		}
+		if op.Value.Type != "" {
+			v := val
+			in.Value = &v
+		}
+		stRes, err := s.reviseStatementInTx(ctx, tx, cs, meta, sid, in)
 		if err != nil {
 			return nil, err
 		}
@@ -230,6 +181,51 @@ func (s *Store) applyOneOp(ctx context.Context, tx pgx.Tx, cs *changeSetTx, meta
 			return nil, err
 		}
 		return map[string]any{"op": op.Op, "entity": ent.PublicID, "revisionNo": ent.RevisionNo, "status": ent.Status}, nil
+
+	case "setEntityIRIAliases":
+		eid := resolveKey(keys, op.Entity)
+		if eid == "" {
+			return nil, fmt.Errorf("setEntityIRIAliases requires entity")
+		}
+		ent, err := s.setEntityIRIAliasesInTx(ctx, tx, cs, meta, eid, op.Aliases)
+		if err != nil {
+			return nil, err
+		}
+		return map[string]any{"op": op.Op, "entity": ent.PublicID, "aliasCount": len(ent.IRIAliases), "revisionNo": ent.RevisionNo}, nil
+
+	case "updateProperty":
+		pid := resolveKey(keys, op.Entity)
+		if pid == "" {
+			pid = resolveKey(keys, op.Property)
+		}
+		if pid == "" {
+			return nil, fmt.Errorf("updateProperty requires entity")
+		}
+		in := domain.UpdatePropertyInput{ExpectedRevision: op.ExpectedRevision}
+		if op.Constraints != nil {
+			in.Constraints = op.Constraints
+		}
+		p, err := s.updatePropertyInTx(ctx, tx, cs, meta, pid, in)
+		if err != nil {
+			return nil, err
+		}
+		return map[string]any{"op": op.Op, "property": p.PublicID, "revisionNo": p.RevisionNo}, nil
+
+	case "moveEntity":
+		eid := resolveKey(keys, op.Entity)
+		if eid == "" {
+			return nil, fmt.Errorf("moveEntity requires entity")
+		}
+		if op.PackageCode == "" {
+			return nil, fmt.Errorf("moveEntity requires packageCode")
+		}
+		ent, err := s.moveEntityInTx(ctx, tx, cs, meta, eid, domain.MoveEntityInput{
+			PackageCode: op.PackageCode, ExpectedRevision: op.ExpectedRevision,
+		})
+		if err != nil {
+			return nil, err
+		}
+		return map[string]any{"op": op.Op, "entity": ent.PublicID, "packageCode": ent.PackageCode, "revisionNo": ent.RevisionNo}, nil
 
 	default:
 		return nil, fmt.Errorf("unsupported operation %q", op.Op)

@@ -26,6 +26,7 @@
 | 12 | sqlc, observability, Helm integrační testy | **done** (ADR 0004: manual SQL) |
 | 13 | Built-in web UI `/ui` | **done** (MVP) |
 | 20 | [phase-20-open-changeset.md](phase-20-open-changeset.md) — Open ChangeSet v DB (nahrazuje draft) | **done** |
+| 21 | [phase-21-unified-batch-writes.md](phase-21-unified-batch-writes.md) — Batch jako SoT zápisu, limity, aliases→CS, open batch, REST 1-op wrappers | **done** |
 
 Rozhodnutí zůstávají v [decisions/](../decisions/).
 

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -59,7 +60,8 @@ func setupTestHandler(t *testing.T) http.Handler {
 			statement_current, statement,
 			entity_label, entity_description,
 			entity, auth_runtime,
-			changeset_statement_overlay, changeset_entity_overlay, changeset_object_claim
+			changeset_statement_overlay, changeset_entity_overlay, changeset_object_claim,
+			open_changeset_idempotency
 			RESTART IDENTITY CASCADE;
 		UPDATE id_counter SET last_value = 0;
 		UPDATE model_schema_config SET instance_of_property = '', model_properties = '[]'::jsonb, updated_at = now() WHERE id = 1;
@@ -2608,5 +2610,106 @@ func TestAcceptanceOpenChangeSetGraphWrites(t *testing.T) {
 	gone := doJSON(t, h, http.MethodGet, "/v1/entities/"+url.PathEscape(eid2), nil, adminHeaders())
 	if gone.StatusCode != http.StatusNotFound {
 		t.Fatalf("cancelled overlay entity should be gone: %d %s", gone.StatusCode, gone.Body)
+	}
+
+	// B1: committed aliases create a ChangeSet
+	eid3 := createEntityWithPkg(t, h, "test", "Alias CS")
+	aliasCS := doJSON(t, h, http.MethodPut, "/v1/entities/"+url.PathEscape(eid3)+"/iri-aliases", map[string]any{
+		"aliases": []map[string]string{{"iri": "https://example.org/alias-cs", "kind": "sameAs"}},
+	}, adminHeaders())
+	if aliasCS.StatusCode != http.StatusOK || !strings.Contains(aliasCS.Body, `"changeSet"`) {
+		t.Fatalf("B1 aliases should return changeSet: %d %s", aliasCS.StatusCode, aliasCS.Body)
+	}
+
+	// B5: open batch append
+	openB := doJSON(t, h, http.MethodPost, "/v1/changesets/open", map[string]any{"comment": "batch-open"}, adminHeaders())
+	csB := parseDataID(t, openB.Body)
+	hB := adminHeaders()
+	hB["X-Knowledge-Changeset"] = csB
+	batchOpen := doJSON(t, h, http.MethodPost, "/v1/changesets", map[string]any{
+		"operationType": "testOpenBatch",
+		"operations": []map[string]any{
+			{"op": "createEntity", "clientKey": "$e1", "packageCode": "test", "labels": map[string]string{"en": "Batch E1"}},
+			{"op": "setEntityIRIAliases", "entity": "$e1", "aliases": []map[string]string{{"iri": "https://example.org/batch-e1", "kind": "imported"}}},
+		},
+	}, hB)
+	if batchOpen.StatusCode != http.StatusOK {
+		t.Fatalf("B5 open batch: %d %s", batchOpen.StatusCode, batchOpen.Body)
+	}
+	if !strings.Contains(batchOpen.Body, `"status":"open"`) || !strings.Contains(batchOpen.Body, `"results"`) {
+		t.Fatalf("B5 open batch response shape: %s", batchOpen.Body)
+	}
+	commitB := doJSON(t, h, http.MethodPost, "/v1/changesets/"+csB+"/commit", map[string]any{}, adminHeaders())
+	if commitB.StatusCode != http.StatusOK {
+		t.Fatalf("B5 commit open batch: %d %s", commitB.StatusCode, commitB.Body)
+	}
+
+	// B6: batch limit
+	ops := make([]map[string]any, 501)
+	for i := range ops {
+		ops[i] = map[string]any{"op": "createEntity", "packageCode": "test", "labels": map[string]string{"en": fmt.Sprintf("L%d", i)}}
+	}
+	tooMany := doJSON(t, h, http.MethodPost, "/v1/changesets", map[string]any{"operations": ops}, adminHeaders())
+	if tooMany.StatusCode != http.StatusBadRequest || !strings.Contains(tooMany.Body, "batch_limit_exceeded") {
+		t.Fatalf("B6 want 400 batch_limit_exceeded, got %d %s", tooMany.StatusCode, tooMany.Body)
+	}
+}
+
+// Large open CS: many entity+statement claims must commit with entities applied before statements
+// (unordered claim apply historically returned misleading 404 not found).
+func TestAcceptanceOpenChangeSetCommitOrdering(t *testing.T) {
+	h := setupTestHandler(t)
+
+	prop := doJSON(t, h, http.MethodPost, "/v1/properties", map[string]any{
+		"packageCode": "test",
+		"datatype":    "String",
+		"labels":      map[string]string{"en": "Label"},
+	}, adminHeaders())
+	if prop.StatusCode != http.StatusCreated {
+		t.Fatalf("property: %d %s", prop.StatusCode, prop.Body)
+	}
+	pid := parseDataID(t, prop.Body)
+
+	open := doJSON(t, h, http.MethodPost, "/v1/changesets/open", map[string]any{"comment": "ordering"}, adminHeaders())
+	csID := parseDataID(t, open.Body)
+	wh := adminHeaders()
+	wh["X-Knowledge-Changeset"] = csID
+
+	const n = 40
+	var lastStmt string
+	for i := 0; i < n; i++ {
+		create := doJSON(t, h, http.MethodPost, "/v1/entities", map[string]any{
+			"packageCode": "test",
+			"labels":      map[string]string{"en": fmt.Sprintf("Ord %d", i)},
+		}, wh)
+		if create.StatusCode != http.StatusCreated {
+			t.Fatalf("create %d: %d %s", i, create.StatusCode, create.Body)
+		}
+		eid := parseDataID(t, create.Body)
+		alias := doJSON(t, h, http.MethodPut, "/v1/entities/"+url.PathEscape(eid)+"/iri-aliases", map[string]any{
+			"aliases": []map[string]string{{"iri": fmt.Sprintf("https://example.org/ord/%d", i), "kind": "imported"}},
+		}, wh)
+		if alias.StatusCode != http.StatusOK {
+			t.Fatalf("alias %d: %d %s", i, alias.StatusCode, alias.Body)
+		}
+		stmt := doJSON(t, h, http.MethodPost, "/v1/statements", map[string]any{
+			"packageCode": "test",
+			"subject":     eid,
+			"property":    pid,
+			"value":       map[string]any{"type": "String", "string": fmt.Sprintf("v%d", i)},
+		}, wh)
+		if stmt.StatusCode != http.StatusCreated {
+			t.Fatalf("stmt %d: %d %s", i, stmt.StatusCode, stmt.Body)
+		}
+		lastStmt = parseDataID(t, stmt.Body)
+	}
+
+	commit := doJSON(t, h, http.MethodPost, "/v1/changesets/"+csID+"/commit", map[string]any{}, adminHeaders())
+	if commit.StatusCode != http.StatusOK {
+		t.Fatalf("commit ordering: %d %s", commit.StatusCode, commit.Body)
+	}
+	st := doJSON(t, h, http.MethodGet, "/v1/statements/"+url.PathEscape(lastStmt), nil, adminHeaders())
+	if st.StatusCode != http.StatusOK {
+		t.Fatalf("statement after commit: %d %s", st.StatusCode, st.Body)
 	}
 }

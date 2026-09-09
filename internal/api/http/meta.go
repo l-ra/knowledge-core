@@ -85,10 +85,20 @@ func hashBody(body []byte) string {
 	return hex.EncodeToString(sum[:])
 }
 
+var errPayloadTooLarge = fmt.Errorf("payload too large")
+
 func readBody(r *http.Request) ([]byte, error) {
 	if r.Body == nil {
 		return nil, nil
 	}
 	defer r.Body.Close()
-	return io.ReadAll(r.Body)
+	limited := io.LimitReader(r.Body, store.MaxBatchBodyBytes+1)
+	body, err := io.ReadAll(limited)
+	if err != nil {
+		return nil, err
+	}
+	if len(body) > store.MaxBatchBodyBytes {
+		return nil, errPayloadTooLarge
+	}
+	return body, nil
 }

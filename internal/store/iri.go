@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -251,9 +252,24 @@ func (s *Store) SetEntityIRIAliases(ctx context.Context, meta domain.WriteMeta, 
 	}
 	defer tx.Rollback(ctx)
 
+	if hit, err := s.checkIdempotency(ctx, tx, meta); err != nil {
+		return nil, err
+	} else if hit != nil {
+		if err := tx.Commit(ctx); err != nil {
+			return nil, err
+		}
+		var ent domain.Entity
+		if err := json.Unmarshal(hit.responseBody, &ent); err != nil {
+			return nil, err
+		}
+		return &domain.WriteResult[domain.Entity]{Value: ent, Replay: true, ResponseRaw: hit.responseBody}, nil
+	}
+
 	var entityID uuid.UUID
 	var status string
-	if err := tx.QueryRow(ctx, `SELECT id, status FROM entity WHERE public_id = $1`, publicID).Scan(&entityID, &status); err != nil {
+	var rev int
+	if err := tx.QueryRow(ctx, `SELECT id, status, current_revision_no FROM entity WHERE public_id = $1`, publicID).
+		Scan(&entityID, &status, &rev); err != nil {
 		return nil, err
 	}
 	if err := errIfEntityDeleted(status); err != nil {
@@ -262,15 +278,48 @@ func (s *Store) SetEntityIRIAliases(ctx context.Context, meta domain.WriteMeta, 
 	if err := s.replaceEntityIRIAliasesTx(ctx, tx, entityID, norm); err != nil {
 		return nil, err
 	}
+	nextRev := rev + 1
+	now := time.Now().UTC()
+	if _, err := tx.Exec(ctx, `UPDATE entity SET current_revision_no = $2, updated_at = $3 WHERE id = $1`, entityID, nextRev, now); err != nil {
+		return nil, err
+	}
+	cs, err := s.beginChangeSetTx(ctx, tx, meta)
+	if err != nil {
+		return nil, err
+	}
+	entSnap, err := s.loadEntityTx(ctx, tx, publicID)
+	if err != nil {
+		return nil, err
+	}
+	labelsJSON, _ := labelsToJSON(entSnap.Labels)
+	descJSON, _ := labelsToJSON(entSnap.Descriptions)
+	if _, err := tx.Exec(ctx, `
+		INSERT INTO entity_revision (id, entity_id, revision_no, status, labels, descriptions, change_set_id, actor, created_at)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+	`, datatype.NewUUID(), entityID, nextRev, entSnap.Status, labelsJSON, descJSON, cs.id, csActor(cs), now); err != nil {
+		return nil, err
+	}
+	if err := cs.addItem(ctx, tx, "entity", entityID, publicID, "setIRIAliases", map[string]any{
+		"aliasCount": len(norm), "revisionNo": nextRev,
+	}); err != nil {
+		return nil, err
+	}
+	entSnap.IRIAliases = norm
+	entSnap.RevisionNo = nextRev
+	entSnap.UpdatedAt = now
+	var iriBase string
+	if entSnap.PackageCode != "" {
+		_ = tx.QueryRow(ctx, `SELECT COALESCE(iri_base,'') FROM package WHERE code = $1`, entSnap.PackageCode).Scan(&iriBase)
+	}
+	entSnap.IRI = datatype.ResolveIRI(iriBase, entSnap.IRILocal, entSnap.PublicID, fallbackNSForPublicID(entSnap.PublicID))
+	if err := s.finalizeChangeSet(ctx, tx, cs, entSnap); err != nil {
+		return nil, err
+	}
 	if err := tx.Commit(ctx); err != nil {
 		return nil, err
 	}
 	_ = s.projectEntityRDF(ctx, publicID)
-	ent, err := s.GetEntityByPublicID(ctx, publicID)
-	if err != nil {
-		return nil, err
-	}
-	return &domain.WriteResult[domain.Entity]{Value: *ent}, nil
+	return &domain.WriteResult[domain.Entity]{Value: *entSnap, ChangeSet: s.changeSetDomain(cs, meta)}, nil
 }
 
 func (s *Store) SetEntityIRIAliasesInOpenChangeSet(

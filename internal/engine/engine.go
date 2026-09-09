@@ -34,17 +34,6 @@ func New(s *store.Store, authEngine *auth.Engine) *Engine {
 	return &Engine{store: s, auth: authEngine}
 }
 
-func (e *Engine) CreateEntity(ctx context.Context, meta domain.WriteMeta, in domain.CreateEntityInput) (*domain.WriteResult[domain.Entity], error) {
-	if err := e.authorizeGlobal(ctx, auth.OpCreate); err != nil {
-		return nil, err
-	}
-	res, err := e.store.CreateEntity(ctx, meta, in)
-	if err != nil {
-		return nil, mapErr(err)
-	}
-	return res, nil
-}
-
 func (e *Engine) GetEntity(ctx context.Context, qid string) (*domain.Entity, error) {
 	if _, _, err := datatype.ParsePublicGraphID(qid); err != nil {
 		return nil, fmt.Errorf("%w: %v", ErrInvalid, err)
@@ -65,73 +54,6 @@ func (e *Engine) GetEntity(ctx context.Context, qid string) (*domain.Entity, err
 	}
 	ent.EffectiveClasses = classes
 	return ent, nil
-}
-
-func (e *Engine) UpdateEntity(ctx context.Context, meta domain.WriteMeta, qid string, in domain.UpdateEntityInput) (*domain.WriteResult[domain.Entity], error) {
-	if _, _, err := datatype.ParsePublicGraphID(qid); err != nil {
-		return nil, fmt.Errorf("%w: %v", ErrInvalid, err)
-	}
-	if err := e.authorizeEntity(ctx, auth.OpUpdate, qid); err != nil {
-		return nil, err
-	}
-	res, err := e.store.UpdateEntity(ctx, meta, qid, in)
-	if err != nil {
-		return nil, mapErr(err)
-	}
-	return res, nil
-}
-
-func (e *Engine) DeprecateEntity(ctx context.Context, meta domain.WriteMeta, qid string, expectedRevision int) (*domain.WriteResult[domain.Entity], error) {
-	if _, _, err := datatype.ParsePublicGraphID(qid); err != nil {
-		return nil, fmt.Errorf("%w: %v", ErrInvalid, err)
-	}
-	if err := e.authorizeEntity(ctx, auth.OpUpdate, qid); err != nil {
-		return nil, err
-	}
-	res, err := e.store.DeprecateEntity(ctx, meta, qid, expectedRevision)
-	if err != nil {
-		return nil, mapErr(err)
-	}
-	return res, nil
-}
-
-func (e *Engine) DeleteEntity(ctx context.Context, meta domain.WriteMeta, qid string, expectedRevision int) (*domain.WriteResult[domain.Entity], error) {
-	if _, _, err := datatype.ParsePublicGraphID(qid); err != nil {
-		return nil, fmt.Errorf("%w: %v", ErrInvalid, err)
-	}
-	if err := e.authorizeEntity(ctx, auth.OpDelete, qid); err != nil {
-		return nil, err
-	}
-	res, err := e.store.DeleteEntity(ctx, meta, qid, expectedRevision)
-	if err != nil {
-		return nil, mapErr(err)
-	}
-	return res, nil
-}
-
-func (e *Engine) SetEntityIRIAliases(ctx context.Context, meta domain.WriteMeta, qid string, aliases []domain.EntityIRIAlias) (*domain.WriteResult[domain.Entity], error) {
-	if _, _, err := datatype.ParsePublicGraphID(qid); err != nil {
-		return nil, fmt.Errorf("%w: %v", ErrInvalid, err)
-	}
-	if err := e.authorizeEntity(ctx, auth.OpUpdate, qid); err != nil {
-		return nil, err
-	}
-	res, err := e.store.SetEntityIRIAliases(ctx, meta, qid, aliases)
-	if err != nil {
-		return nil, mapErr(err)
-	}
-	return res, nil
-}
-
-func (e *Engine) CreateProperty(ctx context.Context, meta domain.WriteMeta, in domain.CreatePropertyInput) (*domain.WriteResult[domain.Property], error) {
-	if err := e.authorizeGlobal(ctx, auth.OpCreate); err != nil {
-		return nil, err
-	}
-	res, err := e.store.CreateProperty(ctx, meta, in)
-	if err != nil {
-		return nil, mapErr(err)
-	}
-	return res, nil
 }
 
 func (e *Engine) GetProperty(ctx context.Context, pid string) (*domain.Property, error) {
@@ -171,81 +93,6 @@ func (e *Engine) GetReference(ctx context.Context, rid string) (*domain.Referenc
 		return nil, mapErr(err)
 	}
 	return ref, nil
-}
-
-func (e *Engine) CreateStatement(ctx context.Context, meta domain.WriteMeta, in domain.CreateStatementInput) (*domain.WriteResult[domain.Statement], error) {
-	if err := e.authorizeEntity(ctx, auth.OpDiscover, in.SubjectPublicID); err != nil {
-		return nil, err
-	}
-	if err := e.authorizeStatementProperty(ctx, auth.OpUpdate, in.SubjectPublicID, in.PropertyPublicID); err != nil {
-		return nil, err
-	}
-	if meta.ValidationMode == domain.ValidationStrict {
-		if err := e.checkStrictValidation(ctx, in.SubjectPublicID, &in); err != nil {
-			return nil, err
-		}
-	}
-	res, err := e.store.CreateStatement(ctx, meta, in)
-	if err != nil {
-		return nil, mapErr(err)
-	}
-	st, err := e.presentStatement(ctx, &res.Value)
-	if err != nil {
-		return nil, err
-	}
-	res.Value = *st
-	e.attachValidation(ctx, meta, in.SubjectPublicID, res)
-	return res, nil
-}
-
-func (e *Engine) ReviseStatement(ctx context.Context, meta domain.WriteMeta, sid string, in domain.ReviseStatementInput) (*domain.WriteResult[domain.Statement], error) {
-	if _, err := datatype.ParsePublicStatementID(sid); err != nil {
-		return nil, fmt.Errorf("%w: %v", ErrInvalid, err)
-	}
-	st, err := e.store.GetStatementByPublicID(ctx, sid)
-	if err != nil {
-		return nil, mapErr(err)
-	}
-	if err := e.authorizeEntity(ctx, auth.OpDiscover, st.SubjectQID); err != nil {
-		return nil, err
-	}
-	if err := e.authorizeStatementProperty(ctx, auth.OpUpdate, st.SubjectQID, st.PropertyPID); err != nil {
-		return nil, err
-	}
-	res, err := e.store.ReviseStatement(ctx, meta, sid, in)
-	if err != nil {
-		return nil, mapErr(err)
-	}
-	if res.Replay {
-		e.attachChangeSetOnReplay(ctx, meta, res)
-	}
-	presented, err := e.presentStatement(ctx, &res.Value)
-	if err != nil {
-		return nil, err
-	}
-	res.Value = *presented
-	return res, nil
-}
-
-func (e *Engine) DeprecateStatement(ctx context.Context, meta domain.WriteMeta, sid string, expectedRevision int) (*domain.WriteResult[domain.Statement], error) {
-	if _, err := datatype.ParsePublicStatementID(sid); err != nil {
-		return nil, fmt.Errorf("%w: %v", ErrInvalid, err)
-	}
-	st, err := e.store.GetStatementByPublicID(ctx, sid)
-	if err != nil {
-		return nil, mapErr(err)
-	}
-	if err := e.authorizeEntity(ctx, auth.OpDiscover, st.SubjectQID); err != nil {
-		return nil, err
-	}
-	if err := e.authorizeStatementProperty(ctx, auth.OpUpdate, st.SubjectQID, st.PropertyPID); err != nil {
-		return nil, err
-	}
-	res, err := e.store.DeprecateStatement(ctx, meta, sid, expectedRevision)
-	if err != nil {
-		return nil, mapErr(err)
-	}
-	return res, nil
 }
 
 func (e *Engine) GetStatement(ctx context.Context, sid string) (*domain.Statement, error) {
@@ -337,7 +184,8 @@ func (e *Engine) ListStatements(ctx context.Context, opt store.StatementListOpti
 }
 
 func (e *Engine) ApplyChangeSet(ctx context.Context, meta domain.WriteMeta, in domain.ApplyChangeSetInput) (*domain.WriteResult[domain.ChangeSet], error) {
-	if err := e.authorizeChangeSet(ctx, in); err != nil {
+	authCtx := e.withOpenRead(ctx, meta)
+	if err := e.authorizeChangeSet(authCtx, in); err != nil {
 		return nil, err
 	}
 	res, err := e.store.ApplyChangeSet(ctx, meta, in)
@@ -453,11 +301,14 @@ func mapErr(err error) error {
 	if err == nil {
 		return nil
 	}
+	if errors.Is(err, store.ErrBatchLimitExceeded) {
+		return fmt.Errorf("%w: %v", ErrInvalid, err)
+	}
 	if errors.Is(err, pgx.ErrNoRows) {
-		return ErrNotFound
+		return fmt.Errorf("%w: %v", ErrNotFound, err)
 	}
 	if errors.Is(err, store.ErrOpenChangeSetNotFound) {
-		return ErrNotFound
+		return fmt.Errorf("%w: %v", ErrNotFound, err)
 	}
 	if errors.Is(err, store.ErrOpenChangeSetClosed) {
 		return fmt.Errorf("%w: %v", ErrInvalid, err)

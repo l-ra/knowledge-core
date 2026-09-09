@@ -42,13 +42,17 @@ Alternativa validace: query param `?validation=strict`.
 4. `POST /v1/changesets/{id}/commit` — optimistic lock na claimnutých objektech; úspěch = další committed CS; konflikt → 409, CS zůstane open
 5. `POST /v1/changesets/{id}/cancel` — smaže overlay
 
-Grafové zápisy do overlay: entity/statement CRUD, property/class create, `PATCH /properties/{pid}`, `PUT …/iri-aliases`, `POST …/move`.
+Grafové zápisy do overlay: entity/statement CRUD, property/class create, `PATCH /properties/{pid}`, `PUT …/iri-aliases`, `POST …/move`, a **`POST /v1/changesets` batch** (append do open CS).
 
-S open-CS headerem → **400** `unsupported_in_open_changeset` (ne tichý committed write): packages, releases, RDF import, shapes, lens create, schema-config, reference create, batch `POST /v1/changesets`.
+Veřejné REST mutátory grafu jsou thin wrappers: sestaví `operations` délky 1 a volají stejný `ApplyChangeSet` jako batch (committed i open).
 
-`GET /v1/changesets?status=open|committed|cancelled|all` (default `committed`).
+Limity batch: max **500** ops (400 `batch_limit_exceeded`), body ≤ **4 MiB** (413).
 
-Detail: [phase-20-open-changeset.md](../specs/phase-20-open-changeset.md).
+S open-CS headerem → **400** `unsupported_in_open_changeset` (ne tichý committed write): packages, releases, RDF import, shapes, lens create, schema-config, reference create.
+
+`PUT …/iri-aliases` vždy tvoří ChangeSet (committed i open).
+
+Detail: [phase-20-open-changeset.md](../specs/phase-20-open-changeset.md), [phase-21-unified-batch-writes.md](../specs/phase-21-unified-batch-writes.md).
 
 ---
 

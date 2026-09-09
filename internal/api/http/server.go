@@ -775,6 +775,12 @@ type applyChangeSetReq struct {
 func (s *Server) applyChangeSet(w http.ResponseWriter, r *http.Request) {
 	body, err := readBody(r)
 	if err != nil {
+		if err == errPayloadTooLarge {
+			writeJSON(w, http.StatusRequestEntityTooLarge, map[string]any{
+				"error": map[string]any{"code": "payload_too_large", "message": "request body exceeds 4 MiB"},
+			})
+			return
+		}
 		writeError(w, http.StatusBadRequest, "invalid body")
 		return
 	}
@@ -787,9 +793,6 @@ func (s *Server) applyChangeSet(w http.ResponseWriter, r *http.Request) {
 	if meta.OperationType == "" {
 		meta.OperationType = "batch"
 	}
-	if rejectIfOpenChangeSet(w, meta, "applyChangeSet") {
-		return
-	}
 	res, err := s.engine.ApplyChangeSet(r.Context(), meta, domain.ApplyChangeSetInput{
 		OperationType: req.OperationType,
 		Comment:       req.Comment,
@@ -799,13 +802,25 @@ func (s *Server) applyChangeSet(w http.ResponseWriter, r *http.Request) {
 		writeEngineError(w, err)
 		return
 	}
+	// Q2: { data: { results }, changeSet: DTO }
+	var results any
 	if len(res.ResponseRaw) > 0 {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write(res.ResponseRaw)
-		return
+		var parsed map[string]any
+		if json.Unmarshal(res.ResponseRaw, &parsed) == nil {
+			results = parsed["results"]
+		}
 	}
-	writeJSON(w, http.StatusOK, changeSetDTO(&res.Value))
+	if results == nil {
+		results = []any{}
+	}
+	status := http.StatusOK
+	if res.Replay {
+		status = http.StatusOK
+	}
+	writeJSON(w, status, map[string]any{
+		"data":      map[string]any{"results": results},
+		"changeSet": changeSetDTO(&res.Value),
+	})
 }
 
 func (s *Server) listChangeSets(w http.ResponseWriter, r *http.Request) {
@@ -1456,7 +1471,15 @@ func writeEngineError(w http.ResponseWriter, err error) {
 			},
 		})
 	case errors.Is(err, engine.ErrInvalid):
-		writeError(w, http.StatusBadRequest, err.Error())
+		msg := err.Error()
+		code := "invalid"
+		if strings.Contains(msg, "batch limit exceeded") {
+			code = "batch_limit_exceeded"
+		}
+		writeJSON(w, http.StatusBadRequest, map[string]any{
+			"error": map[string]any{"code": code, "message": msg},
+		})
+		return
 	case errors.Is(err, engine.ErrConflict):
 		writeError(w, http.StatusConflict, err.Error())
 	case errors.Is(err, engine.ErrIdempotencyConflict):

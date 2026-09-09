@@ -100,17 +100,6 @@ func (e *Engine) attachValidation(ctx context.Context, meta domain.WriteMeta, qi
 	res.Validation = v
 }
 
-func (e *Engine) CreateClass(ctx context.Context, meta domain.WriteMeta, in domain.CreateClassInput) (*domain.WriteResult[domain.ClassDefinition], error) {
-	if err := e.authorizeGlobal(ctx, auth.OpCreate); err != nil {
-		return nil, err
-	}
-	res, err := e.store.CreateClass(ctx, meta, in)
-	if err != nil {
-		return nil, mapErr(err)
-	}
-	return res, nil
-}
-
 func (e *Engine) GetClass(ctx context.Context, cid string) (*domain.ClassDefinition, error) {
 	if err := e.authorizeGlobal(ctx, auth.OpRead); err != nil {
 		return nil, err

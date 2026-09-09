@@ -214,9 +214,18 @@ Detail: [specs/phase-13-web-ui.md](specs/phase-13-web-ui.md)
 
 ---
 
+- [x] Batch jako jediný SoT grafového zápisu (`ApplyChangeSet`); open CS append
+- [x] `PUT …/iri-aliases` tvoří ChangeSet; op `setEntityIRIAliases`
+- [x] Hard limity: max 500 ops, body ≤ 4 MiB
+- [x] Grafové REST mutátory = thin 1-op wrappers nad `ApplyChangeSet` (engine)
+- Detail: [specs/phase-21-unified-batch-writes.md](specs/phase-21-unified-batch-writes.md)
+
+---
+
 ## Doporučené pořadí další práce
 
 ```text
+Fáze 21 (batch SoT) → IT Map OE batch import
 UI v1.1: lens domain editor, OIDC groups→roles, release diff API
 Turtle import; auto-rebuild RDF při změně package.iri_base
 ```
