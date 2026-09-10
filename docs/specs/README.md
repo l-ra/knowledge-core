@@ -27,6 +27,7 @@
 | 13 | Built-in web UI `/ui` | **done** (MVP) |
 | 20 | [phase-20-open-changeset.md](phase-20-open-changeset.md) — Open ChangeSet v DB (nahrazuje draft) | **done** |
 | 21 | [phase-21-unified-batch-writes.md](phase-21-unified-batch-writes.md) — Batch jako SoT zápisu, limity, aliases→CS, open batch, REST 1-op wrappers | **done** |
+| 22 | [phase-22-list-expand-batch-read.md](phase-22-list-expand-batch-read.md) — List include, facets, batch-read | **done** |
 
 Rozhodnutí zůstávají v [decisions/](../decisions/).
 

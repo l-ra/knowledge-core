@@ -222,10 +222,18 @@ Detail: [specs/phase-13-web-ui.md](specs/phase-13-web-ui.md)
 
 ---
 
+## Fáze 22 — List expand / facets / batch-read (implementováno)
+
+- [x] `GET /v1/entities?include=effectiveClasses|statements&properties=`
+- [x] `GET /v1/entities/facets?groupBy=instanceOf`
+- [x] `POST /v1/entities/batch-read` (max 200 ids)
+- Detail: [specs/phase-22-list-expand-batch-read.md](specs/phase-22-list-expand-batch-read.md)
+
+---
+
 ## Doporučené pořadí další práce
 
 ```text
-Fáze 21 (batch SoT) → IT Map OE batch import
 UI v1.1: lens domain editor, OIDC groups→roles, release diff API
 Turtle import; auto-rebuild RDF při změně package.iri_base
 ```

@@ -81,6 +81,7 @@ export function EntityPage() {
   const [info, setInfo] = useState("");
   const [mode, setMode] = useState<"view" | "editLabels" | "addStatement" | string>("view");
   const [labelsDraft, setLabelsDraft] = useState<Record<string, string>>({ en: "" });
+  const [descriptionsDraft, setDescriptionsDraft] = useState<Record<string, string>>({ en: "" });
   const [iriLocal, setIriLocal] = useState("");
   const [aliasDraft, setAliasDraft] = useState("");
   const [aliases, setAliases] = useState<Array<{ iri: string; kind: string }>>([]);
@@ -116,6 +117,9 @@ export function EntityPage() {
       ]);
       setEntity(ent);
       setLabelsDraft(Object.keys(ent.labels || {}).length ? { ...(ent.labels || {}) } : { en: "" });
+      setDescriptionsDraft(
+        Object.keys(ent.descriptions || {}).length ? { ...(ent.descriptions || {}) } : { en: "" },
+      );
       setIriLocal(ent.iriLocal || "");
       setAliases(ent.iriAliases || []);
       setProperties(props.items || []);
@@ -229,8 +233,14 @@ export function EntityPage() {
       setError(t("entity.labelEnRequired"));
       return;
     }
+    const descriptions = Object.fromEntries(
+      Object.entries(descriptionsDraft)
+        .map(([lang, text]) => [lang.trim().toLowerCase(), text.trim()])
+        .filter(([lang, text]) => lang && text),
+    );
     const body: Record<string, unknown> = {
       labels,
+      descriptions,
       iriLocal,
       expectedRevision: entity.revisionNo,
     };
@@ -248,6 +258,7 @@ export function EntityPage() {
           op: "updateEntity",
           entity: qid,
           labels,
+          descriptions,
           iriLocal: iriLocal || undefined,
           expectedRevision: entity.revisionNo,
         },
@@ -833,6 +844,50 @@ export function EntityPage() {
                 <button type="button" onClick={() => setLabelsDraft((prev) => ({ ...prev, [`l${Object.keys(prev).length}`]: "" }))}>
                   {t("entity.addLang")}
                 </button>
+
+                <h3>{t("entity.descriptions")}</h3>
+                {Object.entries(descriptionsDraft).map(([lang, text]) => (
+                  <div className="row" key={`desc-${lang}`}>
+                    <label className="field" style={{ maxWidth: "8rem", flex: "0 0 8rem" }}>
+                      {t("common.language")}
+                      <input
+                        value={lang}
+                        onChange={(e) => {
+                          const nextLang = e.target.value.toLowerCase();
+                          setDescriptionsDraft((prev) => {
+                            const next = { ...prev };
+                            delete next[lang];
+                            next[nextLang || "en"] = text;
+                            return next;
+                          });
+                        }}
+                      />
+                    </label>
+                    <label className="field">
+                      {t("entity.description")}
+                      <textarea
+                        value={text}
+                        onChange={(e) => setDescriptionsDraft((prev) => ({ ...prev, [lang]: e.target.value }))}
+                        rows={3}
+                      />
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setDescriptionsDraft((prev) => {
+                          const next = Object.fromEntries(Object.entries(prev).filter(([key]) => key !== lang));
+                          return Object.keys(next).length ? next : { en: "" };
+                        })
+                      }
+                    >
+                      {t("common.remove")}
+                    </button>
+                  </div>
+                ))}
+                <button type="button" onClick={() => setDescriptionsDraft((prev) => ({ ...prev, [`l${Object.keys(prev).length}`]: "" }))}>
+                  {t("entity.addDescLang")}
+                </button>
+
                 <label className="field">
                   {t("entity.iriLocal")}
                   <input value={iriLocal} onChange={(e) => setIriLocal(e.target.value)} placeholder={qid} />

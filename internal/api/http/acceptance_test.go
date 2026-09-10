@@ -18,6 +18,7 @@ import (
 	apihttp "github.com/l-ra/knowledge-core/internal/api/http"
 	"github.com/l-ra/knowledge-core/internal/auth"
 	"github.com/l-ra/knowledge-core/internal/config"
+	"github.com/l-ra/knowledge-core/internal/domain"
 	"github.com/l-ra/knowledge-core/internal/engine"
 	"github.com/l-ra/knowledge-core/internal/store"
 	"github.com/l-ra/knowledge-core/internal/testdata"
@@ -1883,6 +1884,34 @@ func createPkg(t *testing.T, h http.Handler, code string, deps []map[string]stri
 	}
 }
 
+// seedKcBaseInstanceOf imports official kc-base 1.1.0 so schema-config.instanceOfProperty
+ // is auto-set to the well-known IRI (same path as production release import).
+func seedKcBaseInstanceOf(t *testing.T, h http.Handler) string {
+	t.Helper()
+	want := domain.WellKnownInstanceOfPropertyIRI
+	path, err := testdata.BundlePath("kc-base/releases/kc-base-1.1.0.bundle.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var bundle map[string]any
+	if err := json.Unmarshal(raw, &bundle); err != nil {
+		t.Fatal(err)
+	}
+	imp := doJSON(t, h, http.MethodPost, "/v1/releases/import", bundle, nil)
+	if imp.StatusCode != http.StatusCreated {
+		t.Fatalf("import kc-base 1.1.0: %d %s", imp.StatusCode, imp.Body)
+	}
+	cfg := doJSON(t, h, http.MethodGet, "/v1/admin/schema-config", nil, nil)
+	if cfg.StatusCode != http.StatusOK || !strings.Contains(cfg.Body, `"instanceOfProperty":"`+want+`"`) {
+		t.Fatalf("expected auto instanceOfProperty after kc-base import: %d %s", cfg.StatusCode, cfg.Body)
+	}
+	return want
+}
+
 func createEntityWithPkg(t *testing.T, h http.Handler, pkg, label string) string {
 	t.Helper()
 	res := doJSON(t, h, http.MethodPost, "/v1/entities", map[string]any{
@@ -2026,6 +2055,7 @@ func doJSON(t *testing.T, h http.Handler, method, path string, body any, headers
 
 func TestAcceptanceSchemaValidationRelaxed(t *testing.T) {
 	h := setupTestHandler(t)
+	pidType := seedKcBaseInstanceOf(t, h)
 
 	ent := doJSON(t, h, http.MethodPost, "/v1/entities", map[string]any{
 		"packageCode": "test",
@@ -2035,13 +2065,6 @@ func TestAcceptanceSchemaValidationRelaxed(t *testing.T) {
 		t.Fatalf("create entity: %d %s", ent.StatusCode, ent.Body)
 	}
 	qid := parseDataID(t, ent.Body)
-
-	typeProp := doJSON(t, h, http.MethodPost, "/v1/properties", map[string]any{
-		"packageCode": "test",
-		"datatype":    "EntityReference",
-		"labels":      map[string]string{"en": "instance of"},
-	}, adminHeaders())
-	pidType := parseDataID(t, typeProp.Body)
 
 	nameProp := doJSON(t, h, http.MethodPost, "/v1/properties", map[string]any{
 		"packageCode": "test",
@@ -2062,10 +2085,6 @@ func TestAcceptanceSchemaValidationRelaxed(t *testing.T) {
 		t.Fatalf("create class: %d %s", class.StatusCode, class.Body)
 	}
 	classID := parseDataID(t, class.Body)
-
-	doJSON(t, h, http.MethodPut, "/v1/admin/schema-config", map[string]any{
-		"instanceOfProperty": pidType,
-	}, adminHeaders())
 
 	doJSON(t, h, http.MethodPost, "/v1/shapes", map[string]any{
 		"code":    "person-shape",

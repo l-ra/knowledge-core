@@ -8,15 +8,7 @@ import (
 
 func TestAcceptanceGraphAPIExtensions(t *testing.T) {
 	h := setupTestHandler(t)
-
-	typeProp := doJSON(t, h, http.MethodPost, "/v1/properties", map[string]any{
-		"packageCode": "test", "datatype": "EntityReference",
-		"labels": map[string]string{"en": "instance of"}, "iriLocal": "instanceOf",
-	}, nil)
-	pidType := parseDataID(t, typeProp.Body)
-	doJSON(t, h, http.MethodPut, "/v1/admin/schema-config", map[string]any{
-		"instanceOfProperty": pidType,
-	}, nil)
+	pidType := seedKcBaseInstanceOf(t, h)
 
 	animal := doJSON(t, h, http.MethodPost, "/v1/classes", map[string]any{
 		"packageCode": "test", "labels": map[string]string{"en": "Animal"}, "iriLocal": "Animal",

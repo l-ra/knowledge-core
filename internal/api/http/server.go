@@ -60,6 +60,8 @@ func New(eng *engine.Engine, st *store.Store, authn Authenticator, cfg config.Co
 
 		r.Get("/entities", s.listEntities)
 		r.Post("/entities", s.createEntity)
+		r.Get("/entities/facets", s.listEntityFacets)
+		r.Post("/entities/batch-read", s.batchReadEntities)
 		r.Get("/entities/{qid}/validation", s.getEntityValidation)
 		r.Get("/entities/{qid}/history", s.getEntityHistory)
 		r.Get("/entities/{qid}/statements", s.listEntityStatements)

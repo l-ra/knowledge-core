@@ -100,6 +100,33 @@ Resource **bez** obálky `data`:
 
 Default `limit` 50, max 200. Prázdný `nextCursor` = konec.
 
+### List expand (phase-22)
+
+`GET /v1/entities` volitelné query:
+
+| Parametr | Význam |
+|----------|--------|
+| `include=effectiveClasses` | Každá položka má `effectiveClasses` |
+| `include=statements` | Embedded statements subjektu; **vyžaduje** `properties=` |
+| `properties=P1,P2` | Whitelist (public id nebo `iriLocal`) |
+
+```http
+GET /v1/entities?package=org&limit=50&include=effectiveClasses,statements&properties=actorKind
+```
+
+```http
+GET /v1/entities/facets?package=org&groupBy=instanceOf
+→ { "facets": [ { "classId": "C…", "count": 42 } ] }
+```
+
+```http
+POST /v1/entities/batch-read
+{ "ids": ["Q1","Q2"], "include": ["effectiveClasses","statements"], "properties": ["P…"] }
+→ { "results": [ { "id": "Q1", "entity": {…}, "statements": […] }, { "id": "Q2", "error": "not_found" } ] }
+```
+
+Detail: [phase-22-list-expand-batch-read.md](../specs/phase-22-list-expand-batch-read.md).
+
 ---
 
 ## Chybové odpovědi
@@ -358,7 +385,7 @@ Content-Type: application/json
 | Auth info | `GET /v1/me` |
 | Packages | `GET/POST /v1/packages`, `GET /v1/packages/{code}`, releases, bundle, import |
 | Schema | `GET/POST /v1/classes`, `GET/POST /v1/properties`, `PATCH /v1/properties/{pid}`, shapes, schema-config |
-| Graph CRUD | `GET/POST /v1/entities`, `PATCH /v1/entities/{qid}`, `POST …/deprecate`, `POST …/delete`, statements, incoming, graph, move, iri-aliases |
+| Graph CRUD | `GET/POST /v1/entities`, `GET /v1/entities/facets`, `POST /v1/entities/batch-read`, `PATCH /v1/entities/{qid}`, `POST …/deprecate`, `POST …/delete`, statements, incoming, graph, move, iri-aliases |
 | History | `GET …/history`, `GET/POST /v1/changesets`, `POST /v1/changesets/open`, `POST …/{cid}/commit|cancel`, `GET /v1/changesets/{cid}` |
 | Lenses | `GET/POST /v1/lenses`, instances, patch, GraphQL |
 | Projections | `GET /v1/projections/search`, `/v1/projections/rdf`, rebuild endpoints |

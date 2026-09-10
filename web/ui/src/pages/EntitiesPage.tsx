@@ -57,6 +57,7 @@ export function EntitiesPage() {
   const [creating, setCreating] = useState<KindFilter | null>(null);
 
   const [label, setLabel] = useState("");
+  const [description, setDescription] = useState("");
   const [iriLocal, setIriLocal] = useState("");
   const [datatype, setDatatype] = useState("String");
   const [constraints, setConstraints] = useState<ConstraintsFormState>(() => emptyConstraintsForm());
@@ -109,6 +110,7 @@ export function EntitiesPage() {
   function resetCreateForm() {
     setCreating(null);
     setLabel("");
+    setDescription("");
     setIriLocal("");
     setDatatype("String");
     setConstraints(emptyConstraintsForm());
@@ -123,6 +125,7 @@ export function EntitiesPage() {
     }
     if (!creating) return;
     setInfo("");
+    const descriptions = description.trim() ? { en: description.trim() } : undefined;
     try {
       if (creating === "entity") {
         await runWrite(
@@ -132,6 +135,7 @@ export function EntitiesPage() {
               body: JSON.stringify({
                 packageCode,
                 labels: { en: label },
+                descriptions,
                 iriLocal: iriLocal || undefined,
               }),
             });
@@ -141,6 +145,7 @@ export function EntitiesPage() {
             op: "createEntity",
             packageCode,
             labels: { en: label },
+            descriptions,
             iriLocal: iriLocal || undefined,
           },
         );
@@ -154,6 +159,7 @@ export function EntitiesPage() {
                 packageCode,
                 datatype,
                 labels: { en: label },
+                descriptions,
                 constraints: constraintsPayload,
                 iriLocal: iriLocal || undefined,
               }),
@@ -165,6 +171,7 @@ export function EntitiesPage() {
             packageCode,
             datatype,
             labels: { en: label },
+            descriptions,
             constraints: constraintsPayload,
             iriLocal: iriLocal || undefined,
           },
@@ -177,6 +184,7 @@ export function EntitiesPage() {
               body: JSON.stringify({
                 packageCode,
                 labels: { en: label },
+                descriptions,
                 subClassOf: subClassOf || undefined,
                 iriLocal: iriLocal || undefined,
               }),
@@ -187,6 +195,7 @@ export function EntitiesPage() {
             op: "createClass",
             packageCode,
             labels: { en: label },
+            descriptions,
             subClassOf: subClassOf || undefined,
             iriLocal: iriLocal || undefined,
           },
@@ -281,6 +290,15 @@ export function EntitiesPage() {
           <label className="field">
             {t("entities.labelEn")}
             <input value={label} onChange={(e) => setLabel(e.target.value)} required />
+          </label>
+          <label className="field">
+            {t("entity.descriptionEn")}
+            <textarea
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              placeholder={t("entity.descriptionPlaceholder")}
+              rows={3}
+            />
           </label>
           <label className="field">
             {t("entity.iriLocal")}
