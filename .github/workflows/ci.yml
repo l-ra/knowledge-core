@@ -33,13 +33,10 @@ jobs:
           --health-retries 10
     steps:
       - uses: actions/checkout@v4
-      # Models live in sibling repo knowledge-models. Checkout when a remote exists:
-      # - uses: actions/checkout@v4
-      #   with:
-      #     repository: l-ra/knowledge-models
-      #     path: knowledge-models
-      #   then: KNOWLEDGE_MODELS_PATH=${{ github.workspace }}/knowledge-models
-      # Until then, acceptance tests that need bundles require a local sibling checkout.
+      - uses: actions/checkout@v4
+        with:
+          repository: l-ra/knowledge-models
+          path: knowledge-models
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
@@ -58,7 +55,7 @@ jobs:
       - name: Acceptance tests
         env:
           KC_DATABASE_URL: postgres://kc:kc@localhost:5433/knowledge_core?sslmode=disable
-          KNOWLEDGE_MODELS_PATH: ${{ github.workspace }}/../knowledge-models
+          KNOWLEDGE_MODELS_PATH: ${{ github.workspace }}/knowledge-models
         run: go test ./internal/api/http/ ./internal/domain/ -count=1
 
   build:
