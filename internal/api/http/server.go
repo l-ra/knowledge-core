@@ -114,6 +114,7 @@ func New(eng *engine.Engine, st *store.Store, authn Authenticator, cfg config.Co
 		r.Post("/changesets/{cid}/commit", s.commitOpenChangeSet)
 		r.Post("/changesets/{cid}/cancel", s.cancelOpenChangeSet)
 		r.Get("/changesets/{cid}", s.getChangeSet)
+		r.Patch("/changesets/{cid}", s.updateOpenChangeSet)
 
 		r.Get("/policies", s.listPolicies)
 		r.Post("/policies", s.upsertPolicy)
@@ -1382,13 +1383,47 @@ func changeSetDTO(cs *domain.ChangeSet) map[string]any {
 	if len(cs.Claims) > 0 {
 		claims := make([]map[string]any, 0, len(cs.Claims))
 		for _, c := range cs.Claims {
-			claims = append(claims, map[string]any{
+			row := map[string]any{
 				"objectType":     c.ObjectType,
 				"objectId":       c.ObjectID.String(),
 				"canonicalIri":   c.CanonicalIRI,
 				"baseRevisionNo": c.BaseRevisionNo,
 				"opKind":         c.OpKind,
-			})
+			}
+			if c.PublicID != "" {
+				row["publicId"] = c.PublicID
+			}
+			if c.PackageCode != "" {
+				row["packageCode"] = c.PackageCode
+			}
+			if c.Status != "" {
+				row["status"] = c.Status
+			}
+			if c.Kind != "" {
+				row["kind"] = c.Kind
+			}
+			if len(c.Labels) > 0 {
+				row["labels"] = c.Labels
+			}
+			if len(c.Descriptions) > 0 {
+				row["descriptions"] = c.Descriptions
+			}
+			if c.Subject != "" {
+				row["subject"] = c.Subject
+			}
+			if c.Property != "" {
+				row["property"] = c.Property
+			}
+			if c.Value != nil {
+				row["value"] = c.Value
+			}
+			if c.RevisionNo > 0 {
+				row["revisionNo"] = c.RevisionNo
+			}
+			if !c.UpdatedAt.IsZero() {
+				row["updatedAt"] = c.UpdatedAt.UTC().Format(time.RFC3339Nano)
+			}
+			claims = append(claims, row)
 		}
 		out["claims"] = claims
 	}
@@ -1398,6 +1433,7 @@ func changeSetDTO(cs *domain.ChangeSet) map[string]any {
 func changeSetSummaryDTO(cs *domain.ChangeSet) map[string]any {
 	out := changeSetDTO(cs)
 	delete(out, "items")
+	delete(out, "claims")
 	return out
 }
 

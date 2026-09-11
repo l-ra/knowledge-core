@@ -161,16 +161,35 @@ type ChangeSet struct {
 }
 
 type ChangeSetClaim struct {
-	ObjectType      string
-	ObjectID        uuid.UUID
-	CanonicalIRI    string
-	BaseRevisionNo  int
-	OpKind          string
+	ObjectType     string
+	ObjectID       uuid.UUID
+	CanonicalIRI   string
+	BaseRevisionNo int
+	OpKind         string
+	// Overlay snapshot for open ChangeSet detail (optional).
+	PublicID     string
+	PackageCode  string
+	Status       string
+	Kind         string // entity | property | class (entity overlay)
+	Labels       map[string]string
+	Descriptions map[string]string
+	Subject      string          // statement overlay
+	Property     string          // statement overlay
+	Value        *datatype.Value // statement overlay
+	RevisionNo   int
+	UpdatedAt    time.Time
 }
 
 type OpenChangeSetInput struct {
 	Comment       string
 	OperationType string
+}
+
+// UpdateOpenChangeSetInput patches descriptive fields of an open ChangeSet.
+// Nil pointers mean "leave unchanged".
+type UpdateOpenChangeSetInput struct {
+	Comment       *string
+	OperationType *string
 }
 
 type ChangeSetItem struct {

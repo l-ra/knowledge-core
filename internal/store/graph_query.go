@@ -87,23 +87,69 @@ func (s *Store) ClassAncestry(ctx context.Context, classPublicID string) ([]stri
 }
 
 func expandClassIDs(direct []string, classes map[string]domain.ClassDefinition) []string {
+	parentOf := func(id string) string {
+		if c, ok := classes[id]; ok {
+			return strings.TrimSpace(c.Document.SubClassOf)
+		}
+		return ""
+	}
+	isStrictAncestor := func(ancestor, node string) bool {
+		for cur := parentOf(node); cur != ""; cur = parentOf(cur) {
+			if cur == ancestor {
+				return true
+			}
+		}
+		return false
+	}
+
+	cleaned := make([]string, 0, len(direct))
+	seenIn := map[string]bool{}
+	for _, id := range direct {
+		id = strings.TrimSpace(id)
+		if id == "" || seenIn[id] {
+			continue
+		}
+		seenIn[id] = true
+		cleaned = append(cleaned, id)
+	}
+
+	// Most specific = direct classes that are not ancestors of another direct class.
+	leaves := make([]string, 0, len(cleaned))
+	for _, a := range cleaned {
+		dominated := false
+		for _, b := range cleaned {
+			if a != b && isStrictAncestor(a, b) {
+				dominated = true
+				break
+			}
+		}
+		if !dominated {
+			leaves = append(leaves, a)
+		}
+	}
+
 	seen := map[string]bool{}
-	var walk func(string)
-	walk = func(id string) {
+	out := make([]string, 0, len(cleaned)+4)
+	add := func(id string) {
 		if id == "" || seen[id] {
 			return
 		}
 		seen[id] = true
-		if c, ok := classes[id]; ok {
-			walk(c.Document.SubClassOf)
-		}
-	}
-	for _, id := range direct {
-		walk(id)
-	}
-	out := make([]string, 0, len(seen))
-	for id := range seen {
 		out = append(out, id)
+	}
+	for _, id := range leaves {
+		add(id)
+	}
+	for _, id := range cleaned {
+		add(id)
+	}
+	for _, start := range append(append([]string{}, leaves...), cleaned...) {
+		for cur := parentOf(start); cur != ""; cur = parentOf(cur) {
+			if seen[cur] {
+				break
+			}
+			add(cur)
+		}
 	}
 	return out
 }

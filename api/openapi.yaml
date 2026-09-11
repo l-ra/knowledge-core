@@ -476,6 +476,31 @@ paths:
       responses:
         "200":
           description: OK
+    patch:
+      summary: Update descriptive fields of an open ChangeSet
+      tags: [history]
+      parameters:
+        - name: cid
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                comment: { type: string }
+                operationType: { type: string }
+      responses:
+        "200":
+          description: Updated open ChangeSet
+        "400":
+          description: Not open / invalid body
+        "403":
+          description: Actor mismatch
   /v1/changesets/{cid}/commit:
     post:
       summary: Commit open ChangeSet into committed history

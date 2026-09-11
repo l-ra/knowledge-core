@@ -97,3 +97,24 @@ func (e *Engine) CancelOpenChangeSet(ctx context.Context, meta domain.WriteMeta,
 	}
 	return out, nil
 }
+
+func (e *Engine) UpdateOpenChangeSet(ctx context.Context, meta domain.WriteMeta, publicID string, in domain.UpdateOpenChangeSetInput) (*domain.ChangeSet, error) {
+	cs, err := e.store.GetChangeSetByPublicID(ctx, publicID)
+	if err != nil {
+		return nil, mapErr(err)
+	}
+	if err := e.authorizeOpenChangeSetActor(ctx, cs.Actor); err != nil {
+		return nil, err
+	}
+	if err := e.authorizeGlobal(ctx, auth.OpUpdate); err != nil {
+		return nil, err
+	}
+	if _, err := e.store.UpdateOpenChangeSet(ctx, meta, publicID, in); err != nil {
+		return nil, mapErr(err)
+	}
+	out, err := e.store.GetChangeSetByPublicID(ctx, publicID)
+	if err != nil {
+		return nil, mapErr(err)
+	}
+	return out, nil
+}

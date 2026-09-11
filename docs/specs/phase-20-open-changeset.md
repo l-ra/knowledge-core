@@ -222,10 +222,11 @@ Při selhání revision/IRI → **409**, CS zůstane `open`, overlay beze změny
 | Metoda | Cesta | Poznámka |
 |--------|-------|----------|
 | `POST` | `/v1/changesets/open` | Nový open CS |
+| `PATCH` | `/v1/changesets/{id}` | Úprava `comment` / `operationType` (jen open) |
 | `POST` | `/v1/changesets/{id}/commit` | Potvrzení |
 | `POST` | `/v1/changesets/{id}/cancel` | Zrušení |
 | `GET` | `/v1/changesets` | `status`, stávající filtry |
-| `GET` | `/v1/changesets/{id}` | Včetně `status`; u open volitelně souhrn claimů |
+| `GET` | `/v1/changesets/{id}` | Včetně `status`; u open `claims` se snapshotem overlay (labels, statement triple, …) |
 | `POST` | `/v1/changesets` | Okamžitý committed batch (beze změny); **ne** zápis do open CS |
 
 **Headers**
@@ -246,7 +247,7 @@ Při selhání revision/IRI → **409**, CS zůstane `open`, overlay beze změny
 
 - Místo Open draft / queue / Complete: **Open ChangeSet** → kontext drží CS id → všechny write i reloady posílají headers → **Commit** / **Cancel**
 - Po create v open CS reload seznamu/detailu hned ukáže objekt (v kontextu CS)
-- ChangesetsPage: filtr `open` / `committed` / `cancelled`
+- ChangesetsPage: filtr `open` / `committed` / `cancelled` / `all`; vstup do open CS; úprava popisných polí
 - Odstranit client-side op buffer (`queueOp` / PUT draft document)
 
 ---

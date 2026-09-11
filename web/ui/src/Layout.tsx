@@ -10,7 +10,15 @@ export function Layout() {
   const { t } = useTranslation();
   const { session, setSession } = useAuth();
   const { packages, packageCode, setPackageCode } = usePackage();
-  const { isOpen, active, openChangeSet, cancelChangeSet, commitChangeSet, lastCommittedId } = useChangeSetDraft();
+  const {
+    isOpen,
+    active,
+    openChangeSet,
+    leaveChangeSet,
+    cancelChangeSet,
+    commitChangeSet,
+    lastCommittedId,
+  } = useChangeSetDraft();
   const [draftMsg, setDraftMsg] = useState("");
   const [draftError, setDraftError] = useState("");
   const [hideObjectIds, setHideObjectIds] = useState(() => localStorage.getItem("kc.hideObjectIds") === "1");
@@ -42,6 +50,12 @@ export function Layout() {
     } catch (err) {
       setDraftError(err instanceof Error ? err.message : t("common.error"));
     }
+  }
+
+  function onLeave() {
+    setDraftError("");
+    leaveChangeSet();
+    setDraftMsg(t("changeset.deferred"));
   }
 
   async function onCancel() {
@@ -109,10 +123,13 @@ export function Layout() {
                 <span className="topbar-badge">
                   {t("changeset.openStatus", { id: active?.id || "" })}
                 </span>
-                <button type="button" className="topbar-btn primary" onClick={() => void onComplete()}>
+                <button type="button" className="topbar-btn primary" onClick={() => void onComplete()} title={t("changeset.completeHint")}>
                   {t("changeset.complete")}
                 </button>
-                <button type="button" className="topbar-btn danger" onClick={() => void onCancel()}>
+                <button type="button" className="topbar-btn" onClick={onLeave} title={t("changeset.deferHint")}>
+                  {t("changeset.defer")}
+                </button>
+                <button type="button" className="topbar-btn danger" onClick={() => void onCancel()} title={t("changeset.cancelHint")}>
                   {t("changeset.cancel")}
                 </button>
                 {active?.id && (

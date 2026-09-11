@@ -1,4 +1,4 @@
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useEffect, useMemo, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { apiFetch } from "../api";
@@ -6,6 +6,7 @@ import { usePackage } from "../package";
 import { useChangeSetDraft } from "../changeset";
 import { EntityLink } from "../links";
 import { ObjectPicker } from "../ObjectPicker";
+import { useEntityLookup } from "../useEntityLookup";
 import {
   ConstraintsForm,
   constraintsFromForm,
@@ -20,6 +21,7 @@ type Entity = {
   labels?: Record<string, string>;
   status?: string;
   packageCode?: string;
+  effectiveClasses?: string[];
 };
 
 type KindFilter = "" | "entity" | "property" | "class";
@@ -71,6 +73,7 @@ export function EntitiesPage() {
     if (packageFilter) sp.set("package", packageFilter);
     if (opts?.cursor) sp.set("cursor", opts.cursor);
     sp.set("limit", "30");
+    sp.set("include", "effectiveClasses");
     try {
       const res = await apiFetch<{ items: Entity[]; nextCursor?: string }>(`/v1/entities?${sp}`);
       setItems((prev) => (opts?.reset ? res.items : [...prev, ...res.items]));
@@ -215,6 +218,12 @@ export function EntitiesPage() {
   const showAddClass = !kind || kind === "class";
   const packageOnly = !!packageFilter && packageFilter === packageCode;
 
+  const classIds = useMemo(
+    () => items.map((it) => it.effectiveClasses?.[0]).filter((id): id is string => !!id),
+    [items],
+  );
+  const classEntities = useEntityLookup(classIds);
+
   return (
     <div className="stack">
       <div className="row" style={{ alignItems: "baseline", justifyContent: "space-between" }}>
@@ -355,20 +364,37 @@ export function EntitiesPage() {
         <thead>
           <tr>
             <th>{t("entity.label")}</th>
+            <th>{t("entities.class")}</th>
             <th>{t("entities.kind")}</th>
             <th>Package</th>
           </tr>
         </thead>
         <tbody>
-          {items.map((it) => (
-            <tr key={it.id}>
-              <td>
-                <EntityLink id={it.id} displayId={it.displayId} labels={it.labels} lang={i18n.language} />
-              </td>
-              <td>{it.kind || "entity"}</td>
-              <td>{it.packageCode || "—"}</td>
-            </tr>
-          ))}
+          {items.map((it) => {
+            const classId = it.effectiveClasses?.[0];
+            const classEnt = classId ? classEntities[classId] : undefined;
+            return (
+              <tr key={it.id}>
+                <td>
+                  <EntityLink id={it.id} displayId={it.displayId} labels={it.labels} lang={i18n.language} />
+                </td>
+                <td>
+                  {classId ? (
+                    <EntityLink
+                      id={classId}
+                      displayId={classEnt?.displayId || classId}
+                      labels={classEnt?.labels}
+                      lang={i18n.language}
+                    />
+                  ) : (
+                    <span className="muted">—</span>
+                  )}
+                </td>
+                <td>{it.kind || "entity"}</td>
+                <td>{it.packageCode || "—"}</td>
+              </tr>
+            );
+          })}
         </tbody>
       </table>
       {next && (

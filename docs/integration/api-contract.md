@@ -39,8 +39,9 @@ Alternativa validace: query param `?validation=strict`.
 1. `POST /v1/changesets/open` → `{ data: { id, status: "open", … } }`
 2. Mutace s `X-Knowledge-Changeset: <id>` zapisují do overlay (committed graf se nemění)
 3. Čtení s `X-Knowledge-Changesets: <id>` vrací committed ⊕ overlay
-4. `POST /v1/changesets/{id}/commit` — optimistic lock na claimnutých objektech; úspěch = další committed CS; konflikt → 409, CS zůstane open
-5. `POST /v1/changesets/{id}/cancel` — smaže overlay
+4. `PATCH /v1/changesets/{id}` — úprava popisných polí open CS (`comment`, `operationType`)
+5. `POST /v1/changesets/{id}/commit` — optimistic lock na claimnutých objektech; úspěch = další committed CS; konflikt → 409, CS zůstane open
+6. `POST /v1/changesets/{id}/cancel` — smaže overlay
 
 Grafové zápisy do overlay: entity/statement CRUD, property/class create, `PATCH /properties/{pid}`, `PUT …/iri-aliases`, `POST …/move`, a **`POST /v1/changesets` batch** (append do open CS).
 
@@ -386,7 +387,7 @@ Content-Type: application/json
 | Packages | `GET/POST /v1/packages`, `GET /v1/packages/{code}`, releases, bundle, import |
 | Schema | `GET/POST /v1/classes`, `GET/POST /v1/properties`, `PATCH /v1/properties/{pid}`, shapes, schema-config |
 | Graph CRUD | `GET/POST /v1/entities`, `GET /v1/entities/facets`, `POST /v1/entities/batch-read`, `PATCH /v1/entities/{qid}`, `POST …/deprecate`, `POST …/delete`, statements, incoming, graph, move, iri-aliases |
-| History | `GET …/history`, `GET/POST /v1/changesets`, `POST /v1/changesets/open`, `POST …/{cid}/commit|cancel`, `GET /v1/changesets/{cid}` |
+| History | `GET …/history`, `GET/POST /v1/changesets`, `POST /v1/changesets/open`, `GET/PATCH /v1/changesets/{cid}`, `POST …/{cid}/commit|cancel` |
 | Lenses | `GET/POST /v1/lenses`, instances, patch, GraphQL |
 | Projections | `GET /v1/projections/search`, `/v1/projections/rdf`, rebuild endpoints |
 | Auth policies | `GET/POST /v1/policies`, `GET/PUT/DELETE /v1/policies/{name}` |

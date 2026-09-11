@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"strconv"
 	"strings"
@@ -9,6 +10,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/l-ra/knowledge-core/internal/datatype"
 	"github.com/l-ra/knowledge-core/internal/domain"
 	"github.com/shopspring/decimal"
 )
@@ -89,8 +91,92 @@ func (s *Store) GetChangeSetByPublicID(ctx context.Context, cid string) (*domain
 		if err := claimRows.Err(); err != nil {
 			return nil, err
 		}
+		if err := s.attachOpenChangeSetClaimOverlays(ctx, &cs); err != nil {
+			return nil, err
+		}
+		cs.ItemCount = len(cs.Claims)
 	}
 	return &cs, nil
+}
+
+func (s *Store) attachOpenChangeSetClaimOverlays(ctx context.Context, cs *domain.ChangeSet) error {
+	if len(cs.Claims) == 0 {
+		return nil
+	}
+	byID := make(map[uuid.UUID]*domain.ChangeSetClaim, len(cs.Claims))
+	for i := range cs.Claims {
+		byID[cs.Claims[i].ObjectID] = &cs.Claims[i]
+	}
+
+	entRows, err := s.pool.Query(ctx, `
+		SELECT object_id, public_id, package_code, status, labels, descriptions, kind, revision_no, updated_at
+		FROM changeset_entity_overlay WHERE changeset_id = $1
+	`, cs.ID)
+	if err != nil {
+		return err
+	}
+	defer entRows.Close()
+	for entRows.Next() {
+		var objectID uuid.UUID
+		var publicID, pkg, status, kind string
+		var labelsJSON, descJSON []byte
+		var rev int
+		var updated time.Time
+		if err := entRows.Scan(&objectID, &publicID, &pkg, &status, &labelsJSON, &descJSON, &kind, &rev, &updated); err != nil {
+			return err
+		}
+		c := byID[objectID]
+		if c == nil {
+			continue
+		}
+		c.PublicID = publicID
+		c.PackageCode = pkg
+		c.Status = status
+		c.Kind = kind
+		c.RevisionNo = rev
+		c.UpdatedAt = updated
+		c.Labels, _ = jsonToLabels(labelsJSON)
+		c.Descriptions, _ = jsonToLabels(descJSON)
+	}
+	if err := entRows.Err(); err != nil {
+		return err
+	}
+
+	stRows, err := s.pool.Query(ctx, `
+		SELECT object_id, public_id, package_code, subject_public_id, property_public_id, status,
+			value_json, revision_no, updated_at
+		FROM changeset_statement_overlay WHERE changeset_id = $1
+	`, cs.ID)
+	if err != nil {
+		return err
+	}
+	defer stRows.Close()
+	for stRows.Next() {
+		var objectID uuid.UUID
+		var publicID, pkg, subject, property, status string
+		var valueJSON []byte
+		var rev int
+		var updated time.Time
+		if err := stRows.Scan(&objectID, &publicID, &pkg, &subject, &property, &status, &valueJSON, &rev, &updated); err != nil {
+			return err
+		}
+		c := byID[objectID]
+		if c == nil {
+			continue
+		}
+		c.PublicID = publicID
+		c.PackageCode = pkg
+		c.Status = status
+		c.Subject = subject
+		c.Property = property
+		c.RevisionNo = rev
+		c.UpdatedAt = updated
+		var val datatype.Value
+		if len(valueJSON) > 0 && json.Unmarshal(valueJSON, &val) == nil {
+			c.Value = &val
+		}
+	}
+	return stRows.Err()
 }
 
 func (s *Store) ListChangeSets(ctx context.Context, opt ChangeSetListOptions) ([]domain.ChangeSet, string, error) {
@@ -167,7 +253,10 @@ func (s *Store) ListChangeSets(ctx context.Context, opt ChangeSetListOptions) ([
 	rows, err := s.pool.Query(ctx, `
 		SELECT cs.id, cs.public_id, COALESCE(cs.actor,''), cs.operation_type, COALESCE(cs.comment,''),
 			cs.status, COALESCE(cs.opened_at, cs.committed_at, now()), cs.committed_at, cs.idempotency_key, cs.correlation_id,
-			(SELECT count(*)::int FROM change_set_item csi WHERE csi.change_set_id = cs.id)
+			(SELECT CASE
+				WHEN cs.status = 'open' THEN (SELECT count(*)::int FROM changeset_object_claim c WHERE c.changeset_id = cs.id)
+				ELSE (SELECT count(*)::int FROM change_set_item csi WHERE csi.change_set_id = cs.id)
+			END)
 		FROM change_set cs
 		WHERE `+where+`
 		ORDER BY COALESCE(cs.committed_at, cs.opened_at) DESC, cs.public_id DESC

@@ -2,6 +2,7 @@ import { FormEvent, type ReactNode, useEffect, useMemo, useState } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { apiFetch } from "../api";
+import { useChangeSetDraft } from "../changeset";
 import { pickLabel } from "../labels";
 import { EntityLink, StatementLink } from "../links";
 import { ApiValue, displayValueText } from "../ValueEditor";
@@ -14,12 +15,33 @@ type ChangeSetItem = {
   op: string;
 };
 
+type ChangeSetClaim = {
+  objectType: string;
+  objectId: string;
+  canonicalIri?: string;
+  baseRevisionNo?: number;
+  opKind?: string;
+  publicId?: string;
+  packageCode?: string;
+  status?: string;
+  kind?: string;
+  labels?: Record<string, string>;
+  descriptions?: Record<string, string>;
+  subject?: string;
+  property?: string;
+  value?: ApiValue;
+  revisionNo?: number;
+  updatedAt?: string;
+};
+
 type ChangeSetSummary = {
   id: string;
   displayId?: string;
   actor?: string;
   operationType?: string;
   comment?: string;
+  status?: string;
+  openedAt?: string;
   committedAt?: string;
   correlationId?: string;
   idempotencyKey?: string;
@@ -28,6 +50,7 @@ type ChangeSetSummary = {
 
 type ChangeSetDetail = ChangeSetSummary & {
   items?: ChangeSetItem[];
+  claims?: ChangeSetClaim[];
 };
 
 type StatementDetail = {
@@ -38,7 +61,10 @@ type StatementDetail = {
   value?: ApiValue;
 };
 
+type StatusFilter = "all" | "open" | "committed" | "cancelled";
+
 type Filters = {
+  status: StatusFilter;
   q: string;
   actor: string;
   operationType: string;
@@ -49,6 +75,7 @@ type Filters = {
 };
 
 const emptyFilters = (): Filters => ({
+  status: "all",
   q: "",
   actor: "",
   operationType: "",
@@ -58,7 +85,14 @@ const emptyFilters = (): Filters => ({
   committedTo: "",
 });
 
+const STATUS_OPTIONS: StatusFilter[] = ["all", "open", "committed", "cancelled"];
+
 const ENTITY_OBJECT_TYPES = new Set(["entity", "property", "class"]);
+
+function parseStatus(raw: string | null): StatusFilter {
+  if (raw === "open" || raw === "committed" || raw === "cancelled" || raw === "all") return raw;
+  return "all";
+}
 
 function objectHref(objectType: string, publicId: string): string | null {
   if (!publicId) return null;
@@ -171,9 +205,134 @@ function ChangeSetObjectCell({
   return <code>{fallbackId}</code>;
 }
 
+function claimObjectHref(claim: ChangeSetClaim): string | null {
+  const id = claim.publicId || claim.canonicalIri || "";
+  if (!id) return null;
+  if (claim.objectType === "statement") return `/statements/${encodeURIComponent(id)}`;
+  const kind = claim.kind || claim.objectType;
+  if (kind === "entity" || kind === "property" || kind === "class" || claim.objectType === "entity") {
+    return `/entities/${encodeURIComponent(id)}`;
+  }
+  return null;
+}
+
+function ChangeSetClaimCell({
+  claim,
+  entities,
+  claimLabels,
+  lang,
+}: {
+  claim: ChangeSetClaim;
+  entities: Record<string, EntitySummary>;
+  claimLabels: Record<string, Record<string, string>>;
+  lang: string;
+}) {
+  const id = claim.publicId || claim.canonicalIri || claim.objectId;
+  const labels = claim.labels || claimLabels[id] || entities[id]?.labels;
+
+  if (claim.objectType === "statement") {
+    const subjectId = claim.subject || "";
+    const propertyId = claim.property || "";
+    const subjectLabels = claimLabels[subjectId] || entities[subjectId]?.labels;
+    const propertyLabels = claimLabels[propertyId] || entities[propertyId]?.labels;
+    let valueNode: ReactNode;
+    if (claim.value?.type === "EntityReference" && claim.value.entityId) {
+      const vid = String(claim.value.entityId);
+      valueNode = (
+        <EntityLink
+          id={vid}
+          displayId={entities[vid]?.displayId || vid}
+          labels={claimLabels[vid] || entities[vid]?.labels}
+          lang={lang}
+        />
+      );
+    } else {
+      valueNode = <span>{displayValueText(claim.value, lang)}</span>;
+    }
+    return (
+      <span className="stack compact">
+        <span className="row compact" style={{ flexWrap: "wrap", alignItems: "baseline", gap: "0.35rem" }}>
+          {subjectId ? (
+            <EntityLink
+              id={subjectId}
+              displayId={entities[subjectId]?.displayId || subjectId}
+              labels={subjectLabels}
+              lang={lang}
+            />
+          ) : (
+            <span className="muted">—</span>
+          )}
+          <span className="muted">→</span>
+          {propertyId ? (
+            <EntityLink
+              id={propertyId}
+              displayId={entities[propertyId]?.displayId || propertyId}
+              labels={propertyLabels}
+              lang={lang}
+            />
+          ) : (
+            <span className="muted">—</span>
+          )}
+          <span className="muted">→</span>
+          {valueNode}
+        </span>
+        {claim.publicId && (
+          <Link to={`/statements/${encodeURIComponent(claim.publicId)}`}>
+            <code className="object-id">{claim.publicId}</code>
+          </Link>
+        )}
+        {(claim.status || claim.packageCode) && (
+          <span className="muted">
+            {[claim.status, claim.packageCode].filter(Boolean).join(" · ")}
+          </span>
+        )}
+      </span>
+    );
+  }
+
+  const href = claimObjectHref(claim);
+  const kindLabel = claim.kind && claim.kind !== "entity" ? claim.kind : null;
+  const primaryLabel = pickLabel(labels, lang, "");
+  return (
+    <span className="stack compact">
+      {(kindLabel || claim.status) && (
+        <span className="muted">
+          {[kindLabel, claim.status].filter(Boolean).join(" · ")}
+        </span>
+      )}
+      {primaryLabel ? (
+        <EntityLink id={id} displayId={claim.publicId || id} labels={labels} lang={lang} />
+      ) : href ? (
+        <Link to={href}>
+          <code>{id}</code>
+        </Link>
+      ) : (
+        <code>{id}</code>
+      )}
+      {claim.descriptions && pickLabel(claim.descriptions, lang, "") && (
+        <span className="muted">{pickLabel(claim.descriptions, lang, "")}</span>
+      )}
+      {claim.packageCode && <span className="muted">{claim.packageCode}</span>}
+    </span>
+  );
+}
+
+function statusLabelKey(status: string): string {
+  if (status === "open" || status === "committed" || status === "cancelled") {
+    return `changesets.status.${status}`;
+  }
+  return "changesets.status.committed";
+}
+
+function whenStamp(it: ChangeSetSummary): string | undefined {
+  if (it.status === "committed") return it.committedAt || it.openedAt;
+  return it.openedAt || it.committedAt;
+}
+
 export function ChangesetsPage() {
   const { t, i18n } = useTranslation();
   const { cid: rawCid } = useParams();
+  const { active, enterChangeSet, updateChangeSet } = useChangeSetDraft();
   const selectedId = (() => {
     if (!rawCid) return "";
     try {
@@ -185,6 +344,7 @@ export function ChangesetsPage() {
   const [params, setParams] = useSearchParams();
 
   const [filters, setFilters] = useState<Filters>(() => ({
+    status: parseStatus(params.get("status")),
     q: params.get("q") || "",
     actor: params.get("actor") || "",
     operationType: params.get("operationType") || "",
@@ -199,12 +359,17 @@ export function ChangesetsPage() {
   const [detail, setDetail] = useState<ChangeSetDetail | null>(null);
   const [statements, setStatements] = useState<Record<string, StatementDetail>>({});
   const [error, setError] = useState("");
+  const [msg, setMsg] = useState("");
   const [loading, setLoading] = useState(false);
+  const [entering, setEntering] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [editComment, setEditComment] = useState("");
+  const [editOperationType, setEditOperationType] = useState("");
 
   function syncParams(f: Filters) {
     const sp = new URLSearchParams();
     for (const [k, v] of Object.entries(f)) {
-      if (v.trim()) sp.set(k, v.trim());
+      if (typeof v === "string" && v.trim()) sp.set(k, v.trim());
     }
     setParams(sp, { replace: true });
   }
@@ -213,6 +378,7 @@ export function ChangesetsPage() {
     setError("");
     setLoading(true);
     const sp = new URLSearchParams();
+    sp.set("status", f.status);
     if (f.q.trim()) sp.set("q", f.q.trim());
     if (f.actor.trim()) sp.set("actor", f.actor.trim());
     if (f.operationType.trim()) sp.set("operationType", f.operationType.trim());
@@ -242,6 +408,8 @@ export function ChangesetsPage() {
     if (!selectedId) {
       setDetail(null);
       setStatements({});
+      setEditComment("");
+      setEditOperationType("");
       return;
     }
     let cancelled = false;
@@ -251,6 +419,8 @@ export function ChangesetsPage() {
         if (!cancelled) {
           setDetail(res);
           setStatements({});
+          setEditComment(res.comment || "");
+          setEditOperationType(res.operationType || "");
         }
       })
       .catch((err) => {
@@ -311,8 +481,28 @@ export function ChangesetsPage() {
         ids.push(String(st.value.entityId));
       }
     }
-    return ids;
+    for (const c of detail?.claims || []) {
+      if (c.objectType === "entity" && (c.publicId || c.canonicalIri)) {
+        ids.push(c.publicId || c.canonicalIri || "");
+      }
+      if (c.subject) ids.push(c.subject);
+      if (c.property) ids.push(c.property);
+      if (c.value?.type === "EntityReference" && c.value.entityId) {
+        ids.push(String(c.value.entityId));
+      }
+    }
+    return ids.filter(Boolean);
   }, [detail, statements]);
+
+  const claimLabelMap = useMemo(() => {
+    const map: Record<string, Record<string, string>> = {};
+    for (const c of detail?.claims || []) {
+      if (c.objectType !== "entity") continue;
+      const id = c.publicId || c.canonicalIri;
+      if (id && c.labels) map[id] = c.labels;
+    }
+    return map;
+  }, [detail]);
 
   const entities = useEntityLookup(relatedEntityIds);
 
@@ -332,11 +522,76 @@ export function ChangesetsPage() {
     void load(filters);
   }
 
+  function setStatusFilter(status: StatusFilter) {
+    const nextFilters = { ...filters, status };
+    setFilters(nextFilters);
+    syncParams(nextFilters);
+    void load(nextFilters);
+  }
+
   function clearFilters() {
     const empty = emptyFilters();
     setFilters(empty);
     setParams({}, { replace: true });
     void load(empty);
+  }
+
+  async function onEnter() {
+    if (!detail || detail.status !== "open") return;
+    if (active?.id && active.id !== detail.id) {
+      const ok = window.confirm(t("changeset.enterOtherWarn", { id: active.id }));
+      if (!ok) return;
+    }
+    setEntering(true);
+    setError("");
+    setMsg("");
+    try {
+      await enterChangeSet(detail.id);
+      setMsg(t("changeset.entered"));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : t("common.error"));
+    } finally {
+      setEntering(false);
+    }
+  }
+
+  async function onSaveDetails(e: FormEvent) {
+    e.preventDefault();
+    if (!detail || detail.status !== "open") return;
+    setSaving(true);
+    setError("");
+    setMsg("");
+    try {
+      const updated = await updateChangeSet(detail.id, {
+        comment: editComment,
+        operationType: editOperationType,
+      });
+      setDetail((prev) =>
+        prev
+          ? {
+              ...prev,
+              comment: updated.comment ?? editComment,
+              operationType: updated.operationType ?? editOperationType,
+            }
+          : prev,
+      );
+      setItems((prev) =>
+        prev.map((it) =>
+          it.id === detail.id
+            ? {
+                ...it,
+                comment: updated.comment ?? editComment,
+                operationType: updated.operationType ?? editOperationType,
+              }
+            : it,
+        ),
+      );
+      setMsg(t("changeset.detailsSaved"));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : t("common.error"));
+    } finally {
+      setSaving(false);
+    }
   }
 
   const fmt = new Intl.DateTimeFormat(i18n.language || undefined, {
@@ -346,6 +601,8 @@ export function ChangesetsPage() {
 
   const querySuffix = params.toString() ? `?${params}` : "";
   const lang = i18n.language || "en";
+  const isOpenDetail = detail?.status === "open";
+  const isActiveDetail = !!detail && active?.id === detail.id;
 
   return (
     <div className="stack">
@@ -353,6 +610,28 @@ export function ChangesetsPage() {
       <p className="muted">{t("changesets.subtitle")}</p>
 
       <form className="panel stack" onSubmit={onFilter}>
+        <div className="toolbar wrap" role="group" aria-label={t("changesets.filter.status")}>
+          {STATUS_OPTIONS.map((status) => {
+            const labelKey =
+              status === "all"
+                ? "changesets.filter.statusAll"
+                : status === "open"
+                  ? "changesets.filter.statusOpen"
+                  : status === "committed"
+                    ? "changesets.filter.statusCommitted"
+                    : "changesets.filter.statusCancelled";
+            return (
+              <button
+                key={status}
+                type="button"
+                className={filters.status === status ? "primary" : undefined}
+                onClick={() => setStatusFilter(status)}
+              >
+                {t(labelKey)}
+              </button>
+            );
+          })}
+        </div>
         <div className="toolbar wrap">
           <label className="field grow">
             {t("changesets.filter.q")}
@@ -419,6 +698,7 @@ export function ChangesetsPage() {
       </form>
 
       {error && <p className="error">{error}</p>}
+      {msg && <p className="muted">{msg}</p>}
 
       <div className="changeset-browser">
         <div className="panel stack compact">
@@ -428,7 +708,8 @@ export function ChangesetsPage() {
             <thead>
               <tr>
                 <th>{t("changesets.col.id")}</th>
-                <th>{t("changesets.col.committed")}</th>
+                <th>{t("changesets.col.status")}</th>
+                <th>{t("changesets.col.when")}</th>
                 <th>{t("changesets.col.actor")}</th>
                 <th>{t("changesets.col.type")}</th>
                 <th>{t("changesets.col.items")}</th>
@@ -436,15 +717,25 @@ export function ChangesetsPage() {
             </thead>
             <tbody>
               {items.map((it) => {
-                const active = it.id === selectedId;
+                const rowActive = it.id === selectedId;
+                const status = it.status || "committed";
+                const stamp = whenStamp(it);
                 return (
-                  <tr key={it.id} className={active ? "row-active" : undefined}>
+                  <tr key={it.id} className={rowActive ? "row-active" : undefined}>
                     <td>
                       <Link to={`/changesets/${encodeURIComponent(it.id)}${querySuffix}`}>
                         <code>{it.displayId || it.id}</code>
                       </Link>
+                      {active?.id === it.id && (
+                        <span className="pill" style={{ marginLeft: "0.4rem" }}>
+                          {t("changesets.activeBadge")}
+                        </span>
+                      )}
                     </td>
-                    <td className="muted">{it.committedAt ? fmt.format(new Date(it.committedAt)) : "—"}</td>
+                    <td>
+                      <span className={`pill status-${status}`}>{t(statusLabelKey(status))}</span>
+                    </td>
+                    <td className="muted">{stamp ? fmt.format(new Date(stamp)) : "—"}</td>
                     <td>{it.actor || "—"}</td>
                     <td>
                       <code>{it.operationType || "—"}</code>
@@ -467,23 +758,47 @@ export function ChangesetsPage() {
           {!selectedId && <p className="muted">{t("changesets.select")}</p>}
           {selectedId && detail && (
             <>
+              <div className="toolbar wrap">
+                {isOpenDetail && (
+                  <button
+                    type="button"
+                    className="primary"
+                    disabled={entering || isActiveDetail}
+                    onClick={() => void onEnter()}
+                  >
+                    {isActiveDetail ? t("changesets.activeBadge") : t("changeset.enter")}
+                  </button>
+                )}
+                {detail.status && (
+                  <span className={`pill status-${detail.status}`}>{t(statusLabelKey(detail.status))}</span>
+                )}
+              </div>
+
               <dl className="meta-grid">
                 <dt>{t("changesets.col.id")}</dt>
                 <dd>
                   <code>{detail.displayId || detail.id}</code>
                 </dd>
+                <dt>{t("changesets.col.status")}</dt>
+                <dd>{t(statusLabelKey(detail.status || "committed"))}</dd>
+                <dt>{t("changesets.col.opened")}</dt>
+                <dd>{detail.openedAt ? fmt.format(new Date(detail.openedAt)) : "—"}</dd>
                 <dt>{t("changesets.col.committed")}</dt>
                 <dd>{detail.committedAt ? fmt.format(new Date(detail.committedAt)) : "—"}</dd>
                 <dt>{t("changesets.col.actor")}</dt>
                 <dd>{detail.actor || "—"}</dd>
-                <dt>{t("changesets.col.type")}</dt>
-                <dd>
-                  <code>{detail.operationType || "—"}</code>
-                </dd>
-                {detail.comment && (
+                {!isOpenDetail && (
                   <>
-                    <dt>{t("changesets.col.comment")}</dt>
-                    <dd>{detail.comment}</dd>
+                    <dt>{t("changesets.col.type")}</dt>
+                    <dd>
+                      <code>{detail.operationType || "—"}</code>
+                    </dd>
+                    {detail.comment && (
+                      <>
+                        <dt>{t("changesets.col.comment")}</dt>
+                        <dd>{detail.comment}</dd>
+                      </>
+                    )}
                   </>
                 )}
                 {detail.correlationId && (
@@ -503,37 +818,114 @@ export function ChangesetsPage() {
                   </>
                 )}
               </dl>
-              <h3>{t("changesets.items")}</h3>
-              {(detail.items || []).length === 0 ? (
-                <p className="muted">{t("changesets.noItems")}</p>
+
+              {isOpenDetail && (
+                <form className="stack compact" onSubmit={(e) => void onSaveDetails(e)}>
+                  <h3>{t("changesets.editDetails")}</h3>
+                  <label className="field">
+                    {t("changesets.col.comment")}
+                    <textarea
+                      value={editComment}
+                      onChange={(e) => setEditComment(e.target.value)}
+                      placeholder={t("changesets.commentPh")}
+                      rows={3}
+                    />
+                  </label>
+                  <label className="field">
+                    {t("changesets.col.type")}
+                    <input
+                      value={editOperationType}
+                      onChange={(e) => setEditOperationType(e.target.value)}
+                      placeholder={t("changesets.operationTypePh")}
+                    />
+                  </label>
+                  <div className="toolbar">
+                    <button type="submit" className="primary" disabled={saving}>
+                      {t("changeset.saveDetails")}
+                    </button>
+                  </div>
+                </form>
+              )}
+
+              {isOpenDetail ? (
+                <>
+                  <h3>{t("changesets.claims")}</h3>
+                  {(detail.claims || []).length === 0 ? (
+                    <p className="muted">{t("changesets.noClaims")}</p>
+                  ) : (
+                    <table className="table">
+                      <thead>
+                        <tr>
+                          <th>{t("changesets.col.op")}</th>
+                          <th>{t("changesets.col.objectType")}</th>
+                          <th>{t("changesets.col.summary")}</th>
+                          <th>{t("changesets.col.baseRevision")}</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {(detail.claims || []).map((c) => (
+                          <tr key={`${c.objectId}-${c.opKind}`}>
+                            <td>
+                              <code>{c.opKind || "—"}</code>
+                              {c.revisionNo != null && c.revisionNo > 0 && (
+                                <div className="muted" style={{ fontSize: "0.85em" }}>
+                                  {t("changesets.col.revision")} {c.revisionNo}
+                                </div>
+                              )}
+                            </td>
+                            <td>
+                              {c.kind && c.kind !== c.objectType ? `${c.objectType}/${c.kind}` : c.objectType}
+                            </td>
+                            <td>
+                              <ChangeSetClaimCell
+                                claim={c}
+                                entities={entitiesWithClasses}
+                                claimLabels={claimLabelMap}
+                                lang={lang}
+                              />
+                            </td>
+                            <td>{c.baseRevisionNo ?? "—"}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  )}
+                </>
               ) : (
-                <table className="table">
-                  <thead>
-                    <tr>
-                      <th>{t("changesets.col.op")}</th>
-                      <th>{t("changesets.col.objectType")}</th>
-                      <th>{t("changesets.col.summary")}</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {(detail.items || []).map((it, idx) => (
-                      <tr key={`${it.objectId}-${idx}`}>
-                        <td>
-                          <code>{it.op}</code>
-                        </td>
-                        <td>{it.objectType}</td>
-                        <td>
-                          <ChangeSetObjectCell
-                            item={it}
-                            entities={entitiesWithClasses}
-                            statements={statements}
-                            lang={lang}
-                          />
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+                <>
+                  <h3>{t("changesets.items")}</h3>
+                  {(detail.items || []).length === 0 ? (
+                    <p className="muted">{t("changesets.noItems")}</p>
+                  ) : (
+                    <table className="table">
+                      <thead>
+                        <tr>
+                          <th>{t("changesets.col.op")}</th>
+                          <th>{t("changesets.col.objectType")}</th>
+                          <th>{t("changesets.col.summary")}</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {(detail.items || []).map((it, idx) => (
+                          <tr key={`${it.objectId}-${idx}`}>
+                            <td>
+                              <code>{it.op}</code>
+                            </td>
+                            <td>{it.objectType}</td>
+                            <td>
+                              <ChangeSetObjectCell
+                                item={it}
+                                entities={entitiesWithClasses}
+                                statements={statements}
+                                lang={lang}
+                              />
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  )}
+                </>
               )}
             </>
           )}

@@ -104,6 +104,46 @@ func (s *Store) OpenChangeSet(ctx context.Context, meta domain.WriteMeta, in dom
 	}, nil
 }
 
+func (s *Store) UpdateOpenChangeSet(ctx context.Context, meta domain.WriteMeta, publicID string, in domain.UpdateOpenChangeSetInput) (*domain.ChangeSet, error) {
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback(ctx)
+
+	row, err := s.loadOpenChangeSetTx(ctx, tx, publicID)
+	if err != nil {
+		return nil, err
+	}
+	if err := s.assertOpenChangeSetActor(row, meta.Actor); err != nil {
+		return nil, err
+	}
+
+	opType := row.opType
+	comment := row.comment
+	if in.OperationType != nil {
+		if next := strings.TrimSpace(*in.OperationType); next != "" {
+			opType = next
+		}
+	}
+	if in.Comment != nil {
+		comment = strings.TrimSpace(*in.Comment)
+	}
+	if _, err := tx.Exec(ctx, `
+		UPDATE change_set SET operation_type = $2, comment = $3 WHERE id = $1
+	`, row.id, opType, nullIfEmpty(comment)); err != nil {
+		return nil, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return nil, err
+	}
+	return &domain.ChangeSet{
+		ID: row.id, PublicID: row.publicID, Actor: row.actor,
+		OperationType: opType, Comment: comment,
+		Status: domain.ChangeSetOpen, OpenedAt: row.openedAt,
+	}, nil
+}
+
 func nullIfEmpty(s string) any {
 	if s == "" {
 		return nil

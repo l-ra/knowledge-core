@@ -817,4 +817,16 @@ label.field.grow {
   background: color-mix(in oklab, var(--accent) 12%, transparent);
 }
 
+.pill.status-open {
+  background: color-mix(in oklab, #2f9e44 18%, transparent);
+}
+
+.pill.status-committed {
+  background: color-mix(in oklab, var(--accent) 14%, transparent);
+}
+
+.pill.status-cancelled {
+  background: color-mix(in oklab, #c92a2a 14%, transparent);
+}
+
 

@@ -103,3 +103,34 @@ func (s *Server) cancelOpenChangeSet(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, http.StatusOK, writeResponse(changeSetDTO(cs), cs))
 }
+
+func (s *Server) updateOpenChangeSet(w http.ResponseWriter, r *http.Request) {
+	body, err := readBody(r)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid body")
+		return
+	}
+	var req struct {
+		Comment       *string `json:"comment"`
+		OperationType *string `json:"operationType"`
+	}
+	if len(body) > 0 {
+		if err := json.Unmarshal(body, &req); err != nil {
+			writeError(w, http.StatusBadRequest, "invalid json")
+			return
+		}
+	}
+	if req.Comment == nil && req.OperationType == nil {
+		writeError(w, http.StatusBadRequest, "comment or operationType required")
+		return
+	}
+	meta := writeMetaFromRequest(r, "openUpdate", hashBody(body))
+	cs, err := s.engine.UpdateOpenChangeSet(r.Context(), meta, pathParam(r, "cid"), domain.UpdateOpenChangeSetInput{
+		Comment: req.Comment, OperationType: req.OperationType,
+	})
+	if err != nil {
+		writeEngineError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, writeResponse(changeSetDTO(cs), cs))
+}
