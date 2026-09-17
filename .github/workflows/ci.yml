@@ -98,6 +98,8 @@ jobs:
           grep -q "kind: Deployment" /tmp/rendered.yaml
           helm template kc deploy/helm/knowledge-core --set pocketId.enabled=true --set postgresql.enabled=true > /tmp/rendered-pocket.yaml
           grep -q "pocket-id" /tmp/rendered-pocket.yaml
+          # Outbox CronJob must get the same OIDC env as the API when authMode=oidc
+          grep -A80 "kind: CronJob" /tmp/rendered-pocket.yaml | grep -q "KC_OIDC_ISSUER"
           helm template kc deploy/helm/knowledge-core --set pgAdmin.enabled=true --set postgresql.enabled=true > /tmp/rendered-pgadmin.yaml
           grep -q "pgadmin" /tmp/rendered-pgadmin.yaml
 

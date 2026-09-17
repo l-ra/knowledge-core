@@ -59,7 +59,7 @@ spec:
               value: {{ .Values.auth.bootstrapAdminSubject | quote }}
             - name: KC_BOOTSTRAP_PASSWORD_FILE
               value: {{ .Values.auth.bootstrapPasswordFile | quote }}
-            {{- if .Values.pocketId.enabled }}
+            {{- if eq (include "knowledge-core.authMode" .) "oidc" }}
             - name: KC_OIDC_ISSUER
               value: {{ include "knowledge-core.oidcIssuer" . | quote }}
             - name: KC_OIDC_AUDIENCE

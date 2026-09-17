@@ -77,8 +77,10 @@ auth:
   bootstrapAdminSubject: admin
   bootstrapPasswordFile: /data/admin.password
 
-  # Used when pocketId.enabled=true (overrides mode to oidc unless auth.mode is set explicitly)
+  # Used when auth mode is oidc (pocketId.enabled=true overrides mode to oidc).
   oidcAudience: knowledge-core
+  # Optional explicit issuer when pocketId is disabled but auth.mode=oidc.
+  oidcIssuer: ""
 
 postgresql:
   enabled: true

@@ -46,6 +46,12 @@ spec:
                   value: {{ include "knowledge-core.authMode" . | quote }}
                 - name: KC_BOOTSTRAP_ADMIN_SUBJECT
                   value: {{ .Values.auth.bootstrapAdminSubject | quote }}
+                {{- if eq (include "knowledge-core.authMode" .) "oidc" }}
+                - name: KC_OIDC_ISSUER
+                  value: {{ include "knowledge-core.oidcIssuer" . | quote }}
+                - name: KC_OIDC_AUDIENCE
+                  value: {{ .Values.auth.oidcAudience | quote }}
+                {{- end }}
                 {{- if .Values.postgresql.enabled }}
                 - name: POSTGRES_PASSWORD
                   valueFrom:
