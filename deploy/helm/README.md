@@ -79,13 +79,13 @@ GitHub Actions workflow `.github/workflows/ci.yml`:
 - Go tests (unit + acceptance with Postgres service)
 - Docker build
 - `helm lint` + template smoke test
-- On push to `main`: publish image to `ghcr.io/l-ra/knowledge-core` and dev Helm chart to `oci://ghcr.io/l-ra`
+- On push to `main`: publish image to `ghcr.io/l-ra/knowledge-core` and dev Helm chart to `oci://ghcr.io/l-ra/charts/knowledge-core`
 
 Tag release (`.github/workflows/release.yml`):
 
 ```bash
 git tag v0.2.0 && git push origin v0.2.0
-helm install kc oci://ghcr.io/l-ra/knowledge-core --version 0.2.0
+helm install kc oci://ghcr.io/l-ra/charts/knowledge-core --version 0.2.0
 ```
 
 ## Versioning
@@ -121,7 +121,7 @@ git tag v1.2.0 && git push origin v1.2.0
 After the tag exists, `release.yml` runs:
    - sets `Chart.yaml` `version` and `appVersion` via `deploy/helm/scripts/set-chart-version.sh`
    - runs tests, builds and pushes the image with SemVer tags
-   - packages the chart and pushes to `oci://ghcr.io/l-ra/knowledge-core`
+   - packages the chart and pushes to `oci://ghcr.io/l-ra/charts/knowledge-core`
    - creates a GitHub Release with the `.tgz` artifact
    - commits the same `Chart.yaml` version back to `main` (so the repo reflects the latest release)
 
@@ -133,10 +133,10 @@ Each push to `main` publishes a chart with version `0.0.0-dev.<run_number>` so i
 
 ```bash
 # Production
-helm upgrade --install kc oci://ghcr.io/l-ra/knowledge-core --version 1.2.0
+helm upgrade --install kc oci://ghcr.io/l-ra/charts/knowledge-core --version 1.2.0
 
 # Latest dev (optional — version changes every CI run)
-helm upgrade --install kc oci://ghcr.io/l-ra/knowledge-core --version 0.0.0-dev.42
+helm upgrade --install kc oci://ghcr.io/l-ra/charts/knowledge-core --version 0.0.0-dev.42
 ```
 
 ## Values reference

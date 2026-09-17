@@ -3,7 +3,7 @@
 ## Instalace
 
 ```bash
-helm upgrade --install kc oci://ghcr.io/l-ra/knowledge-core --version 0.1.0 \
+helm upgrade --install kc oci://ghcr.io/l-ra/charts/knowledge-core --version 0.1.0 \
   --namespace knowledge-core --create-namespace \
   --set image.tag=0.1.0
 ```
@@ -128,7 +128,7 @@ CI na tagu `v*` publikuje image `ghcr.io/l-ra/knowledge-core:<version>` a chart 
 
 ```bash
 git tag v0.2.0 && git push origin v0.2.0
-helm upgrade kc oci://ghcr.io/l-ra/knowledge-core --version 0.2.0
+helm upgrade kc oci://ghcr.io/l-ra/charts/knowledge-core --version 0.2.0
 ```
 
 ## Obnova po havárii

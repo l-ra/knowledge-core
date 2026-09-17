@@ -86,7 +86,7 @@ jobs:
           helm package "${{ env.CHART_PATH }}" --destination /tmp/chart
           CHART_ARCHIVE="/tmp/chart/knowledge-core-${VERSION}.tgz"
           echo "archive=${CHART_ARCHIVE}" >> "$GITHUB_OUTPUT"
-          helm push "${CHART_ARCHIVE}" oci://${{ env.REGISTRY }}/l-ra
+          helm push "${CHART_ARCHIVE}" oci://${{ env.REGISTRY }}/l-ra/charts
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
