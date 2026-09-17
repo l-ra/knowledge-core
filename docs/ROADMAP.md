@@ -162,7 +162,7 @@ Detail: [specs/phase-13-web-ui.md](specs/phase-13-web-ui.md)
 - [x] RDF emit `rdf:Property` / `rdfs:Class` z profile
 - Detail: [specs/phase-15-entity-profile.md](specs/phase-15-entity-profile.md), [ADR 0005](decisions/0005-entity-profile-schema.md)
 
-**Poznámka:** greenfield rewrite migrací — lokální DB wipe (`compose down -v`) před upgrade.
+**Poznámka:** greenfield rewrite migrací — lokální DB wipe (`podman-compose -f deploy/docker-compose.yml down -v`) před upgrade.
 
 ---
 

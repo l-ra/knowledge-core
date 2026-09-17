@@ -4,7 +4,7 @@ GOPATH := $(shell go env GOPATH)
 export PATH := $(GOPATH)/bin:$(PATH)
 AIR_VERSION := v1.63.9
 
-.PHONY: test test-unit test-acceptance run tidy helm-lint docker-build ui-build ui-dev api-dev dev clean-dev air
+.PHONY: test test-unit test-acceptance run tidy helm-lint podman-build ui-build ui-dev api-dev dev clean-dev air
 
 tidy:
 	go mod tidy
@@ -49,5 +49,5 @@ run: ui-build
 helm-lint:
 	helm lint deploy/helm/knowledge-core
 
-docker-build:
-	docker build -f deploy/Dockerfile -t ghcr.io/l-ra/knowledge-core:dev .
+podman-build:
+	podman build -f deploy/Dockerfile -t ghcr.io/l-ra/knowledge-core:dev .

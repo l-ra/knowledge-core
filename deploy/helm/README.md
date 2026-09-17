@@ -12,7 +12,8 @@ Includes optional subcharts:
 
 ```bash
 # Build image locally (optional — CI publishes ghcr.io/l-ra/knowledge-core)
-docker build -f deploy/Dockerfile -t ghcr.io/l-ra/knowledge-core:dev .
+podman build -f deploy/Dockerfile -t ghcr.io/l-ra/knowledge-core:dev .
+# or: make podman-build
 
 # Install with bootstrap admin password (logged once on pod start)
 helm upgrade --install kc deploy/helm/knowledge-core \

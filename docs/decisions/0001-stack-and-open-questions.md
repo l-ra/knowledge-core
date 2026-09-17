@@ -17,7 +17,7 @@
 | Auth | OIDC (`coreos/go-oidc`); dev headers; bootstrap password (Helm) |
 | GraphQL (fáze 6) | Lightweight adapter nad Lens engine ([ADR 0003](0003-graphql-lightweight.md)) |
 | Logging | `log/slog` |
-| Deploy | Docker Compose + Helm chart (`deploy/helm/knowledge-core`) |
+| Deploy | Podman Compose (`deploy/docker-compose.yml`) + Helm chart (`deploy/helm/knowledge-core`) |
 
 ## Rozhodnutí — otevřené body §38
 

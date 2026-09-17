@@ -16,8 +16,7 @@ Viz [docs/README.md](docs/README.md): koncepty, ADR, zadání fází. **Aktuáln
 
 ```bash
 # PostgreSQL + Pocket ID (OIDC IdP)
-docker compose -f deploy/docker-compose.yml up -d postgres pocket-id
-# or: podman-compose -f deploy/docker-compose.yml up -d postgres pocket-id
+podman-compose -f deploy/docker-compose.yml up -d postgres pocket-id
 # Compose uses subnet 172.25.90.0/24 so Podman works on hosts with a 10.0.0.0/8 route.
 
 # App (lokálně) — začni bootstrapem, OIDC napoj v Admin UI
@@ -27,7 +26,7 @@ make dev   # Vite HMR + Go live-reload; UI: http://localhost:5173/ui/
 # heslo: log / KC_BOOTSTRAP_PASSWORD_FILE
 
 # nebo celý stack
-docker compose -f deploy/docker-compose.yml up --build
+podman-compose -f deploy/docker-compose.yml up --build
 ```
 
 ### OIDC (Pocket ID first)
@@ -67,7 +66,7 @@ Vestavěné SPA (React) na `/ui`:
 Vite HMR pro UI + Air (restart Go při změně `.go` / migrací). **Otevři UI na `:5173`**, ne embed na `:8080`.
 
 ```bash
-docker compose -f deploy/docker-compose.yml up -d postgres pocket-id
+podman-compose -f deploy/docker-compose.yml up -d postgres pocket-id
 export KC_DATABASE_URL='postgres://kc:kc@localhost:5433/knowledge_core?sslmode=disable'
 export KC_AUTH_MODE=bootstrap
 make dev

@@ -25,6 +25,6 @@ Spustitelná Go služba s PostgreSQL, migracemi a health checkem. Žádná domé
 
 ## Acceptance
 
-1. `docker compose -f deploy/docker-compose.yml up` zvedne PG + app.
+1. `podman-compose -f deploy/docker-compose.yml up` zvedne PG + app.
 2. `curl localhost:8080/healthz` vrátí OK když DB běží.
 3. Migrace se aplikují při startu app (nebo explicitním migrate job).

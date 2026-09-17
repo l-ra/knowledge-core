@@ -1,4 +1,5 @@
 # Project name avoids "deploy_default" when run from this directory.
+# Local runtime: podman-compose -f deploy/docker-compose.yml …
 # Explicit subnet: default Podman pools (10.89+) collide with hosts that
 # advertise a 10.0.0.0/8 route (common on corporate Wi‑Fi / VPN).
 name: knowledge-core
