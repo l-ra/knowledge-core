@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Set Helm chart version and appVersion in Chart.yaml.
+# Set Helm chart version and appVersion in Chart.yaml (kept equal).
+# Empty image.tag / mcpImage.tag in values resolves to appVersion.
 # Usage: set-chart-version.sh <version> [chart.yaml]
 set -euo pipefail
 

@@ -11,14 +11,11 @@ Includes optional subcharts:
 ## Quick install (local cluster)
 
 ```bash
-# Build image locally (optional — CI publishes ghcr.io/l-ra/knowledge-core)
-podman build -f deploy/Dockerfile -t ghcr.io/l-ra/knowledge-core:dev .
-# or: make podman-build
+# Build image tagged with Chart.appVersion (override: make VERSION=… podman-build)
+make podman-build
 
-# Install with bootstrap admin password (logged once on pod start)
+# Install — empty image.tag uses Chart.appVersion (bootstrap password logged once)
 helm upgrade --install kc deploy/helm/knowledge-core \
-  --set image.repository=ghcr.io/l-ra/knowledge-core \
-  --set image.tag=dev \
   --set image.pullPolicy=IfNotPresent
 
 kubectl port-forward svc/kc-knowledge-core 8080:8080
@@ -79,7 +76,7 @@ GitHub Actions workflow `.github/workflows/ci.yml`:
 - Go tests (unit + acceptance with Postgres service)
 - Docker build
 - `helm lint` + template smoke test
-- On push to `main`: publish image to `ghcr.io/l-ra/knowledge-core` and dev Helm chart to `oci://ghcr.io/l-ra/charts/knowledge-core`
+- On push to `main`: publish image + chart with shared version `0.0.0-dev.<run>` to `ghcr.io/l-ra/knowledge-core` and `oci://ghcr.io/l-ra/charts/knowledge-core`
 
 Tag release (`.github/workflows/release.yml`):
 
@@ -92,10 +89,11 @@ helm install kc oci://ghcr.io/l-ra/charts/knowledge-core --version 0.2.0
 
 | Artifact | Source of truth | `main` branch | Tag `vX.Y.Z` release |
 |----------|-----------------|---------------|----------------------|
-| Container image | Git tag | `latest` + commit SHA | `X.Y.Z`, `X.Y`, `latest` |
-| Helm chart `version` | Git tag (release) / CI run (dev) | `0.0.0-dev.<run>` | `X.Y.Z` |
-| Helm chart `appVersion` | Same as chart `version` for releases | dev version | `X.Y.Z` |
-| Default image tag in chart | `appVersion` when `image.tag` is empty | dev version | `X.Y.Z` |
+| Build version | CI run / git tag | `0.0.0-dev.<run>` | `X.Y.Z` |
+| Container image tag | Same build version (+ `latest` alias) | `0.0.0-dev.<run>`, `latest` | `X.Y.Z`, `X.Y`, `latest` |
+| Helm chart `version` | Same build version | `0.0.0-dev.<run>` | `X.Y.Z` |
+| Helm chart `appVersion` | Same build version | `0.0.0-dev.<run>` | `X.Y.Z` |
+| Default image tag in chart | `appVersion` when `image.tag` is empty | `0.0.0-dev.<run>` | `X.Y.Z` |
 
 Subchart `version` fields (`postgresql`, `pocket-id`, `pgadmin`) version the bundled dependency packages only; they are **not** bumped on application release.
 
@@ -119,17 +117,17 @@ git tag v1.2.0 && git push origin v1.2.0
 ```
 
 After the tag exists, `release.yml` runs:
-   - sets `Chart.yaml` `version` and `appVersion` via `deploy/helm/scripts/set-chart-version.sh`
-   - runs tests, builds and pushes the image with SemVer tags
+   - sets `Chart.yaml` `version` and `appVersion` via `deploy/helm/scripts/set-chart-version.sh` (same SemVer)
+   - runs tests, builds and pushes the image tagged with that SemVer
    - packages the chart and pushes to `oci://ghcr.io/l-ra/charts/knowledge-core`
    - creates a GitHub Release with the `.tgz` artifact
    - commits the same `Chart.yaml` version back to `main` (so the repo reflects the latest release)
 
-You do **not** need to manually edit `Chart.yaml` before tagging.
+You do **not** need to manually edit `Chart.yaml` before tagging. Installing a chart pulls the matching image via `appVersion` (leave `image.tag` empty).
 
 ### Dev chart on `main`
 
-Each push to `main` publishes a chart with version `0.0.0-dev.<run_number>` so it never overwrites a SemVer release in the OCI registry. Use tagged releases for production installs.
+Each push to `main` publishes a chart **and** image with version `0.0.0-dev.<run_number>` so chart `appVersion` always matches the image tag. Use tagged releases for production installs.
 
 ```bash
 # Production

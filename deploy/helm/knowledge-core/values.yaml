@@ -4,6 +4,7 @@ replicaCount: 1
 
 image:
   repository: ghcr.io/l-ra/knowledge-core
+  # Empty → Chart.appVersion (set by CI/release via set-chart-version.sh)
   tag: ""
   pullPolicy: IfNotPresent
 

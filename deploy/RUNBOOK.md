@@ -4,16 +4,13 @@
 
 ```bash
 helm upgrade --install kc oci://ghcr.io/l-ra/charts/knowledge-core --version 0.1.0 \
-  --namespace knowledge-core --create-namespace \
-  --set image.tag=0.1.0
+  --namespace knowledge-core --create-namespace
 ```
 
-Lokálně z repozitáře:
+Lokálně z repozitáře (image tag = Chart.appVersion, nebo `make VERSION=… podman-build`):
 
 ```bash
-helm upgrade --install kc deploy/helm/knowledge-core \
-  --set image.repository=ghcr.io/l-ra/knowledge-core \
-  --set image.tag=latest
+helm upgrade --install kc deploy/helm/knowledge-core
 ```
 
 ## Bootstrap admin

@@ -3,8 +3,9 @@
 GOPATH := $(shell go env GOPATH)
 export PATH := $(GOPATH)/bin:$(PATH)
 AIR_VERSION := v1.63.9
+VERSION ?= $(shell sed -n 's/^appVersion: *"\(.*\)"/\1/p' deploy/helm/knowledge-core/Chart.yaml)
 
-.PHONY: test test-unit test-acceptance run tidy helm-lint podman-build ui-build ui-dev api-dev dev clean-dev air
+.PHONY: test test-unit test-acceptance run tidy helm-lint podman-build set-chart-version ui-build ui-dev api-dev dev clean-dev air
 
 tidy:
 	go mod tidy
@@ -49,5 +50,11 @@ run: ui-build
 helm-lint:
 	helm lint deploy/helm/knowledge-core
 
+# Sync Chart.yaml version + appVersion (also used as default image tag).
+# Example: make VERSION=1.2.3 set-chart-version
+set-chart-version:
+	./deploy/helm/scripts/set-chart-version.sh "$(VERSION)"
+
+# Image tag matches Chart appVersion (override with VERSION=…).
 podman-build:
-	podman build -f deploy/Dockerfile -t ghcr.io/l-ra/knowledge-core:dev .
+	podman build -f deploy/Dockerfile -t ghcr.io/l-ra/knowledge-core:$(VERSION) .

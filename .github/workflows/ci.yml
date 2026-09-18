@@ -94,6 +94,10 @@ jobs:
         run: helm lint deploy/helm/knowledge-core
       - name: Template render smoke test
         run: |
+          APP_VERSION="$(sed -n 's/^appVersion: *"\(.*\)"/\1/p' deploy/helm/knowledge-core/Chart.yaml)"
+          # Empty image.tag → Chart.AppVersion (same for Deployment + outbox CronJob)
+          helm template kc deploy/helm/knowledge-core > /tmp/rendered-default.yaml
+          grep -c "ghcr.io/l-ra/knowledge-core:${APP_VERSION}" /tmp/rendered-default.yaml | grep -q '^[1-9]'
           helm template kc deploy/helm/knowledge-core --set image.tag=ci > /tmp/rendered.yaml
           grep -q "kind: Deployment" /tmp/rendered.yaml
           helm template kc deploy/helm/knowledge-core --set pocketId.enabled=true --set postgresql.enabled=true > /tmp/rendered-pocket.yaml
@@ -137,8 +141,13 @@ jobs:
     runs-on: ubuntu-latest
     needs: [test, build, helm]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    outputs:
+      version: ${{ steps.ver.outputs.version }}
     steps:
       - uses: actions/checkout@v4
+      - name: Compute version
+        id: ver
+        run: echo "version=0.0.0-dev.${{ github.run_number }}" >> "$GITHUB_OUTPUT"
       - uses: docker/login-action@v3
         with:
           registry: ${{ env.REGISTRY }}
@@ -150,8 +159,8 @@ jobs:
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           tags: |
+            type=raw,value=${{ steps.ver.outputs.version }}
             type=raw,value=latest,enable={{is_default_branch}}
-            type=sha,prefix=
       - uses: docker/build-push-action@v6
         with:
           context: .
@@ -174,8 +183,8 @@ jobs:
           version: v3.16.4
       - name: Package Helm chart (dev)
         run: |
-          DEV_VERSION="0.0.0-dev.${{ github.run_number }}"
-          ./deploy/helm/scripts/set-chart-version.sh "${DEV_VERSION}"
+          VERSION="${{ needs.publish-image.outputs.version }}"
+          ./deploy/helm/scripts/set-chart-version.sh "${VERSION}"
           helm package deploy/helm/knowledge-core --destination /tmp/chart
       - uses: docker/login-action@v3
         with:

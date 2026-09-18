@@ -192,15 +192,15 @@ Outbox worker (CLI / CronJob): `knowledge-core outbox process`
 Chart v `deploy/helm/knowledge-core` — subcharts **postgresql** (default), volitelný **pocket-id** (OIDC) a **pgadmin** (DB admin UI).
 
 ```bash
-helm upgrade --install kc deploy/helm/knowledge-core \
-  --set image.repository=ghcr.io/l-ra/knowledge-core \
-  --set image.tag=latest
+helm upgrade --install kc deploy/helm/knowledge-core
 ```
+
+Image tag defaults to Chart `appVersion`. Local build: `make podman-build` (tags with that appVersion).
 
 Detail: [deploy/helm/README.md](deploy/helm/README.md) · Runbook: [deploy/RUNBOOK.md](deploy/RUNBOOK.md)
 
-CI (`.github/workflows/ci.yml`) buildí image `ghcr.io/l-ra/knowledge-core` a publikuje chart do `oci://ghcr.io/l-ra/charts/knowledge-core`.
-Tag `v*` spustí [release workflow](.github/workflows/release.yml) (semver image + chart).
+CI (`.github/workflows/ci.yml`) buildí image `ghcr.io/l-ra/knowledge-core:<version>` a chart `oci://ghcr.io/l-ra/charts/knowledge-core` se stejnou verzí (`0.0.0-dev.<run>` na `main`).
+Tag `v*` spustí [release workflow](.github/workflows/release.yml) (semver image + chart + appVersion).
 
 ## Testy
 
