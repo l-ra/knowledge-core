@@ -116,7 +116,7 @@ Reset inside container: `knowledge-core admin reset-password`
 curl -H 'X-Subject: alice' -H 'X-Roles: editor,viewer' ...
 ```
 
-**OIDC** (`KC_AUTH_MODE=oidc`): `Authorization: Bearer <jwt>` (requires `KC_OIDC_ISSUER`).
+**OIDC** (`KC_AUTH_MODE=oidc`): `Authorization: Bearer <jwt>` (requires `KC_OIDC_ISSUER`). JWT claims `roles` and `groups` are merged into subject roles (`"admin"` in either grants admin).
 
 Writes accept headers: `Idempotency-Key`, `X-Actor`, `X-Correlation-Id`.
 

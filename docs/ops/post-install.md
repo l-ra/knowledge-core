@@ -9,9 +9,9 @@ Tento dokument popisuje, co udělat hned po instalaci, aby šlo pracovat s daty.
 |------|-------------------------|
 | `KC_AUTH_MODE=bootstrap` | Bootstrap admin (heslo) — plná práva |
 | `KC_AUTH_MODE=dev` | Subject s rolí `admin` v `X-Roles`, nebo subject = `KC_BOOTSTRAP_ADMIN_SUBJECT` |
-| `KC_AUTH_MODE=oidc` | JWT subject s rolí `admin`, **nebo** subject ID = `KC_BOOTSTRAP_ADMIN_SUBJECT`, **nebo** explicitní `auth_policy` |
+| `KC_AUTH_MODE=oidc` | JWT s `"admin"` v `roles` nebo `groups`, **nebo** subject ID = `KC_BOOTSTRAP_ADMIN_SUBJECT`, **nebo** explicitní `auth_policy` |
 
-Vestavěná policy `bootstrap-admin` povoluje jen roli **`admin`**. Obyčejný OIDC uživatel z Pocket ID tuto roli typicky **nemá**.
+Vestavěná policy `bootstrap-admin` povoluje jen roli **`admin`**. Obyčejný OIDC uživatel bez skupiny/role `admin` ji typicky **nemá**.
 
 ---
 
@@ -52,7 +52,7 @@ V této fázi už můžeš zadávat data. OIDC zatím není nutný.
 
 ### 4. Po prvním OIDC loginu dostaneš `forbidden` — to je očekávané
 
-OIDC `sub` ≠ bootstrap subject `admin` a JWT obvykle neobsahuje `roles: ["admin"]`.
+OIDC `sub` ≠ bootstrap subject `admin` a JWT obvykle neobsahuje `roles`/`groups` s hodnotou `"admin"`.
 
 Zjisti své ID:
 
@@ -112,8 +112,9 @@ Znovu napoj OIDC v **Admin → OIDC / IdP** (stejný issuer + client_id).
 
 #### Metoda 3 — role `admin` v tokenu
 
-Pokud IdP umí posílat claim `roles` (pole stringů) a obsahuje `"admin"`, KC ti dá plná práva automaticky.
-Pocket ID to out-of-the-box typicky **nedělá** — spolehlivější jsou metody 1 nebo 2.
+Pokud IdP posílá `"admin"` v claimu **`roles`** nebo **`groups`** (pole stringů, případně space/CSV string), KC ti dá plná práva automaticky. Oba claimy se sjednotí do `Subject.Roles`.
+
+U Pocket ID typicky stačí vytvořit skupinu `admin` a přiřadit ji uživateli (scope `groups` je default).
 
 ---
 
@@ -148,7 +149,7 @@ Bez package/property často nejde smysluplně editovat statements v UI.
 |----------|-------------|
 | `GET /v1/me` | `id` + případně `roles` |
 | Auth mode | `/v1/ui/config` → `authMode` |
-| Jsi admin? | `roles` obsahuje `admin`, **nebo** `id` == `KC_BOOTSTRAP_ADMIN_SUBJECT`, **nebo** existuje allow policy na tvůj `id` |
+| Jsi admin? | `roles` obsahuje `admin` (z JWT `roles` ∪ `groups`), **nebo** `id` == `KC_BOOTSTRAP_ADMIN_SUBJECT`, **nebo** existuje allow policy na tvůj `id` |
 | Policy list | `GET /v1/policies` (vyžaduje už nějaké právo / bootstrap) |
 
 `401 unauthenticated` = špatný/chybějící token.  

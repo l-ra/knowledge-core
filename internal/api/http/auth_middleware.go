@@ -2,6 +2,7 @@ package apihttp
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"strings"
@@ -21,6 +22,66 @@ type OIDCAuthenticator struct {
 	mu       sync.Mutex
 	verifier *oidc.IDTokenVerifier
 	initErr  error
+}
+
+// stringListClaim accepts a JSON string array or a single space/CSV-separated string.
+type stringListClaim []string
+
+func (c *stringListClaim) UnmarshalJSON(data []byte) error {
+	if string(data) == "null" {
+		*c = nil
+		return nil
+	}
+	var arr []string
+	if err := json.Unmarshal(data, &arr); err == nil {
+		*c = normalizeStringList(arr)
+		return nil
+	}
+	var s string
+	if err := json.Unmarshal(data, &s); err != nil {
+		*c = nil
+		return nil
+	}
+	*c = splitClaimList(s)
+	return nil
+}
+
+func splitClaimList(s string) []string {
+	fields := strings.FieldsFunc(strings.TrimSpace(s), func(r rune) bool {
+		return r == ',' || r == ' ' || r == '\t' || r == '\n'
+	})
+	return normalizeStringList(fields)
+}
+
+func normalizeStringList(in []string) []string {
+	out := make([]string, 0, len(in))
+	for _, v := range in {
+		v = strings.TrimSpace(v)
+		if v != "" {
+			out = append(out, v)
+		}
+	}
+	return out
+}
+
+// mergeRoleClaims unions roles and groups into Subject.Roles (roles first, then new from groups).
+func mergeRoleClaims(roles, groups []string) []string {
+	seen := make(map[string]struct{}, len(roles)+len(groups))
+	out := make([]string, 0, len(roles)+len(groups))
+	for _, list := range [][]string{roles, groups} {
+		for _, v := range list {
+			v = strings.TrimSpace(v)
+			if v == "" {
+				continue
+			}
+			if _, ok := seen[v]; ok {
+				continue
+			}
+			seen[v] = struct{}{}
+			out = append(out, v)
+		}
+	}
+	return out
 }
 
 func (a *OIDCAuthenticator) Authenticate(r *http.Request) (auth.Subject, error) {
@@ -43,11 +104,12 @@ func (a *OIDCAuthenticator) Authenticate(r *http.Request) (auth.Subject, error) 
 	}
 
 	var claims struct {
-		Sub               string   `json:"sub"`
-		Email             string   `json:"email"`
-		Name              string   `json:"name"`
-		PreferredUsername string   `json:"preferred_username"`
-		Roles             []string `json:"roles"`
+		Sub               string          `json:"sub"`
+		Email             string          `json:"email"`
+		Name              string          `json:"name"`
+		PreferredUsername string          `json:"preferred_username"`
+		Roles             stringListClaim `json:"roles"`
+		Groups            stringListClaim `json:"groups"`
 	}
 	_ = idToken.Claims(&claims)
 
@@ -62,7 +124,7 @@ func (a *OIDCAuthenticator) Authenticate(r *http.Request) (auth.Subject, error) 
 		return auth.Subject{}, errUnauthenticated
 	}
 
-	roles := append([]string{}, claims.Roles...)
+	roles := mergeRoleClaims([]string(claims.Roles), []string(claims.Groups))
 	if subjectID == a.BootstrapAdmin && !contains(roles, "admin") {
 		roles = append(roles, "admin")
 	}
