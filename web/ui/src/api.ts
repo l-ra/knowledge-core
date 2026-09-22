@@ -5,10 +5,14 @@ export type UiConfig = {
   oidcIssuer: string;
   oidcClientId: string;
   oidcAudience: string;
+  /** Space-separated OAuth scopes for PKCE login (from KC_OIDC_SCOPES). */
+  oidcScopes?: string;
   bootstrapAdminSubject: string;
   uiBasePath: string;
   oidcRedirectPath: string;
 };
+
+const DEFAULT_OIDC_SCOPES = "openid profile email groups";
 
 export type AuthSession = {
   mode: UiConfig["authMode"];
@@ -128,7 +132,7 @@ export async function startOidcLogin(cfg: UiConfig) {
   const params = new URLSearchParams({
     client_id: cfg.oidcClientId || cfg.oidcAudience || "knowledge-core",
     response_type: "code",
-    scope: "openid profile email",
+    scope: (cfg.oidcScopes || "").trim() || DEFAULT_OIDC_SCOPES,
     redirect_uri: redirectUri,
     state,
     code_challenge: challenge,

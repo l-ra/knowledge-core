@@ -6,6 +6,8 @@ import (
 	"strings"
 )
 
+const DefaultOIDCScopes = "openid profile email groups"
+
 type Config struct {
 	HTTPAddr               string
 	DatabaseURL            string
@@ -17,6 +19,8 @@ type Config struct {
 	OIDCIssuer             string
 	OIDCClientID           string
 	OIDCAudience           string
+	// OIDCScopes is the space-separated OAuth scope string for SPA login (PKCE).
+	OIDCScopes string
 }
 
 func Load() (Config, error) {
@@ -31,6 +35,7 @@ func Load() (Config, error) {
 		OIDCIssuer:             os.Getenv("KC_OIDC_ISSUER"),
 		OIDCClientID:           firstNonEmpty(os.Getenv("KC_OIDC_CLIENT_ID"), os.Getenv("KC_OIDC_AUDIENCE")),
 		OIDCAudience:           os.Getenv("KC_OIDC_AUDIENCE"),
+		OIDCScopes:             parseOIDCScopes(os.Getenv("KC_OIDC_SCOPES")),
 	}
 	if cfg.DatabaseURL == "" {
 		return Config{}, fmt.Errorf("KC_DATABASE_URL is required")
@@ -69,6 +74,17 @@ func firstNonEmpty(vals ...string) string {
 		}
 	}
 	return ""
+}
+
+// parseOIDCScopes normalizes CSV or space-separated scopes to a single space-separated string.
+func parseOIDCScopes(raw string) string {
+	fields := strings.FieldsFunc(strings.TrimSpace(raw), func(r rune) bool {
+		return r == ',' || r == ' ' || r == '\t' || r == '\n'
+	})
+	if len(fields) == 0 {
+		return DefaultOIDCScopes
+	}
+	return strings.Join(fields, " ")
 }
 
 func getenv(key, def string) string {

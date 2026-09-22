@@ -143,6 +143,7 @@ helm upgrade --install kc oci://ghcr.io/l-ra/charts/knowledge-core --version 0.0
 |-------|---------|-------------|
 | `auth.mode` | `bootstrap` | `bootstrap`, `dev`, or `oidc` (overridden when Pocket ID enabled) |
 | `auth.bootstrapAdminSubject` | `admin` | Subject id with admin role |
+| `auth.oidcScopes` | `openid profile email groups` | OAuth scopes for SPA login (`KC_OIDC_SCOPES`) |
 | `postgresql.enabled` | `true` | Deploy bundled PostgreSQL |
 | `pocketId.enabled` | `false` | Deploy Pocket ID subchart |
 | `pgAdmin.enabled` | `false` | Deploy pgAdmin 4 subchart (requires postgresql) |

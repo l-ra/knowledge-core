@@ -82,6 +82,8 @@ auth:
   oidcAudience: knowledge-core
   # Optional explicit issuer when pocketId is disabled but auth.mode=oidc.
   oidcIssuer: ""
+  # Space- or comma-separated OAuth scopes for SPA PKCE login (KC_OIDC_SCOPES).
+  oidcScopes: "openid profile email groups"
 
 postgresql:
   enabled: true

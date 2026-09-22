@@ -186,6 +186,7 @@ Outbox worker (CLI / CronJob): `knowledge-core outbox process`
 | `KC_BOOTSTRAP_ADMIN_PASSWORD` | — (optional fixed password) |
 | `KC_OIDC_ISSUER` | — (required for `oidc` mode) |
 | `KC_OIDC_AUDIENCE` | — (optional JWT audience) |
+| `KC_OIDC_SCOPES` | `openid profile email groups` (SPA PKCE login scopes; space or CSV) |
 
 ## Kubernetes (Helm)
 

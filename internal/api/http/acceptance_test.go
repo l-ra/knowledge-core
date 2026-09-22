@@ -134,6 +134,13 @@ func TestAcceptanceListAndUIConfig(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("ui config: %d %s", rec.Code, rec.Body.String())
 	}
+	var uiCfg map[string]any
+	if err := json.Unmarshal(rec.Body.Bytes(), &uiCfg); err != nil {
+		t.Fatal(err)
+	}
+	if uiCfg["oidcScopes"] != config.DefaultOIDCScopes {
+		t.Fatalf("ui config oidcScopes=%v want %q", uiCfg["oidcScopes"], config.DefaultOIDCScopes)
+	}
 
 	ents := doJSON(t, h, http.MethodGet, "/v1/entities?limit=10", nil, nil)
 	if ents.StatusCode != http.StatusOK {

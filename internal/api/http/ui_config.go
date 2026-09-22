@@ -3,15 +3,22 @@ package apihttp
 import (
 	"net/http"
 	"strings"
+
+	"github.com/l-ra/knowledge-core/internal/config"
 )
 
 func (s *Server) uiConfig(w http.ResponseWriter, r *http.Request) {
 	cfg := s.liveConfig()
+	scopes := strings.TrimSpace(cfg.OIDCScopes)
+	if scopes == "" {
+		scopes = config.DefaultOIDCScopes
+	}
 	writeJSON(w, http.StatusOK, map[string]any{
 		"authMode":              cfg.AuthMode,
 		"oidcIssuer":            cfg.OIDCIssuer,
 		"oidcClientId":          cfg.EffectiveClientID(),
 		"oidcAudience":          cfg.EffectiveAudience(),
+		"oidcScopes":            scopes,
 		"bootstrapAdminSubject": cfg.BootstrapAdminSubject,
 		"uiBasePath":            "/ui",
 		"oidcRedirectPath":      "/ui/callback",
