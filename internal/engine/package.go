@@ -29,6 +29,28 @@ func (e *Engine) UpdatePackage(ctx context.Context, meta domain.WriteMeta, code 
 	return res, nil
 }
 
+func (e *Engine) SetPackageDependencies(ctx context.Context, meta domain.WriteMeta, code string, in domain.SetPackageDependenciesInput) (*domain.WriteResult[domain.Package], error) {
+	if err := e.authorizePackage(ctx, auth.OpManage, code); err != nil {
+		return nil, err
+	}
+	res, err := e.store.SetPackageDependencies(ctx, meta, code, in)
+	if err != nil {
+		return nil, mapErr(err)
+	}
+	return res, nil
+}
+
+func (e *Engine) ReconcilePackageDependencies(ctx context.Context, meta domain.WriteMeta, code string, in domain.ReconcilePackageDependenciesInput) (*domain.WriteResult[domain.Package], *domain.PackageDependenciesReconcile, error) {
+	if err := e.authorizePackage(ctx, auth.OpManage, code); err != nil {
+		return nil, nil, err
+	}
+	res, rec, err := e.store.ReconcilePackageDependencies(ctx, meta, code, in)
+	if err != nil {
+		return nil, nil, mapErr(err)
+	}
+	return res, rec, nil
+}
+
 func (e *Engine) GetPackage(ctx context.Context, code string) (*domain.Package, error) {
 	if err := e.authorizePackage(ctx, auth.OpRead, code); err != nil {
 		return nil, err

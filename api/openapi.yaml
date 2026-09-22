@@ -589,6 +589,59 @@ paths:
       responses:
         "200":
           description: Deleted
+  /v1/packages/{code}/dependencies:
+    put:
+      summary: Replace package dependencies
+      tags: [packages]
+      parameters:
+        - name: code
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [dependencies]
+              properties:
+                dependencies:
+                  type: array
+                  items:
+                    $ref: "#/components/schemas/PackageDependency"
+      responses:
+        "200":
+          description: Dependencies replaced
+  /v1/packages/{code}/dependencies/reconcile:
+    post:
+      summary: Rebuild package dependencies from owned content references
+      description: |
+        Scans statements (properties, EntityReference values, qualifiers) and shapes
+        owned by the package. Sets package_dependency to exactly the referenced packages
+        (preserves existing versionRange when keeping a dependency; new ones use ^latest
+        release or `*`). Unused declared dependencies are removed.
+      tags: [packages]
+      parameters:
+        - name: code
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                dryRun:
+                  type: boolean
+                  default: false
+      responses:
+        "200":
+          description: Reconciled (or dry-run preview); includes reconcile diff
   /v1/packages/{code}/releases:
     post:
       summary: Publish release
@@ -642,9 +695,14 @@ paths:
     post:
       summary: Import release bundle
       tags: [packages]
+      description: |
+        Imports a release bundle JSON (same shape as GET .../bundle).
+        Request body limit is 32 MiB (HTTP 413 `payload_too_large` when exceeded).
       responses:
         "201":
           description: Imported
+        "413":
+          description: Request body exceeds 32 MiB
   /v1/policies:
     get:
       summary: List auth policies

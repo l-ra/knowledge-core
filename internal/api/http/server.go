@@ -83,6 +83,8 @@ func New(eng *engine.Engine, st *store.Store, authn Authenticator, cfg config.Co
 		r.Post("/packages", s.createPackage)
 		r.Get("/packages/{code}", s.getPackage)
 		r.Patch("/packages/{code}", s.updatePackage)
+		r.Put("/packages/{code}/dependencies", s.setPackageDependencies)
+		r.Post("/packages/{code}/dependencies/reconcile", s.reconcilePackageDependencies)
 		r.Delete("/packages/{code}", s.deletePackage)
 		r.Post("/packages/{code}/rdf/import", s.importPackageRDF)
 		r.Get("/packages/{code}/objects", s.listPackageObjects)
@@ -779,9 +781,7 @@ func (s *Server) applyChangeSet(w http.ResponseWriter, r *http.Request) {
 	body, err := readBody(r)
 	if err != nil {
 		if err == errPayloadTooLarge {
-			writeJSON(w, http.StatusRequestEntityTooLarge, map[string]any{
-				"error": map[string]any{"code": "payload_too_large", "message": "request body exceeds 4 MiB"},
-			})
+			writePayloadTooLarge(w, store.MaxBatchBodyBytes)
 			return
 		}
 		writeError(w, http.StatusBadRequest, "invalid body")
@@ -953,6 +953,70 @@ func (s *Server) updatePackage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, writeResponse(packageDTO(&res.Value), res.ChangeSet))
+}
+
+type setPackageDependenciesReq struct {
+	Dependencies []domain.PackageDependency `json:"dependencies"`
+}
+
+func (s *Server) setPackageDependencies(w http.ResponseWriter, r *http.Request) {
+	body, err := readBody(r)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid body")
+		return
+	}
+	var req setPackageDependenciesReq
+	if err := json.Unmarshal(body, &req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid JSON")
+		return
+	}
+	meta := writeMetaFromRequest(r, "setPackageDependencies", hashBody(body))
+	if rejectIfOpenChangeSet(w, meta, "setPackageDependencies") {
+		return
+	}
+	res, err := s.engine.SetPackageDependencies(r.Context(), meta, pathParam(r, "code"), domain.SetPackageDependenciesInput{
+		Dependencies: req.Dependencies,
+	})
+	if err != nil {
+		writeEngineError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, writeResponse(packageDTO(&res.Value), res.ChangeSet))
+}
+
+type reconcilePackageDependenciesReq struct {
+	DryRun bool `json:"dryRun"`
+}
+
+func (s *Server) reconcilePackageDependencies(w http.ResponseWriter, r *http.Request) {
+	body, err := readBody(r)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid body")
+		return
+	}
+	var req reconcilePackageDependenciesReq
+	if len(body) > 0 {
+		if err := json.Unmarshal(body, &req); err != nil {
+			writeError(w, http.StatusBadRequest, "invalid JSON")
+			return
+		}
+	}
+	meta := writeMetaFromRequest(r, "reconcilePackageDependencies", hashBody(body))
+	if !req.DryRun {
+		if rejectIfOpenChangeSet(w, meta, "reconcilePackageDependencies") {
+			return
+		}
+	}
+	res, rec, err := s.engine.ReconcilePackageDependencies(r.Context(), meta, pathParam(r, "code"), domain.ReconcilePackageDependenciesInput{
+		DryRun: req.DryRun,
+	})
+	if err != nil {
+		writeEngineError(w, err)
+		return
+	}
+	out := writeResponse(packageDTO(&res.Value), res.ChangeSet)
+	out["reconcile"] = rec
+	writeJSON(w, http.StatusOK, out)
 }
 
 func (s *Server) deletePackage(w http.ResponseWriter, r *http.Request) {
@@ -1160,8 +1224,12 @@ func (s *Server) mutateRelease(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) importRelease(w http.ResponseWriter, r *http.Request) {
-	body, err := readBody(r)
+	body, err := readBodyLimited(r, store.MaxReleaseBundleBytes)
 	if err != nil {
+		if err == errPayloadTooLarge {
+			writePayloadTooLarge(w, store.MaxReleaseBundleBytes)
+			return
+		}
 		writeError(w, http.StatusBadRequest, "invalid body")
 		return
 	}

@@ -749,6 +749,43 @@ func TestAcceptanceA11A12A13(t *testing.T) {
 	}
 }
 
+// Regression: publish must resolve package_dependency without nesting tx.Query
+// on an open Rows cursor (pgx "conn busy").
+func TestAcceptancePublishReleaseWithDependencies(t *testing.T) {
+	h := setupTestHandler(t)
+
+	createPkg(t, h, "archimate-lite", nil)
+	pubDep := doJSON(t, h, http.MethodPost, "/v1/packages/archimate-lite/releases", map[string]any{"version": "3.2.0"}, nil)
+	if pubDep.StatusCode != http.StatusCreated {
+		t.Fatalf("publish dependency: %d %s", pubDep.StatusCode, pubDep.Body)
+	}
+
+	createPkg(t, h, "org-ote", []map[string]string{
+		{"dependsOnCode": "archimate-lite", "versionRange": "^3.0.0"},
+	})
+	pub := doJSON(t, h, http.MethodPost, "/v1/packages/org-ote/releases", map[string]any{"version": "0.1.0"}, nil)
+	if pub.StatusCode != http.StatusCreated {
+		t.Fatalf("publish org with deps: %d %s", pub.StatusCode, pub.Body)
+	}
+	var body struct {
+		Data struct {
+			Dependencies []struct {
+				DependencyCode    string `json:"dependencyCode"`
+				DependencyVersion string `json:"dependencyVersion"`
+			} `json:"dependencies"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal([]byte(pub.Body), &body); err != nil {
+		t.Fatal(err)
+	}
+	if len(body.Data.Dependencies) != 1 {
+		t.Fatalf("want 1 resolved dependency, got %+v", body.Data.Dependencies)
+	}
+	if body.Data.Dependencies[0].DependencyCode != "archimate-lite" || body.Data.Dependencies[0].DependencyVersion != "3.2.0" {
+		t.Fatalf("unexpected dependency pin: %+v", body.Data.Dependencies[0])
+	}
+}
+
 func TestAcceptanceImportPromotion(t *testing.T) {
 	h := setupTestHandler(t)
 
@@ -804,6 +841,129 @@ func TestAcceptanceImportPromotion(t *testing.T) {
 	dup := doJSON(t, h, http.MethodPost, "/v1/releases/import", bundle, nil)
 	if dup.StatusCode != http.StatusConflict {
 		t.Fatalf("duplicate import: want 409, got %d %s", dup.StatusCode, dup.Body)
+	}
+}
+
+func TestAcceptanceImportReleasePayloadTooLarge(t *testing.T) {
+	h := setupTestHandler(t)
+
+	body := bytes.Repeat([]byte("a"), store.MaxReleaseBundleBytes+1)
+	req := httptest.NewRequest(http.MethodPost, "/v1/releases/import", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+	if rec.Code != http.StatusRequestEntityTooLarge {
+		t.Fatalf("want 413, got %d %s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), "payload_too_large") {
+		t.Fatalf("expected payload_too_large: %s", rec.Body.String())
+	}
+}
+
+func TestAcceptanceReconcilePackageDependencies(t *testing.T) {
+	h := setupTestHandler(t)
+
+	createPkg(t, h, "meta-used", nil)
+	createPkg(t, h, "meta-unused", nil)
+	createPkg(t, h, "org-pkg", []map[string]string{
+		{"dependsOnCode": "meta-used", "versionRange": "^1.0.0"},
+		{"dependsOnCode": "meta-unused", "versionRange": "^1.0.0"},
+	})
+
+	pubUsed := doJSON(t, h, http.MethodPost, "/v1/packages/meta-used/releases", map[string]any{"version": "1.0.0"}, nil)
+	if pubUsed.StatusCode != http.StatusCreated {
+		t.Fatalf("publish meta-used: %d %s", pubUsed.StatusCode, pubUsed.Body)
+	}
+
+	prop := doJSON(t, h, http.MethodPost, "/v1/properties", map[string]any{
+		"packageCode": "meta-used",
+		"datatype":    "String",
+		"iriLocal":    "note",
+		"labels":      map[string]string{"en": "note"},
+	}, nil)
+	if prop.StatusCode != http.StatusCreated {
+		t.Fatalf("create property: %d %s", prop.StatusCode, prop.Body)
+	}
+	propID := parseDataID(t, prop.Body)
+	ent := createEntityWithPkg(t, h, "org-pkg", "Thing")
+	_ = createStatementWithPkg(t, h, "org-pkg", ent, propID, "hello")
+
+	dry := doJSON(t, h, http.MethodPost, "/v1/packages/org-pkg/dependencies/reconcile", map[string]any{"dryRun": true}, nil)
+	if dry.StatusCode != http.StatusOK {
+		t.Fatalf("dry-run reconcile: %d %s", dry.StatusCode, dry.Body)
+	}
+	var dryBody struct {
+		Data struct {
+			Dependencies []struct {
+				DependsOnCode string `json:"dependsOnCode"`
+				VersionRange  string `json:"versionRange"`
+			} `json:"dependencies"`
+		} `json:"data"`
+		Reconcile struct {
+			Removed []struct {
+				DependsOnCode string `json:"dependsOnCode"`
+			} `json:"removed"`
+			DryRun bool `json:"dryRun"`
+		} `json:"reconcile"`
+	}
+	if err := json.Unmarshal([]byte(dry.Body), &dryBody); err != nil {
+		t.Fatal(err)
+	}
+	if !dryBody.Reconcile.DryRun {
+		t.Fatalf("expected dryRun true: %s", dry.Body)
+	}
+	before := doJSON(t, h, http.MethodGet, "/v1/packages/org-pkg", nil, nil)
+	if !strings.Contains(before.Body, "meta-unused") {
+		t.Fatalf("dry-run must not write: %s", before.Body)
+	}
+
+	put := doJSON(t, h, http.MethodPut, "/v1/packages/org-pkg/dependencies", map[string]any{
+		"dependencies": []map[string]string{
+			{"dependsOnCode": "meta-used", "versionRange": "^1.2.0"},
+			{"dependsOnCode": "meta-unused", "versionRange": "^9.0.0"},
+		},
+	}, nil)
+	if put.StatusCode != http.StatusOK {
+		t.Fatalf("put deps: %d %s", put.StatusCode, put.Body)
+	}
+
+	rec := doJSON(t, h, http.MethodPost, "/v1/packages/org-pkg/dependencies/reconcile", map[string]any{}, nil)
+	if rec.StatusCode != http.StatusOK {
+		t.Fatalf("reconcile: %d %s", rec.StatusCode, rec.Body)
+	}
+	var body struct {
+		Data struct {
+			Dependencies []struct {
+				DependsOnCode string `json:"dependsOnCode"`
+				VersionRange  string `json:"versionRange"`
+			} `json:"dependencies"`
+		} `json:"data"`
+		Reconcile struct {
+			Removed []struct {
+				DependsOnCode string `json:"dependsOnCode"`
+			} `json:"removed"`
+			Kept []struct {
+				DependsOnCode string `json:"dependsOnCode"`
+				VersionRange  string `json:"versionRange"`
+			} `json:"kept"`
+		} `json:"reconcile"`
+	}
+	if err := json.Unmarshal([]byte(rec.Body), &body); err != nil {
+		t.Fatal(err)
+	}
+	if len(body.Data.Dependencies) != 1 || body.Data.Dependencies[0].DependsOnCode != "meta-used" {
+		t.Fatalf("expected only meta-used: %s", rec.Body)
+	}
+	if body.Data.Dependencies[0].VersionRange != "^1.2.0" {
+		t.Fatalf("expected kept versionRange ^1.2.0, got %q: %s", body.Data.Dependencies[0].VersionRange, rec.Body)
+	}
+	if len(body.Reconcile.Removed) != 1 || body.Reconcile.Removed[0].DependsOnCode != "meta-unused" {
+		t.Fatalf("expected remove meta-unused: %s", rec.Body)
+	}
+
+	got := doJSON(t, h, http.MethodGet, "/v1/packages/org-pkg", nil, nil)
+	if strings.Contains(got.Body, "meta-unused") {
+		t.Fatalf("meta-unused should be gone: %s", got.Body)
 	}
 }
 

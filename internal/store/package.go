@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"sort"
 	"strings"
 	"time"
 
@@ -251,6 +252,247 @@ func (s *Store) UpdatePackage(ctx context.Context, meta domain.WriteMeta, code s
 	return &domain.WriteResult[domain.Package]{Value: *pkg, ChangeSet: s.changeSetDomain(cs, meta)}, nil
 }
 
+func (s *Store) SetPackageDependencies(ctx context.Context, meta domain.WriteMeta, code string, in domain.SetPackageDependenciesInput) (*domain.WriteResult[domain.Package], error) {
+	deps, err := normalizePackageDependencies(code, in.Dependencies)
+	if err != nil {
+		return nil, err
+	}
+
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback(ctx)
+
+	pkg, err := s.getPackageForUpdateTx(ctx, tx, code)
+	if err != nil {
+		return nil, err
+	}
+	if err := s.replacePackageDependenciesTx(ctx, tx, pkg.ID, deps); err != nil {
+		return nil, err
+	}
+	now := time.Now().UTC()
+	if _, err := tx.Exec(ctx, `UPDATE package SET updated_at = $2 WHERE id = $1`, pkg.ID, now); err != nil {
+		return nil, err
+	}
+	pkg.UpdatedAt = now
+	pkg.Dependencies = deps
+
+	cs, err := s.beginChangeSetTx(ctx, tx, meta)
+	if err != nil {
+		return nil, err
+	}
+	if err := cs.addItem(ctx, tx, "package", pkg.ID, pkg.Code, "update", map[string]any{"dependencies": deps}); err != nil {
+		return nil, err
+	}
+	if err := s.finalizeChangeSet(ctx, tx, cs, *pkg); err != nil {
+		return nil, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return nil, err
+	}
+	_ = s.fillPackageRoot(ctx, pkg)
+	return &domain.WriteResult[domain.Package]{Value: *pkg, ChangeSet: s.changeSetDomain(cs, meta)}, nil
+}
+
+func (s *Store) ReconcilePackageDependencies(ctx context.Context, meta domain.WriteMeta, code string, in domain.ReconcilePackageDependenciesInput) (*domain.WriteResult[domain.Package], *domain.PackageDependenciesReconcile, error) {
+	pkg, err := s.GetPackageByCode(ctx, code)
+	if err != nil {
+		return nil, nil, err
+	}
+	referenced, err := s.discoverReferencedPackageCodes(ctx, pkg.ID, pkg.Code)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	existingByCode := make(map[string]domain.PackageDependency, len(pkg.Dependencies))
+	for _, d := range pkg.Dependencies {
+		existingByCode[d.DependsOnCode] = d
+	}
+
+	var next []domain.PackageDependency
+	var unresolved []string
+	for _, depCode := range referenced {
+		if prev, ok := existingByCode[depCode]; ok {
+			next = append(next, prev)
+			continue
+		}
+		ver, ok, err := s.latestPackageReleaseVersion(ctx, depCode)
+		if err != nil {
+			return nil, nil, err
+		}
+		rng := "*"
+		if ok {
+			rng = "^" + ver
+		} else {
+			unresolved = append(unresolved, depCode)
+		}
+		next = append(next, domain.PackageDependency{DependsOnCode: depCode, VersionRange: rng})
+	}
+	next, err = normalizePackageDependencies(code, next)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	rec := diffPackageDependencies(pkg.Dependencies, next)
+	rec.Referenced = append([]string(nil), referenced...)
+	rec.Unresolved = unresolved
+	rec.DryRun = in.DryRun
+
+	if in.DryRun {
+		out := *pkg
+		out.Dependencies = next
+		return &domain.WriteResult[domain.Package]{Value: out}, &rec, nil
+	}
+
+	res, err := s.SetPackageDependencies(ctx, meta, code, domain.SetPackageDependenciesInput{Dependencies: next})
+	if err != nil {
+		return nil, nil, err
+	}
+	return res, &rec, nil
+}
+
+func (s *Store) getPackageForUpdateTx(ctx context.Context, tx pgx.Tx, code string) (*domain.Package, error) {
+	var pkg domain.Package
+	var labelsJSON []byte
+	err := tx.QueryRow(ctx, `
+		SELECT id, code, lifecycle, labels, COALESCE(iri_base,''), created_at, updated_at FROM package WHERE code = $1
+	`, code).Scan(&pkg.ID, &pkg.Code, &pkg.Lifecycle, &labelsJSON, &pkg.IRIBase, &pkg.CreatedAt, &pkg.UpdatedAt)
+	if err != nil {
+		return nil, err
+	}
+	_ = json.Unmarshal(labelsJSON, &pkg.Labels)
+	return &pkg, nil
+}
+
+func (s *Store) replacePackageDependenciesTx(ctx context.Context, tx pgx.Tx, packageID uuid.UUID, deps []domain.PackageDependency) error {
+	if _, err := tx.Exec(ctx, `DELETE FROM package_dependency WHERE package_id = $1`, packageID); err != nil {
+		return err
+	}
+	for _, dep := range deps {
+		if _, err := tx.Exec(ctx, `
+			INSERT INTO package_dependency (package_id, depends_on_code, version_range)
+			VALUES ($1,$2,$3)
+		`, packageID, dep.DependsOnCode, dep.VersionRange); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// discoverReferencedPackageCodes returns distinct package codes referenced by objects
+// owned by packageID (statement properties/values/qualifiers and shape classes), excluding self.
+func (s *Store) discoverReferencedPackageCodes(ctx context.Context, packageID uuid.UUID, selfCode string) ([]string, error) {
+	rows, err := s.pool.Query(ctx, `
+		SELECT DISTINCT pkg.code
+		FROM (
+			SELECT prop.package_id AS pid
+			FROM statement st
+			JOIN entity prop ON prop.id = st.property_id
+			WHERE st.package_id = $1 AND st.status <> 'deleted'
+
+			UNION
+
+			SELECT ve.package_id
+			FROM statement st
+			JOIN entity ve ON ve.id = st.value_entity_id
+			WHERE st.package_id = $1 AND st.status <> 'deleted' AND st.value_entity_id IS NOT NULL
+
+			UNION
+
+			SELECT prop.package_id
+			FROM statement_qualifier sq
+			JOIN statement st ON st.id = sq.statement_id
+			JOIN entity prop ON prop.id = sq.property_id
+			WHERE st.package_id = $1 AND st.status <> 'deleted'
+
+			UNION
+
+			SELECT ve.package_id
+			FROM statement_qualifier sq
+			JOIN statement st ON st.id = sq.statement_id
+			JOIN entity ve ON ve.id = sq.value_entity_id
+			WHERE st.package_id = $1 AND st.status <> 'deleted' AND sq.value_entity_id IS NOT NULL
+
+			UNION
+
+			SELECT cls.package_id
+			FROM shape_profile sp
+			JOIN entity cls ON cls.id = sp.class_id
+			WHERE sp.package_id = $1
+		) refs
+		JOIN package pkg ON pkg.id = refs.pid
+		WHERE pkg.code <> $2
+		ORDER BY pkg.code
+	`, packageID, selfCode)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []string
+	for rows.Next() {
+		var code string
+		if err := rows.Scan(&code); err != nil {
+			return nil, err
+		}
+		out = append(out, code)
+	}
+	return out, rows.Err()
+}
+
+func normalizePackageDependencies(selfCode string, deps []domain.PackageDependency) ([]domain.PackageDependency, error) {
+	if deps == nil {
+		deps = []domain.PackageDependency{}
+	}
+	seen := make(map[string]struct{}, len(deps))
+	out := make([]domain.PackageDependency, 0, len(deps))
+	for _, d := range deps {
+		code := strings.TrimSpace(d.DependsOnCode)
+		rng := strings.TrimSpace(d.VersionRange)
+		if code == "" {
+			return nil, fmt.Errorf("dependency dependsOnCode required")
+		}
+		if rng == "" {
+			return nil, fmt.Errorf("dependency versionRange required for %q", code)
+		}
+		if code == selfCode {
+			return nil, fmt.Errorf("package cannot depend on itself")
+		}
+		if _, ok := seen[code]; ok {
+			return nil, fmt.Errorf("duplicate dependency %q", code)
+		}
+		seen[code] = struct{}{}
+		out = append(out, domain.PackageDependency{DependsOnCode: code, VersionRange: rng})
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].DependsOnCode < out[j].DependsOnCode })
+	return out, nil
+}
+
+func diffPackageDependencies(before, after []domain.PackageDependency) domain.PackageDependenciesReconcile {
+	beforeBy := make(map[string]domain.PackageDependency, len(before))
+	for _, d := range before {
+		beforeBy[d.DependsOnCode] = d
+	}
+	afterBy := make(map[string]domain.PackageDependency, len(after))
+	for _, d := range after {
+		afterBy[d.DependsOnCode] = d
+	}
+	var rec domain.PackageDependenciesReconcile
+	for _, d := range after {
+		if _, ok := beforeBy[d.DependsOnCode]; ok {
+			rec.Kept = append(rec.Kept, d)
+		} else {
+			rec.Added = append(rec.Added, d)
+		}
+	}
+	for _, d := range before {
+		if _, ok := afterBy[d.DependsOnCode]; !ok {
+			rec.Removed = append(rec.Removed, d)
+		}
+	}
+	return rec
+}
+
 func (s *Store) DeletePackage(ctx context.Context, meta domain.WriteMeta, code string) (*domain.WriteResult[domain.Package], error) {
 	tx, err := s.pool.Begin(ctx)
 	if err != nil {
@@ -436,28 +678,33 @@ func (s *Store) PublishRelease(ctx context.Context, meta domain.WriteMeta, packa
 		}
 	}
 
-	// Resolve dependencies
+	// Resolve dependencies: materialize package_dependency rows first so we do not
+	// nest tx.Query while depRows is still open (pgx "conn busy").
 	depRows, err := tx.Query(ctx, `SELECT depends_on_code, version_range FROM package_dependency WHERE package_id = $1`, packageID)
 	if err != nil {
 		return nil, err
 	}
-	var deps []domain.ReleaseDependency
+	type pkgDep struct{ code, rng string }
+	var pkgDeps []pkgDep
 	for depRows.Next() {
 		var code, rng string
 		if err := depRows.Scan(&code, &rng); err != nil {
 			depRows.Close()
 			return nil, err
 		}
-		ver, err := s.findMatchingRelease(ctx, tx, code, rng)
-		if err != nil {
-			depRows.Close()
-			return nil, err
-		}
-		deps = append(deps, domain.ReleaseDependency{DependencyCode: code, DependencyVersion: ver})
+		pkgDeps = append(pkgDeps, pkgDep{code, rng})
 	}
 	depRows.Close()
 	if err := depRows.Err(); err != nil {
 		return nil, err
+	}
+	var deps []domain.ReleaseDependency
+	for _, d := range pkgDeps {
+		ver, err := s.findMatchingRelease(ctx, tx, d.code, d.rng)
+		if err != nil {
+			return nil, err
+		}
+		deps = append(deps, domain.ReleaseDependency{DependencyCode: d.code, DependencyVersion: ver})
 	}
 
 	releaseID := datatype.NewUUID()

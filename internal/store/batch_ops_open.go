@@ -15,8 +15,9 @@ import (
 )
 
 const (
-	MaxBatchOperations = 500
-	MaxBatchBodyBytes  = 4 << 20 // 4 MiB
+	MaxBatchOperations    = 500
+	MaxBatchBodyBytes     = 4 << 20  // 4 MiB — ApplyChangeSet / general write bodies
+	MaxReleaseBundleBytes = 32 << 20 // 32 MiB — release bundle import/export payloads
 )
 
 var ErrBatchLimitExceeded = errors.New("batch limit exceeded")

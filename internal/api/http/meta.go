@@ -88,17 +88,30 @@ func hashBody(body []byte) string {
 var errPayloadTooLarge = fmt.Errorf("payload too large")
 
 func readBody(r *http.Request) ([]byte, error) {
+	return readBodyLimited(r, store.MaxBatchBodyBytes)
+}
+
+func readBodyLimited(r *http.Request, maxBytes int) ([]byte, error) {
 	if r.Body == nil {
 		return nil, nil
 	}
 	defer r.Body.Close()
-	limited := io.LimitReader(r.Body, store.MaxBatchBodyBytes+1)
+	limited := io.LimitReader(r.Body, int64(maxBytes)+1)
 	body, err := io.ReadAll(limited)
 	if err != nil {
 		return nil, err
 	}
-	if len(body) > store.MaxBatchBodyBytes {
+	if len(body) > maxBytes {
 		return nil, errPayloadTooLarge
 	}
 	return body, nil
+}
+
+func writePayloadTooLarge(w http.ResponseWriter, maxBytes int) {
+	writeJSON(w, http.StatusRequestEntityTooLarge, map[string]any{
+		"error": map[string]any{
+			"code":    "payload_too_large",
+			"message": fmt.Sprintf("request body exceeds %d MiB", maxBytes>>20),
+		},
+	})
 }

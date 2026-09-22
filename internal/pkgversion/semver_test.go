@@ -16,6 +16,8 @@ func TestMatchesRange(t *testing.T) {
 		{"3.5.0", "~3.4.0", false},
 		{"2.5.0", ">=2.0.0 <3.0.0", true},
 		{"3.0.0", ">=2.0.0 <3.0.0", false},
+		{"1.2.3", "*", true},
+		{"9.9.9", "*", true},
 	}
 	for _, c := range cases {
 		got, err := MatchesRange(c.v, c.r)

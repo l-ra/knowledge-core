@@ -43,6 +43,9 @@ func MatchesRange(version, rangeSpec string) (bool, error) {
 	if rangeSpec == "" {
 		return false, fmt.Errorf("empty range")
 	}
+	if rangeSpec == "*" {
+		return true, nil
+	}
 	vm, vn, vp, err := ParseVersion(version)
 	if err != nil {
 		return false, err

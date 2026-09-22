@@ -491,6 +491,26 @@ type UpdatePackageInput struct {
 	Labels  map[string]string
 }
 
+// SetPackageDependenciesInput replaces the package_dependency rows for a package.
+type SetPackageDependenciesInput struct {
+	Dependencies []PackageDependency
+}
+
+// ReconcilePackageDependenciesInput rebuilds dependencies from cross-package refs in owned content.
+type ReconcilePackageDependenciesInput struct {
+	DryRun bool
+}
+
+// PackageDependenciesReconcile describes a reconcile (or dry-run) of package dependencies.
+type PackageDependenciesReconcile struct {
+	Referenced []string            `json:"referenced"`
+	Added      []PackageDependency `json:"added,omitempty"`
+	Removed    []PackageDependency `json:"removed,omitempty"`
+	Kept       []PackageDependency `json:"kept,omitempty"`
+	Unresolved []string            `json:"unresolved,omitempty"` // referenced packages with no release (range "*")
+	DryRun     bool                `json:"dryRun,omitempty"`
+}
+
 type PublishReleaseInput struct {
 	Version string
 }
