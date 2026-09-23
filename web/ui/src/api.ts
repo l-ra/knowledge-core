@@ -13,30 +13,57 @@ export type UiConfig = {
 };
 
 const DEFAULT_OIDC_SCOPES = "openid profile email groups";
+/** Refresh this many ms before access/id token expiry. */
+const REFRESH_SKEW_MS = 60_000;
 
 export type AuthSession = {
   mode: UiConfig["authMode"];
   token?: string;
+  /** OIDC refresh token (rotated by IdP on each refresh). */
+  refreshToken?: string;
+  /** Absolute expiry of `token` (ms since epoch), from `expires_in`. */
+  expiresAt?: number;
   subject?: string;
   roles?: string;
   displayName?: string;
 };
 
 const SESSION_KEY = "kc.session";
+/** Same-tab notify when session is written outside React (refresh / expiry). */
+export const SESSION_CHANGE_EVENT = "kc.session-change";
+
+type TokenEndpointResponse = {
+  id_token?: string;
+  access_token?: string;
+  refresh_token?: string;
+  expires_in?: number;
+};
 
 export function loadSession(): AuthSession | null {
-  const raw = sessionStorage.getItem(SESSION_KEY);
+  const fromLocal = localStorage.getItem(SESSION_KEY);
+  const fromSession = sessionStorage.getItem(SESSION_KEY);
+  const raw = fromLocal ?? fromSession;
   if (!raw) return null;
   try {
-    return JSON.parse(raw) as AuthSession;
+    const parsed = JSON.parse(raw) as AuthSession;
+    // Migrate tab-scoped sessions to localStorage.
+    if (!fromLocal && fromSession) {
+      localStorage.setItem(SESSION_KEY, raw);
+      sessionStorage.removeItem(SESSION_KEY);
+    }
+    return parsed;
   } catch {
     return null;
   }
 }
 
 export function saveSession(s: AuthSession | null) {
-  if (!s) sessionStorage.removeItem(SESSION_KEY);
-  else sessionStorage.setItem(SESSION_KEY, JSON.stringify(s));
+  if (!s) localStorage.removeItem(SESSION_KEY);
+  else localStorage.setItem(SESSION_KEY, JSON.stringify(s));
+  sessionStorage.removeItem(SESSION_KEY);
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(new CustomEvent(SESSION_CHANGE_EVENT, { detail: s }));
+  }
 }
 
 export class ApiError extends Error {
@@ -59,11 +86,98 @@ function authHeaders(session: AuthSession | null): HeadersInit {
   return h;
 }
 
-export async function apiFetch<T = unknown>(
+function oidcClientId(cfg: UiConfig): string {
+  return cfg.oidcClientId || cfg.oidcAudience || "knowledge-core";
+}
+
+function applyTokenResponse(base: AuthSession, tokens: TokenEndpointResponse): AuthSession {
+  const token = tokens.id_token || tokens.access_token;
+  if (!token) throw new Error("no token in response");
+  const expiresIn = typeof tokens.expires_in === "number" ? tokens.expires_in : 3600;
+  const next: AuthSession = {
+    ...base,
+    mode: "oidc",
+    token,
+    expiresAt: Date.now() + expiresIn * 1000,
+  };
+  if (tokens.refresh_token) next.refreshToken = tokens.refresh_token;
+  else if (base.refreshToken) next.refreshToken = base.refreshToken;
+  return next;
+}
+
+let refreshInFlight: Promise<AuthSession | null> | null = null;
+
+async function oidcDiscovery(issuer: string): Promise<{ token_endpoint: string }> {
+  const res = await fetch(`${issuer.replace(/\/$/, "")}/.well-known/openid-configuration`);
+  if (!res.ok) throw new Error(`OIDC discovery failed: ${res.status}`);
+  return res.json();
+}
+
+/** Exchange refresh_token; on failure clears session and returns null. */
+export async function refreshOidcSession(
+  session: AuthSession,
+  cfg?: UiConfig,
+): Promise<AuthSession | null> {
+  if (session.mode !== "oidc" || !session.refreshToken) {
+    return null;
+  }
+  if (refreshInFlight) return refreshInFlight;
+
+  refreshInFlight = (async () => {
+    try {
+      const c = cfg ?? (await loadUiConfig());
+      if (!c.oidcIssuer) throw new Error("OIDC issuer not configured");
+      const discovery = await oidcDiscovery(c.oidcIssuer);
+      const body = new URLSearchParams({
+        grant_type: "refresh_token",
+        client_id: oidcClientId(c),
+        refresh_token: session.refreshToken!,
+      });
+      const tokenRes = await fetch(discovery.token_endpoint, {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body,
+      });
+      if (!tokenRes.ok) throw new Error(`refresh failed: ${await tokenRes.text()}`);
+      const tokens = (await tokenRes.json()) as TokenEndpointResponse;
+      const next = applyTokenResponse(session, tokens);
+      saveSession(next);
+      return next;
+    } catch {
+      saveSession(null);
+      return null;
+    } finally {
+      refreshInFlight = null;
+    }
+  })();
+
+  return refreshInFlight;
+}
+
+/** Proactive refresh when within skew of expiry. Legacy sessions without RT pass through. */
+export async function ensureFreshSession(
+  session: AuthSession | null,
+  cfg?: UiConfig,
+): Promise<AuthSession | null> {
+  if (!session || session.mode !== "oidc") return session;
+  const expired =
+    typeof session.expiresAt === "number" && Date.now() >= session.expiresAt - REFRESH_SKEW_MS;
+  if (!expired) return session;
+  if (!session.refreshToken) {
+    if (typeof session.expiresAt === "number" && Date.now() >= session.expiresAt) {
+      saveSession(null);
+      return null;
+    }
+    return session;
+  }
+  return refreshOidcSession(session, cfg);
+}
+
+async function doFetch(
   path: string,
-  init: RequestInit = {},
-  session: AuthSession | null = loadSession(),
-): Promise<T> {
+  init: RequestInit,
+  session: AuthSession | null,
+): Promise<{ res: Response; body: unknown }> {
   const headers = new Headers(init.headers);
   const auth = authHeaders(session);
   Object.entries(auth).forEach(([k, v]) => headers.set(k, v));
@@ -95,13 +209,47 @@ export async function apiFetch<T = unknown>(
       body = text;
     }
   }
-  if (!res.ok) {
-    const msg =
-      typeof body === "object" && body && "error" in body
-        ? JSON.stringify((body as { error: unknown }).error)
-        : text || res.statusText;
-    throw new ApiError(res.status, msg);
+  return { res, body };
+}
+
+function throwIfNotOk(res: Response, body: unknown): void {
+  if (res.ok) return;
+  const msg =
+    typeof body === "object" && body && "error" in body
+      ? JSON.stringify((body as { error: unknown }).error)
+      : typeof body === "string"
+        ? body
+        : res.statusText;
+  throw new ApiError(res.status, msg || res.statusText);
+}
+
+export async function apiFetch<T = unknown>(
+  path: string,
+  init: RequestInit = {},
+  session: AuthSession | null = loadSession(),
+  retried = false,
+): Promise<T> {
+  let active = await ensureFreshSession(session);
+  if (session?.mode === "oidc" && session.token && !active?.token) {
+    throw new ApiError(401, "session expired");
   }
+
+  const { res, body } = await doFetch(path, init, active);
+
+  if (
+    res.status === 401 &&
+    !retried &&
+    active?.mode === "oidc" &&
+    active.refreshToken
+  ) {
+    const refreshed = await refreshOidcSession(active);
+    if (refreshed?.token) {
+      return apiFetch(path, init, refreshed, true);
+    }
+    throw new ApiError(401, "session expired");
+  }
+
+  throwIfNotOk(res, body);
   return body as T;
 }
 
@@ -130,7 +278,7 @@ export async function startOidcLogin(cfg: UiConfig) {
   );
   const redirectUri = `${window.location.origin}${cfg.oidcRedirectPath}`;
   const params = new URLSearchParams({
-    client_id: cfg.oidcClientId || cfg.oidcAudience || "knowledge-core",
+    client_id: oidcClientId(cfg),
     response_type: "code",
     scope: (cfg.oidcScopes || "").trim() || DEFAULT_OIDC_SCOPES,
     redirect_uri: redirectUri,
@@ -152,7 +300,7 @@ export async function finishOidcLogin(cfg: UiConfig, code: string, state: string
   const redirectUri = `${window.location.origin}${cfg.oidcRedirectPath}`;
   const body = new URLSearchParams({
     grant_type: "authorization_code",
-    client_id: cfg.oidcClientId || cfg.oidcAudience || "knowledge-core",
+    client_id: oidcClientId(cfg),
     code,
     redirect_uri: redirectUri,
     code_verifier: verifier,
@@ -163,12 +311,10 @@ export async function finishOidcLogin(cfg: UiConfig, code: string, state: string
     body,
   });
   if (!tokenRes.ok) throw new Error(`token exchange failed: ${await tokenRes.text()}`);
-  const tokens = await tokenRes.json();
-  const token = tokens.id_token || tokens.access_token;
-  if (!token) throw new Error("no token in response");
+  const tokens = (await tokenRes.json()) as TokenEndpointResponse;
   sessionStorage.removeItem("kc.pkce.verifier");
   sessionStorage.removeItem("kc.oidc.state");
-  const session: AuthSession = { mode: "oidc", token };
+  const session = applyTokenResponse({ mode: "oidc" }, tokens);
   const me = await apiFetch<{ id: string; displayName?: string }>("/v1/me", {}, session);
   session.displayName = me.displayName || me.id;
   session.subject = me.id;

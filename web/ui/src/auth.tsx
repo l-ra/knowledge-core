@@ -1,5 +1,12 @@
 import React, { createContext, useContext, useEffect, useMemo, useState } from "react";
-import { AuthSession, UiConfig, loadSession, loadUiConfig, saveSession } from "./api";
+import {
+  AuthSession,
+  SESSION_CHANGE_EVENT,
+  UiConfig,
+  loadSession,
+  loadUiConfig,
+  saveSession,
+} from "./api";
 
 type AuthCtx = {
   cfg: UiConfig | null;
@@ -20,6 +27,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       .then(setCfg)
       .catch(() => setCfg(null))
       .finally(() => setReady(true));
+  }, []);
+
+  useEffect(() => {
+    const onChange = (e: Event) => {
+      const detail = (e as CustomEvent<AuthSession | null>).detail;
+      setSessionState(detail ?? null);
+    };
+    window.addEventListener(SESSION_CHANGE_EVENT, onChange);
+    return () => window.removeEventListener(SESSION_CHANGE_EVENT, onChange);
   }, []);
 
   const setSession = (s: AuthSession | null) => {

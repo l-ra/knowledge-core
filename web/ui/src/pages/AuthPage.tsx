@@ -53,6 +53,7 @@ export function AuthPage() {
         }),
       });
       setData(res);
+      localStorage.removeItem("kc.session");
       sessionStorage.removeItem("kc.session");
       window.location.assign(`${import.meta.env.BASE_URL}login`);
     } catch (err) {
