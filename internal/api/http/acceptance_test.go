@@ -786,6 +786,85 @@ func TestAcceptancePublishReleaseWithDependencies(t *testing.T) {
 	}
 }
 
+// Import bundle with dependency closure must skip deps already present at same
+// or higher compatible (^) version, while still installing the primary package.
+func TestAcceptanceImportSkipsSatisfiedDependencies(t *testing.T) {
+	h := setupTestHandler(t)
+
+	createPkg(t, h, "dep-pkg", nil)
+	_ = createEntityWithPkg(t, h, "dep-pkg", "DepEntity")
+	pubDep := doJSON(t, h, http.MethodPost, "/v1/packages/dep-pkg/releases", map[string]any{"version": "1.0.0"}, nil)
+	if pubDep.StatusCode != http.StatusCreated {
+		t.Fatalf("publish dep 1.0.0: %d %s", pubDep.StatusCode, pubDep.Body)
+	}
+
+	createPkg(t, h, "app-pkg", []map[string]string{
+		{"dependsOnCode": "dep-pkg", "versionRange": "^1.0.0"},
+	})
+	_ = createEntityWithPkg(t, h, "app-pkg", "AppEntity")
+	pubApp := doJSON(t, h, http.MethodPost, "/v1/packages/app-pkg/releases", map[string]any{"version": "1.0.0"}, nil)
+	if pubApp.StatusCode != http.StatusCreated {
+		t.Fatalf("publish app: %d %s", pubApp.StatusCode, pubApp.Body)
+	}
+
+	bundleRes := doJSON(t, h, http.MethodGet, "/v1/packages/app-pkg/releases/1.0.0/bundle", nil, nil)
+	if bundleRes.StatusCode != http.StatusOK {
+		t.Fatalf("export bundle: %d %s", bundleRes.StatusCode, bundleRes.Body)
+	}
+	var bundle map[string]any
+	if err := json.Unmarshal([]byte(bundleRes.Body), &bundle); err != nil {
+		t.Fatal(err)
+	}
+	releases, _ := bundle["releases"].([]any)
+	if len(releases) < 2 {
+		t.Fatalf("expected dependency closure in releases, got %d", len(releases))
+	}
+
+	// Target already has a higher compatible dep release.
+	truncateTestDB(t)
+	createPkg(t, h, "dep-pkg", nil)
+	_ = createEntityWithPkg(t, h, "dep-pkg", "DepEntity")
+	pubHigher := doJSON(t, h, http.MethodPost, "/v1/packages/dep-pkg/releases", map[string]any{"version": "1.1.0"}, nil)
+	if pubHigher.StatusCode != http.StatusCreated {
+		t.Fatalf("publish dep 1.1.0: %d %s", pubHigher.StatusCode, pubHigher.Body)
+	}
+
+	imp := doJSON(t, h, http.MethodPost, "/v1/releases/import", bundle, nil)
+	if imp.StatusCode != http.StatusCreated {
+		t.Fatalf("import with satisfied dep: %d %s", imp.StatusCode, imp.Body)
+	}
+
+	appRel := doJSON(t, h, http.MethodGet, "/v1/packages/app-pkg/releases/1.0.0", nil, nil)
+	if appRel.StatusCode != http.StatusOK {
+		t.Fatalf("app release missing after import: %d %s", appRel.StatusCode, appRel.Body)
+	}
+	depOld := doJSON(t, h, http.MethodGet, "/v1/packages/dep-pkg/releases/1.0.0", nil, nil)
+	if depOld.StatusCode != http.StatusNotFound {
+		t.Fatalf("dep 1.0.0 must not be imported when 1.1.0 present, got %d %s", depOld.StatusCode, depOld.Body)
+	}
+	depNew := doJSON(t, h, http.MethodGet, "/v1/packages/dep-pkg/releases/1.1.0", nil, nil)
+	if depNew.StatusCode != http.StatusOK {
+		t.Fatalf("dep 1.1.0 should remain: %d %s", depNew.StatusCode, depNew.Body)
+	}
+
+	// Exact same dep version also skips; primary duplicate still 409.
+	truncateTestDB(t)
+	createPkg(t, h, "dep-pkg", nil)
+	_ = createEntityWithPkg(t, h, "dep-pkg", "DepEntity")
+	pubSame := doJSON(t, h, http.MethodPost, "/v1/packages/dep-pkg/releases", map[string]any{"version": "1.0.0"}, nil)
+	if pubSame.StatusCode != http.StatusCreated {
+		t.Fatalf("publish dep 1.0.0 again: %d %s", pubSame.StatusCode, pubSame.Body)
+	}
+	imp2 := doJSON(t, h, http.MethodPost, "/v1/releases/import", bundle, nil)
+	if imp2.StatusCode != http.StatusCreated {
+		t.Fatalf("import with exact dep: %d %s", imp2.StatusCode, imp2.Body)
+	}
+	dup := doJSON(t, h, http.MethodPost, "/v1/releases/import", bundle, nil)
+	if dup.StatusCode != http.StatusConflict {
+		t.Fatalf("duplicate primary import: want 409, got %d %s", dup.StatusCode, dup.Body)
+	}
+}
+
 func TestAcceptanceImportPromotion(t *testing.T) {
 	h := setupTestHandler(t)
 

@@ -37,6 +37,13 @@ func ParseVersion(v string) (major, minor, patch int, err error) {
 	return major, minor, patch, nil
 }
 
+// CompatibleAtLeast reports whether installed satisfies the caret range of required
+// (same major, installed >= required). Used when a target already has a dependency
+// release that is equal to or a compatible upgrade of the version embedded in a bundle.
+func CompatibleAtLeast(installed, required string) (bool, error) {
+	return MatchesRange(installed, "^"+strings.TrimSpace(required))
+}
+
 // MatchesRange checks if version satisfies range: exact, ^X.Y.Z, ~X.Y.Z, >=X.Y.Z, >=X.Y.Z <A.B.C
 func MatchesRange(version, rangeSpec string) (bool, error) {
 	rangeSpec = strings.TrimSpace(rangeSpec)

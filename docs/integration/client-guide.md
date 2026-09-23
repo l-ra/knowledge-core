@@ -310,7 +310,8 @@ POST /v1/releases/import
 
 - První import (greenfield) — OK.
 - Import **nové verze** téhož package — OK, pokud je zpětně kompatibilní; vyšší `revisionNo` se aplikují.
-- Stejná verze znovu / breaking změny / downgrade revize — **409**.
+- Stejná verze **primárního** package znovu / breaking změny / downgrade revize — **409**.
+- Embedded dependency releases, které cíl už má ve **stejné nebo vyšší kompatibilní** verzi (`^` SemVer: stejný major, `installed >= required`) — **přeskočí** (objekty i release record). Export dál obsahuje dependency closure pro greenfield.
 
 Published release je **immutable** — mutace vrátí **409**.
 

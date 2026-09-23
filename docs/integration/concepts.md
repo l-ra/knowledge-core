@@ -102,7 +102,7 @@ Label **není** statement — je systémové prezentační metadata.
 - `lifecycle`: `released` (default) nebo `continuous`
 - Závislosti: `{ dependsOnCode, versionRange }` (SemVer ranges)
 
-**Release** = immutable snapshot package (+ dependency closure). Export/import jako **bundle** pro promotion DEV → TEST → PROD.
+**Release** = immutable snapshot package (+ dependency closure). Export/import jako **bundle** pro promotion DEV → TEST → PROD. Import přeskočí embedded závislosti, které cíl už má ve stejné nebo vyšší kompatibilní (`^`) verzi.
 
 Revision (optimistic lock na entitě) ≠ Release (verze metamodelu).
 

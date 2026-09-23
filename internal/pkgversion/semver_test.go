@@ -29,3 +29,25 @@ func TestMatchesRange(t *testing.T) {
 		}
 	}
 }
+
+func TestCompatibleAtLeast(t *testing.T) {
+	cases := []struct {
+		installed, required string
+		want                bool
+	}{
+		{"1.1.0", "1.1.0", true},
+		{"1.2.0", "1.1.0", true},
+		{"1.0.0", "1.1.0", false},
+		{"2.0.0", "1.1.0", false},
+		{"0.2.0", "0.1.0", true},
+	}
+	for _, c := range cases {
+		got, err := CompatibleAtLeast(c.installed, c.required)
+		if err != nil {
+			t.Fatalf("%s vs %s: %v", c.installed, c.required, err)
+		}
+		if got != c.want {
+			t.Fatalf("%s compatible≥ %s: got %v want %v", c.installed, c.required, got, c.want)
+		}
+	}
+}

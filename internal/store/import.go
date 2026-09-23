@@ -61,7 +61,15 @@ func (s *Store) ImportReleaseBundle(ctx context.Context, meta domain.WriteMeta, 
 	}
 
 	releaseManifests := orderReleaseManifests(collectReleaseManifests(&bundle))
+	skipPkgs, err := s.satisfiedImportPackages(ctx, tx, bundle.Manifest.Package, bundle.Manifest.Version, releaseManifests)
+	if err != nil {
+		return nil, err
+	}
+
 	for _, rm := range releaseManifests {
+		if _, skip := skipPkgs[rm.Package]; skip {
+			continue
+		}
 		if err := s.ensureImportPackage(ctx, tx, rm); err != nil {
 			return nil, err
 		}
@@ -73,26 +81,41 @@ func (s *Store) ImportReleaseBundle(ctx context.Context, meta domain.WriteMeta, 
 		}
 	}
 	for _, p := range bundle.Properties {
+		if _, skip := skipPkgs[p.PackageCode]; skip {
+			continue
+		}
 		if err := s.importProperty(ctx, tx, p, cs); err != nil {
 			return nil, err
 		}
 	}
 	for _, c := range bundle.Classes {
+		if _, skip := skipPkgs[c.PackageCode]; skip {
+			continue
+		}
 		if err := s.importClass(ctx, tx, c, cs); err != nil {
 			return nil, err
 		}
 	}
 	for _, sh := range bundle.Shapes {
+		if _, skip := skipPkgs[sh.PackageCode]; skip {
+			continue
+		}
 		if err := s.importShape(ctx, tx, sh); err != nil {
 			return nil, err
 		}
 	}
 	for _, e := range bundle.Entities {
+		if _, skip := skipPkgs[e.PackageCode]; skip {
+			continue
+		}
 		if err := s.importEntity(ctx, tx, e, cs); err != nil {
 			return nil, err
 		}
 	}
 	for _, st := range bundle.Statements {
+		if _, skip := skipPkgs[st.PackageCode]; skip {
+			continue
+		}
 		if err := s.importStatement(ctx, tx, st, cs); err != nil {
 			return nil, err
 		}
@@ -100,6 +123,9 @@ func (s *Store) ImportReleaseBundle(ctx context.Context, meta domain.WriteMeta, 
 
 	var mainRelease domain.Release
 	for _, rm := range releaseManifests {
+		if _, skip := skipPkgs[rm.Package]; skip {
+			continue
+		}
 		rel, err := s.importReleaseRecord(ctx, tx, rm, cs)
 		if err != nil {
 			return nil, err
@@ -169,6 +195,56 @@ func orderReleaseManifests(manifests []domain.BundleManifest) []domain.BundleMan
 		visit(m)
 	}
 	return ordered
+}
+
+// satisfiedImportPackages returns package codes from the bundle's embedded dependency
+// closure that already have a same-or-higher compatible (^) release installed.
+// The primary (manifest) package is never skipped — duplicate primary version still 409.
+func (s *Store) satisfiedImportPackages(ctx context.Context, tx pgx.Tx, mainPackage, mainVersion string, manifests []domain.BundleManifest) (map[string]struct{}, error) {
+	skip := map[string]struct{}{}
+	for _, rm := range manifests {
+		if rm.Package == mainPackage && rm.Version == mainVersion {
+			continue
+		}
+		ok, err := s.hasCompatibleInstalledRelease(ctx, tx, rm.Package, rm.Version)
+		if err != nil {
+			return nil, err
+		}
+		if ok {
+			skip[rm.Package] = struct{}{}
+		}
+	}
+	return skip, nil
+}
+
+func (s *Store) hasCompatibleInstalledRelease(ctx context.Context, tx pgx.Tx, packageCode, requiredVersion string) (bool, error) {
+	packageCode = strings.TrimSpace(packageCode)
+	if packageCode == "" {
+		return false, nil
+	}
+	rows, err := tx.Query(ctx, `
+		SELECT r.version FROM release r
+		JOIN package p ON p.id = r.package_id
+		WHERE p.code = $1
+	`, packageCode)
+	if err != nil {
+		return false, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var v string
+		if err := rows.Scan(&v); err != nil {
+			return false, err
+		}
+		ok, err := pkgversion.CompatibleAtLeast(v, requiredVersion)
+		if err != nil {
+			return false, fmt.Errorf("package %s installed version %q: %w", packageCode, v, err)
+		}
+		if ok {
+			return true, nil
+		}
+	}
+	return false, rows.Err()
 }
 
 func (s *Store) ensureImportPackage(ctx context.Context, tx pgx.Tx, m domain.BundleManifest) error {

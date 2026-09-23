@@ -19,7 +19,8 @@ Umožnit promotion nové verze package DEV → TEST/PROD přes release bundle, a
    - `bundle.rev < current` → 409 downgrade
    - stejná revize, jiný obsah → 409 identity collision
 4. Objekty chybějící v bundlu se **nemažou** (absence ve schématu = breaking ve diffu).
-5. Duplicate version release → 409 immutable.
+5. Duplicate version **primárního** (manifest) release → 409 immutable.
+6. Embedded dependency release už v cíli ve stejné nebo vyšší kompatibilní verzi (`^required`) → **skip** (objekty i release record). Nižší verze v cíli → import/upgrade jako dřív.
 
 ### Publish (`POST /v1/packages/{code}/releases`)
 
@@ -63,6 +64,7 @@ Major SemVer **neobchází** BC, pokud v prostředí už je release.
 ## Acceptance
 
 - `TestAcceptancePackageUpgradeCompat` — 1.0 import → 1.1 additive OK; breaking 409; duplicate 409
+- `TestAcceptanceImportSkipsSatisfiedDependencies` — dependency closure skip při same/higher `^` verzi; primary duplicate 409
 - `TestAcceptancePublishCompatBreaking` — odebrání entity z package blokuje publish; additive OK
 
 ## Mimorozsah
