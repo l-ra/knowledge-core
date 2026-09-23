@@ -850,6 +850,9 @@ func TestAcceptanceImportReleasePayloadTooLarge(t *testing.T) {
 	body := bytes.Repeat([]byte("a"), store.MaxReleaseBundleBytes+1)
 	req := httptest.NewRequest(http.MethodPost, "/v1/releases/import", bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
+	for k, v := range adminHeaders() {
+		req.Header.Set(k, v)
+	}
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, req)
 	if rec.Code != http.StatusRequestEntityTooLarge {
