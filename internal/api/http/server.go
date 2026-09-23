@@ -1,6 +1,7 @@
 package apihttp
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"io/fs"
@@ -39,120 +40,128 @@ func New(eng *engine.Engine, st *store.Store, authn Authenticator, cfg config.Co
 	}
 	s := &Server{engine: eng, store: st, authn: sw, cfg: cfg}
 	r := chi.NewRouter()
-	r.Use(middleware.RequestID)
-	r.Use(middleware.RealIP)
-	r.Use(middleware.Logger)
-	r.Use(middleware.Recoverer)
-	r.Use(middleware.Timeout(60 * time.Second))
-	r.Use(metrics.Middleware)
-	r.Use(correlationMiddleware)
 
+	// Probes stay outside Timeout/Logger so kubelet checks are not delayed by
+	// request logging or the global 60s handler timeout under ITMAP load.
+	r.Get("/livez", s.livez)
+	r.Get("/readyz", s.healthz)
 	r.Get("/healthz", s.healthz)
-	r.Handle("/metrics", metrics.Handler())
-	r.Get("/v1/ui/config", s.uiConfig)
 
-	r.Route("/v1", func(r chi.Router) {
-		r.Use(authMiddleware(sw))
-		r.Get("/me", s.me)
+	r.Group(func(r chi.Router) {
+		r.Use(middleware.RequestID)
+		r.Use(middleware.RealIP)
+		r.Use(middleware.Logger)
+		r.Use(middleware.Recoverer)
+		r.Use(middleware.Timeout(60 * time.Second))
+		r.Use(metrics.Middleware)
+		r.Use(correlationMiddleware)
 
-		r.Get("/admin/auth", s.getAdminAuth)
-		r.Put("/admin/auth", s.putAdminAuth)
+		r.Handle("/metrics", metrics.Handler())
+		r.Get("/v1/ui/config", s.uiConfig)
 
-		r.Get("/entities", s.listEntities)
-		r.Post("/entities", s.createEntity)
-		r.Get("/entities/facets", s.listEntityFacets)
-		r.Post("/entities/batch-read", s.batchReadEntities)
-		r.Get("/entities/{qid}/validation", s.getEntityValidation)
-		r.Get("/entities/{qid}/history", s.getEntityHistory)
-		r.Get("/entities/{qid}/statements", s.listEntityStatements)
-		r.Get("/entities/{qid}/incoming", s.listIncomingStatements)
-		r.Get("/entities/{qid}/graph", s.getEntityGraph)
-		r.Post("/entities/{qid}/move", s.moveEntity)
-		r.Post("/entities/{qid}/deprecate", s.deprecateEntity)
-		r.Post("/entities/{qid}/delete", s.deleteEntity)
-		r.Get("/entities/{qid}", s.getEntity)
-		r.Patch("/entities/{qid}", s.updateEntity)
-		r.Put("/entities/{qid}/iri-aliases", s.putEntityIRIAliases)
+		r.Route("/v1", func(r chi.Router) {
+			r.Use(authMiddleware(sw))
+			r.Get("/me", s.me)
 
-		r.Get("/properties", s.listProperties)
-		r.Post("/properties", s.createProperty)
-		r.Get("/properties/{pid}", s.getProperty)
-		r.Patch("/properties/{pid}", s.patchProperty)
+			r.Get("/admin/auth", s.getAdminAuth)
+			r.Put("/admin/auth", s.putAdminAuth)
 
-		r.Get("/packages", s.listPackages)
-		r.Post("/packages", s.createPackage)
-		r.Get("/packages/{code}", s.getPackage)
-		r.Patch("/packages/{code}", s.updatePackage)
-		r.Put("/packages/{code}/dependencies", s.setPackageDependencies)
-		r.Post("/packages/{code}/dependencies/reconcile", s.reconcilePackageDependencies)
-		r.Delete("/packages/{code}", s.deletePackage)
-		r.Post("/packages/{code}/rdf/import", s.importPackageRDF)
-		r.Get("/packages/{code}/objects", s.listPackageObjects)
-		r.Get("/packages/{code}/releases", s.listPackageReleases)
-		r.Post("/packages/{code}/releases", s.publishRelease)
-		r.Get("/packages/{code}/releases/{version}", s.getRelease)
-		r.Get("/packages/{code}/releases/{version}/bundle", s.exportReleaseBundle)
-		r.Post("/packages/{code}/releases/{version}/mutate", s.mutateRelease)
-		r.Post("/releases/import", s.importRelease)
-		r.Post("/rdf/analyze", s.analyzeRDF)
-		r.Post("/rdf/prefixes", s.parseRDFPrefixes)
-		r.Post("/rdf/import", s.importRDFGlobal)
+			r.Get("/entities", s.listEntities)
+			r.Post("/entities", s.createEntity)
+			r.Get("/entities/facets", s.listEntityFacets)
+			r.Post("/entities/batch-read", s.batchReadEntities)
+			r.Get("/entities/{qid}/validation", s.getEntityValidation)
+			r.Get("/entities/{qid}/history", s.getEntityHistory)
+			r.Get("/entities/{qid}/statements", s.listEntityStatements)
+			r.Get("/entities/{qid}/incoming", s.listIncomingStatements)
+			r.Get("/entities/{qid}/graph", s.getEntityGraph)
+			r.Post("/entities/{qid}/move", s.moveEntity)
+			r.Post("/entities/{qid}/deprecate", s.deprecateEntity)
+			r.Post("/entities/{qid}/delete", s.deleteEntity)
+			r.Get("/entities/{qid}", s.getEntity)
+			r.Patch("/entities/{qid}", s.updateEntity)
+			r.Put("/entities/{qid}/iri-aliases", s.putEntityIRIAliases)
 
-		r.Get("/objects/{id}/releases", s.listObjectReleases)
+			r.Get("/properties", s.listProperties)
+			r.Post("/properties", s.createProperty)
+			r.Get("/properties/{pid}", s.getProperty)
+			r.Patch("/properties/{pid}", s.patchProperty)
 
-		r.Post("/references", s.createReference)
-		r.Get("/references/{rid}", s.getReference)
+			r.Get("/packages", s.listPackages)
+			r.Post("/packages", s.createPackage)
+			r.Get("/packages/{code}", s.getPackage)
+			r.Patch("/packages/{code}", s.updatePackage)
+			r.Put("/packages/{code}/dependencies", s.setPackageDependencies)
+			r.Post("/packages/{code}/dependencies/reconcile", s.reconcilePackageDependencies)
+			r.Delete("/packages/{code}", s.deletePackage)
+			r.Post("/packages/{code}/rdf/import", s.importPackageRDF)
+			r.Get("/packages/{code}/objects", s.listPackageObjects)
+			r.Get("/packages/{code}/releases", s.listPackageReleases)
+			r.Post("/packages/{code}/releases", s.publishRelease)
+			r.Get("/packages/{code}/releases/{version}", s.getRelease)
+			r.Get("/packages/{code}/releases/{version}/bundle", s.exportReleaseBundle)
+			r.Post("/packages/{code}/releases/{version}/mutate", s.mutateRelease)
+			r.Post("/releases/import", s.importRelease)
+			r.Post("/rdf/analyze", s.analyzeRDF)
+			r.Post("/rdf/prefixes", s.parseRDFPrefixes)
+			r.Post("/rdf/import", s.importRDFGlobal)
 
-		r.Get("/statements", s.listStatements)
-		r.Post("/statements", s.createStatement)
-		r.Get("/statements/{sid}", s.getStatement)
-		r.Post("/statements/{sid}/revise", s.reviseStatement)
-		r.Post("/statements/{sid}/deprecate", s.deprecateStatement)
-		r.Get("/statements/{sid}/history", s.getStatementHistory)
+			r.Get("/objects/{id}/releases", s.listObjectReleases)
 
-		r.Get("/changesets", s.listChangeSets)
-		r.Post("/changesets", s.applyChangeSet)
-		r.Post("/changesets/open", s.openChangeSet)
-		r.Post("/changesets/{cid}/commit", s.commitOpenChangeSet)
-		r.Post("/changesets/{cid}/cancel", s.cancelOpenChangeSet)
-		r.Get("/changesets/{cid}", s.getChangeSet)
-		r.Patch("/changesets/{cid}", s.updateOpenChangeSet)
+			r.Post("/references", s.createReference)
+			r.Get("/references/{rid}", s.getReference)
 
-		r.Get("/policies", s.listPolicies)
-		r.Post("/policies", s.upsertPolicy)
-		r.Get("/policies/{name}", s.getPolicy)
-		r.Put("/policies/{name}", s.upsertPolicy)
-		r.Delete("/policies/{name}", s.deletePolicy)
+			r.Get("/statements", s.listStatements)
+			r.Post("/statements", s.createStatement)
+			r.Get("/statements/{sid}", s.getStatement)
+			r.Post("/statements/{sid}/revise", s.reviseStatement)
+			r.Post("/statements/{sid}/deprecate", s.deprecateStatement)
+			r.Get("/statements/{sid}/history", s.getStatementHistory)
 
-		r.Get("/lenses", s.listLenses)
-		r.Post("/lenses", s.createLens)
-		r.Get("/lenses/{code}", s.getLens)
-		r.Get("/lenses/{code}/instances/{key}", s.getLensInstance)
-		r.Post("/lenses/{code}/instances/{key}/patch", s.patchLensInstance)
-		r.Post("/graphql", s.graphql)
+			r.Get("/changesets", s.listChangeSets)
+			r.Post("/changesets", s.applyChangeSet)
+			r.Post("/changesets/open", s.openChangeSet)
+			r.Post("/changesets/{cid}/commit", s.commitOpenChangeSet)
+			r.Post("/changesets/{cid}/cancel", s.cancelOpenChangeSet)
+			r.Get("/changesets/{cid}", s.getChangeSet)
+			r.Patch("/changesets/{cid}", s.updateOpenChangeSet)
 
-		r.Get("/admin/schema-config", s.getSchemaConfig)
-		r.Put("/admin/schema-config", s.putSchemaConfig)
+			r.Get("/policies", s.listPolicies)
+			r.Post("/policies", s.upsertPolicy)
+			r.Get("/policies/{name}", s.getPolicy)
+			r.Put("/policies/{name}", s.upsertPolicy)
+			r.Delete("/policies/{name}", s.deletePolicy)
 
-		r.Post("/validation/reports", s.createValidationReport)
-		r.Get("/validation/reports/{id}", s.getValidationReport)
+			r.Get("/lenses", s.listLenses)
+			r.Post("/lenses", s.createLens)
+			r.Get("/lenses/{code}", s.getLens)
+			r.Get("/lenses/{code}/instances/{key}", s.getLensInstance)
+			r.Post("/lenses/{code}/instances/{key}/patch", s.patchLensInstance)
+			r.Post("/graphql", s.graphql)
 
-		r.Get("/classes", s.listClasses)
-		r.Post("/classes", s.createClass)
-		r.Get("/classes/{cid}", s.getClass)
+			r.Get("/admin/schema-config", s.getSchemaConfig)
+			r.Put("/admin/schema-config", s.putSchemaConfig)
 
-		r.Get("/shapes", s.listShapes)
-		r.Post("/shapes", s.createShape)
-		r.Get("/shapes/{code}", s.getShape)
+			r.Post("/validation/reports", s.createValidationReport)
+			r.Get("/validation/reports/{id}", s.getValidationReport)
 
-		r.Post("/projections/outbox/process", s.processOutbox)
-		r.Post("/projections/search/rebuild", s.rebuildSearchProjection)
-		r.Get("/projections/search", s.searchProjection)
-		r.Post("/projections/rdf/rebuild", s.rebuildRDFProjection)
-		r.Get("/projections/rdf", s.exportRDF)
+			r.Get("/classes", s.listClasses)
+			r.Post("/classes", s.createClass)
+			r.Get("/classes/{cid}", s.getClass)
+
+			r.Get("/shapes", s.listShapes)
+			r.Post("/shapes", s.createShape)
+			r.Get("/shapes/{code}", s.getShape)
+
+			r.Post("/projections/outbox/process", s.processOutbox)
+			r.Post("/projections/search/rebuild", s.rebuildSearchProjection)
+			r.Get("/projections/search", s.searchProjection)
+			r.Post("/projections/rdf/rebuild", s.rebuildRDFProjection)
+			r.Get("/projections/rdf", s.exportRDF)
+		})
+
+		mountUI(r)
 	})
-
-	mountUI(r)
 
 	return r
 }
@@ -219,8 +228,18 @@ func pathParam(r *http.Request, key string) string {
 	return decoded
 }
 
+// livez is process liveness only — never touches the DB pool.
+// Used by Kubernetes livenessProbe so ITMAP load cannot kill the pod.
+func (s *Server) livez(w http.ResponseWriter, _ *http.Request) {
+	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+}
+
+// healthz / readyz check DB reachability with a short deadline so a saturated
+// pool returns 503 quickly instead of hanging until the kubelet probe times out.
 func (s *Server) healthz(w http.ResponseWriter, r *http.Request) {
-	if err := s.store.Ping(r.Context()); err != nil {
+	ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
+	defer cancel()
+	if err := s.store.Ping(ctx); err != nil {
 		writeError(w, http.StatusServiceUnavailable, "database unavailable")
 		return
 	}

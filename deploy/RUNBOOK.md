@@ -101,9 +101,13 @@ kubectl exec -n knowledge-core deploy/kc-knowledge-core -- \
 
 ```bash
 kubectl get pods -n knowledge-core
-curl -sS http://127.0.0.1:8080/healthz
+# liveness (no DB) / readiness (DB ping)
+curl -sS http://127.0.0.1:8080/livez
+curl -sS http://127.0.0.1:8080/readyz
 kubectl logs -n knowledge-core deploy/kc-knowledge-core --tail=100
 ```
+
+Under ITMAP load, readiness may flap (503) if the DB pool is saturated; liveness must stay green so kubelet does not restart the pod.
 
 ## Hardening
 

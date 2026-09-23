@@ -382,7 +382,7 @@ Content-Type: application/json
 
 | Účel | Endpointy |
 |------|-----------|
-| Health | `GET /healthz` |
+| Health | `GET /livez` (liveness, no DB), `GET /readyz` / `GET /healthz` (readiness, DB ping) |
 | Auth info | `GET /v1/me` |
 | Packages | `GET/POST /v1/packages`, `GET /v1/packages/{code}`, releases, bundle, import |
 | Schema | `GET/POST /v1/classes`, `GET/POST /v1/properties`, `PATCH /v1/properties/{pid}`, shapes, schema-config |

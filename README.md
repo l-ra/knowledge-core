@@ -46,7 +46,7 @@ podman-compose -f deploy/docker-compose.yml up --build
 | Postgres | localhost:5433 |
 | pgAdmin | http://localhost:5050 (admin@example.com / admin) |
 
-Health: `GET http://localhost:8080/healthz`  
+Health: `GET http://localhost:8080/healthz` (DB), `GET /livez` (process only)  
 Metrics: `GET http://localhost:8080/metrics`  
 UI: `http://localhost:8080/ui/`
 
@@ -179,6 +179,7 @@ Outbox worker (CLI / CronJob): `knowledge-core outbox process`
 |----------|---------|
 | `KC_HTTP_ADDR` | `:8080` |
 | `KC_DATABASE_URL` | `postgres://kc:kc@localhost:5433/knowledge_core?sslmode=disable` |
+| `KC_DB_MAX_CONNS` | `16` (pgx pool; raise if ITMAP saturates readiness) |
 | `KC_LOG_LEVEL` | `info` |
 | `KC_AUTH_MODE` | `dev` (`dev` \| `oidc` \| `bootstrap`) |
 | `KC_BOOTSTRAP_ADMIN_SUBJECT` | `admin` |

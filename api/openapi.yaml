@@ -10,13 +10,31 @@ info:
 servers:
   - url: /
 paths:
-  /healthz:
+  /livez:
     get:
-      summary: Health check
+      summary: Liveness (process up; no DB)
       security: []
       responses:
         "200":
           description: OK
+  /readyz:
+    get:
+      summary: Readiness (DB ping with short timeout)
+      security: []
+      responses:
+        "200":
+          description: OK
+        "503":
+          description: Database unavailable
+  /healthz:
+    get:
+      summary: Health check (alias of /readyz; DB ping)
+      security: []
+      responses:
+        "200":
+          description: OK
+        "503":
+          description: Database unavailable
   /v1/ui/config:
     get:
       summary: Public UI/OIDC bootstrap config
